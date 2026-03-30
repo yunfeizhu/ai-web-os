@@ -1,0 +1,21 @@
+node_modules/
+.next/
+dist/
+.turbo/
+.env
+.env.local
+*.pyc
+__pycache__/
+.venv/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# MinIO data
+minio_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

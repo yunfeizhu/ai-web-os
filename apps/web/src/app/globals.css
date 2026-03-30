@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+/* ═══════════════════════════════════════════
+   AI-Native OS — macOS-Inspired Light Theme
+   ═══════════════════════════════════════════ */
+
+:root {
+  /* ── Backgrounds ─────────────────────── */
+  --bg-desktop:    #e8e4df;
+  --surface:       rgba(255,255,255,0.72);
+  --surface-solid: #ffffff;
+  --surface-raise: rgba(255,255,255,0.82);
+  --surface-dock:  rgba(243,243,248,0.65);
+
+  /* ── Borders ─────────────────────────── */
+  --border-faint:  rgba(0,0,0,0.04);
+  --border:        rgba(0,0,0,0.10);
+  --border-strong: rgba(0,0,0,0.18);
+  --border-focus:  rgba(0,122,255,0.55);
+
+  /* ── Accent (macOS Blue) ─────────────── */
+  --accent:        #007aff;
+  --accent-light:  #409cff;
+  --accent-bg:     rgba(0,122,255,0.08);
+  --accent-bg-h:   rgba(0,122,255,0.14);
+
+  /* ── Semantic ────────────────────────── */
+  --red:    #ff3b30;
+  --yellow: #ffcc00;
+  --green:  #28cd41;
+  --orange: #ff9f0a;
+
+  /* ── Text ────────────────────────────── */
+  --t1: rgba(0,0,0,0.88);
+  --t2: rgba(0,0,0,0.52);
+  --t3: rgba(0,0,0,0.30);
+
+  /* ── Typography ──────────────────────── */
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+
+  /* ── Layout ──────────────────────────── */
+  --taskbar-h: 68px;
+  --dock-radius: 22px;
+
+  /* ── Shadows (macOS-style) ───────────── */
+  --shadow-window:
+    0 22px 70px rgba(0,0,0,0.12),
+    0 8px 22px rgba(0,0,0,0.08),
+    0 0 0 0.5px rgba(0,0,0,0.12);
+  --shadow-window-focus:
+    0 22px 70px rgba(0,0,0,0.18),
+    0 8px 22px rgba(0,0,0,0.12),
+    0 0 0 0.5px rgba(0,0,0,0.18);
+  --shadow-dock:
+    0 8px 32px rgba(0,0,0,0.10),
+    0 2px 8px rgba(0,0,0,0.06);
+  --shadow-menu:
+    0 12px 40px rgba(0,0,0,0.14),
+    0 4px 12px rgba(0,0,0,0.08);
+}
+
+/* ── Reset ─────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  background: var(--bg-desktop);
+  color: var(--t1);
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.window-content { user-select: text; }
+
+/* ── Scrollbar ──────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+
+/* ── Desktop ────────────────────────────── */
+.desktop-bg {
+  position: fixed; inset: 0;
+  overflow: hidden;
+  background: var(--bg-desktop);
+}
+
+/* ── Window open animation ──────────────── */
+@keyframes windowOpen {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1);    }
+}
+.win-open {
+  animation: windowOpen 0.22s cubic-bezier(0.16,1,0.3,1) forwards;
+  transform-origin: center center;
+}
+
+/* ── Focus ring ─────────────────────────── */
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

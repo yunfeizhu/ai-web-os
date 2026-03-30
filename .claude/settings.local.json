@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__tavily-remote-mcp__tavily_research",
+      "mcp__tavily-remote-mcp__tavily_search",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:spec.modelcontextprotocol.io)",
+      "WebSearch",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:docs.langchain.com)",
+      "mcp__tavily-remote-mcp__tavily_extract",
+      "WebFetch(domain:python.langchain.com)",
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:www.os-js.org)",
+      "mcp__tavily-remote-mcp__tavily_skill",
+      "WebFetch(domain:4xxi.com)",
+      "WebFetch(domain:mehmetozkaya.medium.com)",
+      "mcp__tavily-remote-mcp__tavily_crawl",
+      "WebFetch(domain:docs.crewai.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:www.kdnuggets.com)",
+      "WebFetch(domain:docs.mem0.ai)",
+      "WebFetch(domain:platform.openai.com)",
+      "WebFetch(domain:js.langchain.com)",
+      "Bash(dir \"E:\\\\Projects\\\\AI-Native-OS\")",
+      "mcp__context7__resolve-library-id",
+      "mcp__context7__query-docs",
+      "Bash(pnpm install:*)",
+      "Bash(cd:*)",
+      "Bash(npx next:*)",
+      "WebFetch(domain:4kwallpapers.com)",
+      "WebFetch(domain:unsplash.com)",
+      "Bash(pnpm --filter web build)",
+      "Bash(python -c \"from app.main import app; print\\(''OK''\\)\")",
+      "Bash(uv run:*)"
+    ]
+  }
+}

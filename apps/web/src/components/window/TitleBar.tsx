@@ -1,11 +1,15 @@
 "use client";
 
-import { useWindowStore } from "@/stores/windowStore";
 import type { WindowState } from "@/types/window";
 
-export function TitleBar({ window: win }: { window: WindowState }) {
-  const { closeWindow, minimizeWindow, toggleMaximize } = useWindowStore();
-  const isMaximized = win.state === "maximized";
+interface TitleBarProps {
+  window: WindowState;
+  onClose: (e: React.MouseEvent) => void;
+  onMinimize: (e: React.MouseEvent) => void;
+  onToggleMaximize: () => void;
+}
+
+export function TitleBar({ window: win, onClose, onMinimize, onToggleMaximize }: TitleBarProps) {
 
   return (
     <div
@@ -14,7 +18,7 @@ export function TitleBar({ window: win }: { window: WindowState }) {
         background: win.isFocused ? "rgba(255,255,255,0.55)" : "rgba(245,245,247,0.65)",
         borderBottom: "0.5px solid rgba(0,0,0,0.08)",
       }}
-      onDoubleClick={() => toggleMaximize(win.id)}
+      onDoubleClick={onToggleMaximize}
     >
       {/* Traffic-light buttons */}
       <div className="flex items-center gap-2 mr-3 group/tl">
@@ -22,25 +26,25 @@ export function TitleBar({ window: win }: { window: WindowState }) {
           color={win.isFocused ? "#FF5F57" : "#D4D4D4"}
           hoverColor="#FF3B30"
           symbol="×"
-          onClick={(e) => { e.stopPropagation(); closeWindow(win.id); }}
+          onClick={onClose}
         />
         <TrafficLight
           color={win.isFocused ? "#FEBC2E" : "#D4D4D4"}
           hoverColor="#FFB800"
           symbol="−"
-          onClick={(e) => { e.stopPropagation(); minimizeWindow(win.id); }}
+          onClick={onMinimize}
         />
         <TrafficLight
           color={win.isFocused ? "#28C840" : "#D4D4D4"}
           hoverColor="#1AAD30"
           symbol="⤢"
-          onClick={(e) => { e.stopPropagation(); toggleMaximize(win.id); }}
+          onClick={(e) => { e.stopPropagation(); onToggleMaximize(); }}
         />
       </div>
 
       {/* Title */}
       <span
-        className="flex-1 text-center text-[13px] font-medium truncate"
+        className="flex-1 text-center text-[14px] font-medium truncate"
         style={{
           color: win.isFocused ? "var(--t1)" : "var(--t3)",
           transition: "color 0.15s",
@@ -62,7 +66,7 @@ function TrafficLight({
   return (
     <button
       onClick={onClick}
-      className="w-3 h-3 rounded-full flex items-center justify-center transition-all duration-100
+      className="w-3.5 h-3.5 rounded-full flex items-center justify-center transition-all duration-100
         group-hover/tl:opacity-100"
       style={{
         background: color,
@@ -72,8 +76,8 @@ function TrafficLight({
       onMouseLeave={(e) => (e.currentTarget.style.background = color)}
     >
       <span
-        className="text-[8px] font-bold leading-none opacity-0 group-hover/tl:opacity-80 transition-opacity"
-        style={{ color: "rgba(0,0,0,0.5)" }}
+        className="opacity-0 group-hover/tl:opacity-100 transition-opacity select-none"
+        style={{ fontSize: 10, fontWeight: 900, lineHeight: 1, color: "rgba(0,0,0,0.65)", marginTop: "-0.5px" }}
       >
         {symbol}
       </span>

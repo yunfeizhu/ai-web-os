@@ -16,23 +16,31 @@ interface WindowManagerState {
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
   minimizeWindow: (id: string) => void;
+  requestMinimize: (id: string) => void;
   maximizeWindow: (id: string) => void;
   restoreWindow: (id: string) => void;
   toggleMaximize: (id: string) => void;
   updatePosition: (id: string, x: number, y: number) => void;
   updateSize: (id: string, width: number, height: number) => void;
-  snapWindow: (id: string, x: number, y: number, width: number, height: number) => void;
+  snapWindow: (
+    id: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) => void;
   setWindowState: (id: string, state: WindowDisplayState) => void;
   updateSkillState: (id: string, state: Record<string, unknown>) => void;
 }
 
-const DEFAULT_SIZE = { width: 800, height: 600 };
+const DEFAULT_SIZE = { width: 960, height: 680 };
 const DEFAULT_MIN_SIZE = { width: 400, height: 300 };
 
 const TASKBAR_H = 68; // 与 CSS --taskbar-h 保持一致（Dock 高度）
 
 function getCenteredPosition(width: number, height: number, offset: number) {
-  if (typeof window === "undefined") return { x: 100 + offset, y: 100 + offset };
+  if (typeof window === "undefined")
+    return { x: 100 + offset, y: 100 + offset };
   const availW = window.innerWidth;
   const availH = window.innerHeight - TASKBAR_H;
   return {
@@ -63,7 +71,8 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
     const id = generateId();
     const size = options?.size ?? DEFAULT_SIZE;
     const offset = Object.keys(state.windows).length * 30;
-    const position = options?.position ?? getCenteredPosition(size.width, size.height, offset);
+    const position =
+      options?.position ?? getCenteredPosition(size.width, size.height, offset);
 
     const newWindow: WindowState = {
       id,
@@ -150,12 +159,25 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
             k,
             {
               ...w,
-              state: k === id ? "minimized" as const : w.state,
+              state: k === id ? ("minimized" as const) : w.state,
               isFocused: k === topId,
+              pendingMinimize: k === id ? false : w.pendingMinimize,
             },
           ]),
         ),
         focusOrder,
+      };
+    });
+  },
+
+  requestMinimize: (id) => {
+    set((s) => {
+      if (!s.windows[id]) return s;
+      return {
+        windows: {
+          ...s.windows,
+          [id]: { ...s.windows[id], pendingMinimize: true },
+        },
       };
     });
   },
@@ -186,15 +208,18 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
           Object.entries(s.windows).map(([k, w]) => {
             if (k !== id) return [k, { ...w, isFocused: false }];
             const snap = w.preMaximizeSnapshot;
-            return [k, {
-              ...w,
-              state: "normal" as const,
-              isFocused: true,
-              zIndex: s.nextZIndex,
-              // 还原位置和尺寸
-              ...(snap ? { position: snap.position, size: snap.size } : {}),
-              preMaximizeSnapshot: undefined,
-            }];
+            return [
+              k,
+              {
+                ...w,
+                state: "normal" as const,
+                isFocused: true,
+                zIndex: s.nextZIndex,
+                // 还原位置和尺寸
+                ...(snap ? { position: snap.position, size: snap.size } : {}),
+                preMaximizeSnapshot: undefined,
+              },
+            ];
           }),
         ),
       },
@@ -248,7 +273,10 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
             position: { x, y },
             size: { width, height },
             // 保存 snap 前的快照（如果还没有的话）
-            preMaximizeSnapshot: w.preMaximizeSnapshot ?? { position: w.position, size: w.size },
+            preMaximizeSnapshot: w.preMaximizeSnapshot ?? {
+              position: w.position,
+              size: w.size,
+            },
           },
         },
       };

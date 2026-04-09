@@ -51,7 +51,7 @@ export function ThemeConfig() {
       <SectionTitle>外观</SectionTitle>
 
       <div>
-        <p className="text-[12px] font-semibold mb-3" style={{ color: "var(--t2)" }}>
+        <p className="text-[13px] font-semibold mb-3" style={{ color: "var(--t2)" }}>
           桌面壁纸
         </p>
         <div className="grid grid-cols-3 gap-2.5">
@@ -76,7 +76,7 @@ export function ThemeConfig() {
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
                 <div
-                  className="absolute bottom-0 inset-x-0 py-0.5 px-1.5 text-[10px] font-medium"
+                  className="absolute bottom-0 inset-x-0 py-0.5 px-1.5 text-[11px] font-medium"
                   style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.4))", color: "#fff" }}
                 >
                   {wp.label}
@@ -91,7 +91,7 @@ export function ThemeConfig() {
             );
           })}
         </div>
-        <p className="text-[10px] mt-2" style={{ color: "var(--t3)" }}>
+        <p className="text-[11px] mt-2" style={{ color: "var(--t3)" }}>
           图片来源: Unsplash (免费可商用)
         </p>
       </div>

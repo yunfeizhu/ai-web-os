@@ -19,6 +19,10 @@ const mono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "AI-Native OS",
   description: "AI-Native Operating System — powered by agents",
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.svg",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

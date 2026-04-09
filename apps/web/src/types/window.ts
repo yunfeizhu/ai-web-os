@@ -24,6 +24,7 @@ export interface WindowState {
   zIndex: number;
   isFocused: boolean;
   isAnimating: boolean;
+  pendingMinimize?: boolean;
   skillState?: Record<string, unknown>;
   // 最大化前的快照，用于还原
   preMaximizeSnapshot?: { position: WindowPosition; size: WindowSize };

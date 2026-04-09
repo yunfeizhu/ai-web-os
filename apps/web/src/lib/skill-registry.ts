@@ -17,7 +17,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     },
     ui: {
       component: "AiChat",
-      defaultSize: { width: 700, height: 550 },
+      defaultSize: { width: 1100, height: 720 },
       minSize: { width: 400, height: 350 },
       singleton: false,
     },
@@ -37,7 +37,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     },
     ui: {
       component: "FileManager",
-      defaultSize: { width: 900, height: 600 },
+      defaultSize: { width: 1100, height: 720 },
       minSize: { width: 600, height: 400 },
       singleton: true,
     },
@@ -57,7 +57,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     },
     ui: {
       component: "Settings",
-      defaultSize: { width: 750, height: 550 },
+      defaultSize: { width: 1100, height: 720 },
       minSize: { width: 550, height: 400 },
       singleton: true,
     },
@@ -77,7 +77,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     },
     ui: {
       component: "Terminal",
-      defaultSize: { width: 750, height: 480 },
+      defaultSize: { width: 1100, height: 720 },
       minSize: { width: 500, height: 300 },
       singleton: false,
     },
@@ -97,7 +97,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     },
     ui: {
       component: "Browser",
-      defaultSize: { width: 1000, height: 700 },
+      defaultSize: { width: 1100, height: 720 },
       minSize: { width: 600, height: 400 },
       singleton: false,
     },
@@ -117,7 +117,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     },
     ui: {
       component: "Notes",
-      defaultSize: { width: 700, height: 550 },
+      defaultSize: { width: 1100, height: 720 },
       minSize: { width: 400, height: 300 },
       singleton: false,
     },
@@ -137,7 +137,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     },
     ui: {
       component: "Calendar",
-      defaultSize: { width: 850, height: 600 },
+      defaultSize: { width: 1100, height: 720 },
       minSize: { width: 600, height: 450 },
       singleton: true,
     },

@@ -71,7 +71,7 @@ export function StartMenu({ onClose }: { onClose: () => void }) {
             placeholder="搜索"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="flex-1 bg-transparent outline-none text-[14px] placeholder:text-black/30"
+            className="flex-1 bg-transparent outline-none text-[15px] placeholder:text-black/30"
             style={{ color: "var(--t1)" }}
           />
         </div>
@@ -101,7 +101,7 @@ export function StartMenu({ onClose }: { onClose: () => void }) {
                   <IconComp size={30} color="#fff" strokeWidth={1.7} />
                 </div>
                 <span
-                  className="text-[11px] font-medium"
+                  className="text-[12px] font-medium"
                   style={{ color: "var(--t1)" }}
                 >
                   {skill.manifest.name}

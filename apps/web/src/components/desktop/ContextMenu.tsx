@@ -59,7 +59,7 @@ export function ContextMenu({ x, y, items, onClose }: {
               key={i}
               disabled={item.disabled}
               onClick={(e) => { e.stopPropagation(); item.onClick?.(); onClose(); }}
-              className="w-full flex items-center gap-2 px-3 py-[5px] text-[13px]
+              className="w-full flex items-center gap-2 px-3 py-[5px] text-[14px]
                 transition-colors duration-75 disabled:opacity-30 rounded-[4px] mx-1"
               style={{
                 color: "var(--t1)",

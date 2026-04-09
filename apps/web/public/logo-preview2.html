@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AI-Native OS Logo Preview 2</title>
+<style>
+  body { background: #e8e4df; display: flex; gap: 48px; padding: 60px; flex-wrap: wrap; align-items: flex-start; font-family: -apple-system, sans-serif; }
+  .card { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  p { margin: 0; font-size: 13px; color: #555; text-align: center; line-height: 1.5; }
+  .row { display: flex; gap: 32px; align-items: center; }
+  .dark { background: #111118; border-radius: 20px; padding: 28px 36px; display: flex; gap: 32px; align-items: center; }
+  .dark p { color: #666; }
+</style>
+</head>
+<body>
+
+<!-- ── 方案 E: 窗口 + 光晕 —— OS感最强 ── -->
+<div class="card">
+  <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="gE" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#7c3aed"/>
+        <stop offset="100%" stop-color="#2563eb"/>
+      </linearGradient>
+      <radialGradient id="glowE" cx="50%" cy="40%" r="55%">
+        <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.6"/>
+        <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0"/>
+      </radialGradient>
+    </defs>
+    <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gE)"/>
+    <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#glowE)"/>
+    <!-- 窗口外框 -->
+    <rect x="16" y="22" width="48" height="36" rx="5" fill="none" stroke="white" stroke-opacity="0.9" stroke-width="2"/>
+    <!-- 标题栏 -->
+    <rect x="16" y="22" width="48" height="10" rx="5" fill="white" fill-opacity="0.15"/>
+    <rect x="16" y="27" width="48" height="5" rx="0" fill="white" fill-opacity="0.15"/>
+    <!-- 红绿黄点 -->
+    <circle cx="23" cy="27" r="2" fill="#ff5f57" fill-opacity="0.9"/>
+    <circle cx="30" cy="27" r="2" fill="#febc2e" fill-opacity="0.9"/>
+    <circle cx="37" cy="27" r="2" fill="#28c840" fill-opacity="0.9"/>
+    <!-- 内容区 AI 光点 -->
+    <circle cx="40" cy="44" r="5" fill="white" fill-opacity="0.9"/>
+    <circle cx="40" cy="44" r="9" fill="white" fill-opacity="0.12"/>
+    <circle cx="40" cy="44" r="13" fill="white" fill-opacity="0.06"/>
+  </svg>
+  <p>方案 E<br>OS 窗口 · macOS感</p>
+</div>
+
+<!-- ── 方案 F: 流动波纹 —— AI感最强 ── -->
+<div class="card">
+  <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="gF" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#6d28d9"/>
+        <stop offset="100%" stop-color="#4f46e5"/>
+      </linearGradient>
+    </defs>
+    <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gF)"/>
+    <!-- 流动曲线 —— 类似 Claude/Gemini 风格 -->
+    <path d="M14 40 C14 25, 30 18, 40 28 C50 38, 66 30, 66 40 C66 55, 50 62, 40 52 C30 42, 14 55, 14 40 Z"
+          fill="white" fill-opacity="0.15"/>
+    <path d="M18 40 C18 28, 32 22, 40 30 C48 38, 62 32, 62 40 C62 52, 48 58, 40 50 C32 42, 18 52, 18 40 Z"
+          fill="none" stroke="white" stroke-opacity="0.5" stroke-width="1.5"/>
+    <path d="M22 40 C22 31, 33 26, 40 32 C47 38, 58 34, 58 40 C58 49, 47 54, 40 48 C33 42, 22 49, 22 40 Z"
+          fill="none" stroke="white" stroke-opacity="0.35" stroke-width="1"/>
+    <!-- 中心点 -->
+    <circle cx="40" cy="40" r="5" fill="white" fill-opacity="0.95"/>
+    <circle cx="40" cy="40" r="8" fill="white" fill-opacity="0.15"/>
+  </svg>
+  <p>方案 F<br>流动曲线 · Claude风格</p>
+</div>
+
+<!-- ── 方案 G: 菱形 + 网格 —— 科技理性 ── -->
+<div class="card">
+  <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="gG" x1="0" y1="80" x2="80" y2="0" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#312e81"/>
+        <stop offset="50%" stop-color="#4f46e5"/>
+        <stop offset="100%" stop-color="#818cf8"/>
+      </linearGradient>
+    </defs>
+    <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gG)"/>
+    <!-- 网格背景 -->
+    <line x1="26" y1="4" x2="26" y2="76" stroke="white" stroke-opacity="0.07" stroke-width="0.5"/>
+    <line x1="40" y1="4" x2="40" y2="76" stroke="white" stroke-opacity="0.07" stroke-width="0.5"/>
+    <line x1="54" y1="4" x2="54" y2="76" stroke="white" stroke-opacity="0.07" stroke-width="0.5"/>
+    <line x1="4" y1="26" x2="76" y2="26" stroke="white" stroke-opacity="0.07" stroke-width="0.5"/>
+    <line x1="4" y1="40" x2="76" y2="40" stroke="white" stroke-opacity="0.07" stroke-width="0.5"/>
+    <line x1="4" y1="54" x2="76" y2="54" stroke="white" stroke-opacity="0.07" stroke-width="0.5"/>
+    <!-- 菱形主体 -->
+    <path d="M40 16 L64 40 L40 64 L16 40 Z" fill="white" fill-opacity="0.12" stroke="white" stroke-opacity="0.7" stroke-width="1.5"/>
+    <!-- 内菱形 -->
+    <path d="M40 26 L54 40 L40 54 L26 40 Z" fill="white" fill-opacity="0.1" stroke="white" stroke-opacity="0.45" stroke-width="1"/>
+    <!-- 中心 -->
+    <circle cx="40" cy="40" r="5" fill="white" fill-opacity="0.95"/>
+    <!-- 四角节点 -->
+    <circle cx="40" cy="16" r="2.5" fill="white" fill-opacity="0.8"/>
+    <circle cx="64" cy="40" r="2.5" fill="white" fill-opacity="0.8"/>
+    <circle cx="40" cy="64" r="2.5" fill="white" fill-opacity="0.8"/>
+    <circle cx="16" cy="40" r="2.5" fill="white" fill-opacity="0.8"/>
+  </svg>
+  <p>方案 G<br>菱形 · 网格理性</p>
+</div>
+
+<!-- ── 方案 H: 文字logo NAOS ── -->
+<div class="card">
+  <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="gH" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#8b5cf6"/>
+        <stop offset="100%" stop-color="#3b82f6"/>
+      </linearGradient>
+    </defs>
+    <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gH)"/>
+    <!-- N -->
+    <path d="M13 52 L13 28 L19 28 L29 44 L29 28 L35 28 L35 52 L29 52 L19 36 L19 52 Z" fill="white" fill-opacity="0.95"/>
+    <!-- 右上角装饰：小星光 -->
+    <path d="M58 15 L59.2 19.8 L64 21 L59.2 22.2 L58 27 L56.8 22.2 L52 21 L56.8 19.8 Z"
+          fill="white" fill-opacity="0.85"/>
+    <!-- OS 小字 -->
+    <text x="42" y="53" font-size="18" font-weight="700" font-family="-apple-system, sans-serif" fill="white" fill-opacity="0.9">OS</text>
+    <!-- 底部装饰线 -->
+    <line x1="13" y1="57" x2="67" y2="57" stroke="white" stroke-opacity="0.2" stroke-width="1"/>
+  </svg>
+  <p>方案 H<br>N + OS · 文字标志</p>
+</div>
+
+<!-- ── 方案 I: 抽象 A 形 ── -->
+<div class="card">
+  <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="gI" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#a78bfa"/>
+        <stop offset="100%" stop-color="#4338ca"/>
+      </linearGradient>
+      <linearGradient id="gI2" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#c4b5fd" stop-opacity="0.4"/>
+        <stop offset="100%" stop-color="#6d28d9" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gI)"/>
+    <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gI2)"/>
+    <!-- 抽象 A：左斜边 -->
+    <path d="M20 58 L40 16 L60 58" fill="none" stroke="white" stroke-opacity="0.95" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- 横杠 -->
+    <line x1="28" y1="44" x2="52" y2="44" stroke="white" stroke-opacity="0.95" stroke-width="5" stroke-linecap="round"/>
+    <!-- 顶部光点 -->
+    <circle cx="40" cy="16" r="4" fill="white" fill-opacity="0.3"/>
+    <circle cx="40" cy="16" r="2" fill="white" fill-opacity="0.9"/>
+  </svg>
+  <p>方案 I<br>字母 A · 极简线条</p>
+</div>
+
+<!-- ── 方案 J: 分裂圆 / 加载感 ── -->
+<div class="card">
+  <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="gJ" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+        <stop offset="0%" stop-color="#1e1b4b"/>
+        <stop offset="100%" stop-color="#312e81"/>
+      </linearGradient>
+    </defs>
+    <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gJ)"/>
+    <!-- 三段弧：渐变色 -->
+    <path d="M40 12 A28 28 0 0 1 68 40" fill="none" stroke="#a78bfa" stroke-width="5" stroke-linecap="round"/>
+    <path d="M68 40 A28 28 0 0 1 26 65.3" fill="none" stroke="#6366f1" stroke-width="5" stroke-linecap="round"/>
+    <path d="M26 65.3 A28 28 0 0 1 40 12" fill="none" stroke="#818cf8" stroke-width="5" stroke-linecap="round"/>
+    <!-- 中心文字 -->
+    <text x="40" y="45" font-size="14" font-weight="800" font-family="-apple-system, sans-serif"
+          fill="white" fill-opacity="0.95" text-anchor="middle">AI</text>
+  </svg>
+  <p>方案 J<br>三段弧 · 动感 AI</p>
+</div>
+
+<!-- 深色背景对比 -->
+<div style="width:100%; margin-top: 8px;">
+  <div class="dark">
+    <!-- E -->
+    <svg width="56" height="56" viewBox="0 0 80 80" fill="none"><defs><linearGradient id="gE3" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#7c3aed"/><stop offset="100%" stop-color="#2563eb"/></linearGradient></defs><rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gE3)"/><rect x="16" y="22" width="48" height="36" rx="5" fill="none" stroke="white" stroke-opacity="0.9" stroke-width="2"/><rect x="16" y="22" width="48" height="10" rx="5" fill="white" fill-opacity="0.15"/><rect x="16" y="27" width="48" height="5" fill="white" fill-opacity="0.15"/><circle cx="23" cy="27" r="2" fill="#ff5f57" fill-opacity="0.9"/><circle cx="30" cy="27" r="2" fill="#febc2e" fill-opacity="0.9"/><circle cx="37" cy="27" r="2" fill="#28c840" fill-opacity="0.9"/><circle cx="40" cy="44" r="5" fill="white" fill-opacity="0.9"/><circle cx="40" cy="44" r="9" fill="white" fill-opacity="0.12"/></svg>
+    <!-- F -->
+    <svg width="56" height="56" viewBox="0 0 80 80" fill="none"><defs><linearGradient id="gF3" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#6d28d9"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs><rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gF3)"/><path d="M14 40 C14 25, 30 18, 40 28 C50 38, 66 30, 66 40 C66 55, 50 62, 40 52 C30 42, 14 55, 14 40 Z" fill="white" fill-opacity="0.15"/><path d="M18 40 C18 28, 32 22, 40 30 C48 38, 62 32, 62 40 C62 52, 48 58, 40 50 C32 42, 18 52, 18 40 Z" fill="none" stroke="white" stroke-opacity="0.5" stroke-width="1.5"/><circle cx="40" cy="40" r="5" fill="white" fill-opacity="0.95"/></svg>
+    <!-- G -->
+    <svg width="56" height="56" viewBox="0 0 80 80" fill="none"><defs><linearGradient id="gG3" x1="0" y1="80" x2="80" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#312e81"/><stop offset="50%" stop-color="#4f46e5"/><stop offset="100%" stop-color="#818cf8"/></linearGradient></defs><rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gG3)"/><path d="M40 16 L64 40 L40 64 L16 40 Z" fill="white" fill-opacity="0.12" stroke="white" stroke-opacity="0.7" stroke-width="1.5"/><path d="M40 26 L54 40 L40 54 L26 40 Z" fill="white" fill-opacity="0.1" stroke="white" stroke-opacity="0.45" stroke-width="1"/><circle cx="40" cy="40" r="5" fill="white" fill-opacity="0.95"/><circle cx="40" cy="16" r="2.5" fill="white" fill-opacity="0.8"/><circle cx="64" cy="40" r="2.5" fill="white" fill-opacity="0.8"/><circle cx="40" cy="64" r="2.5" fill="white" fill-opacity="0.8"/><circle cx="16" cy="40" r="2.5" fill="white" fill-opacity="0.8"/></svg>
+    <!-- I -->
+    <svg width="56" height="56" viewBox="0 0 80 80" fill="none"><defs><linearGradient id="gI3" x1="40" y1="0" x2="40" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#4338ca"/></linearGradient></defs><rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gI3)"/><path d="M20 58 L40 16 L60 58" fill="none" stroke="white" stroke-opacity="0.95" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/><line x1="28" y1="44" x2="52" y2="44" stroke="white" stroke-opacity="0.95" stroke-width="5" stroke-linecap="round"/><circle cx="40" cy="16" r="2" fill="white" fill-opacity="0.9"/></svg>
+    <!-- J -->
+    <svg width="56" height="56" viewBox="0 0 80 80" fill="none"><defs><linearGradient id="gJ3" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stop-color="#1e1b4b"/><stop offset="100%" stop-color="#312e81"/></linearGradient></defs><rect x="4" y="4" width="72" height="72" rx="18" fill="url(#gJ3)"/><path d="M40 12 A28 28 0 0 1 68 40" fill="none" stroke="#a78bfa" stroke-width="5" stroke-linecap="round"/><path d="M68 40 A28 28 0 0 1 26 65.3" fill="none" stroke="#6366f1" stroke-width="5" stroke-linecap="round"/><path d="M26 65.3 A28 28 0 0 1 40 12" fill="none" stroke="#818cf8" stroke-width="5" stroke-linecap="round"/><text x="40" y="45" font-size="14" font-weight="800" font-family="-apple-system, sans-serif" fill="white" fill-opacity="0.95" text-anchor="middle">AI</text></svg>
+    <p>深色背景效果</p>
+  </div>
+</div>
+
+</body>
+</html>

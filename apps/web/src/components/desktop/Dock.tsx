@@ -14,33 +14,43 @@ function getIcon(name: string): LucideIcon {
 
 // macOS 风格 Dock 图标颜色
 const DOCK_COLORS: Record<string, string> = {
-  "ai-chat":      "linear-gradient(180deg, #5Ac8FA, #007AFF)",
+  "ai-chat": "linear-gradient(180deg, #5Ac8FA, #007AFF)",
   "file-manager": "linear-gradient(180deg, #54C7FC, #147EFB)",
-  "settings":     "linear-gradient(180deg, #8E8E93, #636366)",
-  "terminal":     "linear-gradient(180deg, #3A3A3C, #1C1C1E)",
-  "browser":      "linear-gradient(180deg, #5AC8FA, #0A84FF)",
-  "notes":        "linear-gradient(180deg, #FFD60A, #FF9F0A)",
-  "calendar":     "linear-gradient(180deg, #FF453A, #D70015)",
+  settings: "linear-gradient(180deg, #8E8E93, #636366)",
+  terminal: "linear-gradient(180deg, #3A3A3C, #1C1C1E)",
+  browser: "linear-gradient(180deg, #5AC8FA, #0A84FF)",
+  notes: "linear-gradient(180deg, #FFD60A, #FF9F0A)",
+  calendar: "linear-gradient(180deg, #FF453A, #D70015)",
 };
 
 // Dock 中显示的 app 顺序
-const DOCK_APPS = ["ai-chat", "file-manager", "notes", "calendar", "browser", "terminal", "settings"];
+const DOCK_APPS = [
+  "ai-chat",
+  "file-manager",
+  "notes",
+  "calendar",
+  "browser",
+  "terminal",
+  "settings",
+];
 
 export function Dock() {
   const [startOpen, setStartOpen] = useState(false);
   const windows = useWindowStore((s) => s.windows);
   const focusWindow = useWindowStore((s) => s.focusWindow);
   const restoreWindow = useWindowStore((s) => s.restoreWindow);
-  const minimizeWindow = useWindowStore((s) => s.minimizeWindow);
+  const requestMinimize = useWindowStore((s) => s.requestMinimize);
   const openWindow = useWindowStore((s) => s.openWindow);
   const skills = useDesktopStore((s) => s.skills);
 
   const handleDockClick = (skillId: string) => {
     // 查找该 skill 是否已有打开的窗口
-    const existingWin = Object.values(windows).find((w) => w.skillId === skillId);
+    const existingWin = Object.values(windows).find(
+      (w) => w.skillId === skillId,
+    );
     if (existingWin) {
       if (existingWin.state === "minimized") restoreWindow(existingWin.id);
-      else if (existingWin.isFocused) minimizeWindow(existingWin.id);
+      else if (existingWin.isFocused) requestMinimize(existingWin.id);
       else focusWindow(existingWin.id);
     } else {
       const skill = skills[skillId];
@@ -74,10 +84,14 @@ export function Dock() {
           const skill = skills[skillId];
           if (!skill) return null;
           const IconComp = getIcon(skill.manifest.icon);
-          const bg = DOCK_COLORS[skillId] ?? "linear-gradient(180deg, #8E8E93, #636366)";
+          const bg =
+            DOCK_COLORS[skillId] ?? "linear-gradient(180deg, #8E8E93, #636366)";
           const isOpen = openSkillIds.has(skillId);
-          const activeWin = Object.values(windows).find((w) => w.skillId === skillId);
-          const isFocused = activeWin?.isFocused && activeWin.state !== "minimized";
+          const activeWin = Object.values(windows).find(
+            (w) => w.skillId === skillId,
+          );
+          const isFocused =
+            activeWin?.isFocused && activeWin.state !== "minimized";
 
           return (
             <DockItem
@@ -108,7 +122,12 @@ export function Dock() {
 }
 
 function DockItem({
-  icon, bg, label, isOpen, isFocused, onClick,
+  icon,
+  bg,
+  label,
+  isOpen,
+  isFocused,
+  onClick,
 }: {
   icon: React.ReactNode;
   bg: string;
@@ -124,7 +143,7 @@ function DockItem({
       {/* Tooltip */}
       {hovered && (
         <div
-          className="absolute -top-8 px-2 py-0.5 rounded-md text-[11px] font-medium whitespace-nowrap pointer-events-none"
+          className="absolute -top-8 px-2 py-0.5 rounded-md text-[12px] font-medium whitespace-nowrap pointer-events-none"
           style={{
             background: "rgba(0,0,0,0.75)",
             color: "#fff",

@@ -1,5 +1,7 @@
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
+
 from app.config import get_settings
 
 
@@ -36,7 +38,16 @@ async def get_db():
 
 
 async def init_db():
-    """创建所有表（开发用，生产用 Alembic）"""
+    """Create all local tables used in development."""
     async with engine.begin() as conn:
-        from app.models import desktop_layout, user_settings  # noqa: F401
+        from app.models import conversation, desktop_layout, knowledge, user_settings  # noqa: F401
+
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE knowledge_documents
+                ADD COLUMN IF NOT EXISTS raw_content TEXT
+                """
+            )
+        )

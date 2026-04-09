@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "ainative-files"
 
+    # Knowledge base
+    knowledge_max_concurrent_jobs: int = 3
+
     # 应用
     api_host: str = "0.0.0.0"
     api_port: int = 8000

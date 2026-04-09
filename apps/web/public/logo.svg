@@ -1,0 +1,28 @@
+<svg width="256" height="256" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#7c3aed"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="38%" r="55%">
+      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#1d4ed8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- 背景 -->
+  <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#bg)"/>
+  <rect x="4" y="4" width="72" height="72" rx="18" fill="url(#glow)"/>
+  <!-- 窗口外框 -->
+  <rect x="16" y="22" width="48" height="36" rx="5" fill="none" stroke="white" stroke-opacity="0.9" stroke-width="2"/>
+  <!-- 标题栏 -->
+  <rect x="16" y="22" width="48" height="10" rx="5" fill="white" fill-opacity="0.15"/>
+  <rect x="16" y="27" width="48" height="5" fill="white" fill-opacity="0.15"/>
+  <!-- 红绿黄三点 -->
+  <circle cx="23" cy="27" r="2" fill="#ff5f57"/>
+  <circle cx="30" cy="27" r="2" fill="#febc2e"/>
+  <circle cx="37" cy="27" r="2" fill="#28c840"/>
+  <!-- 内容区光晕 -->
+  <circle cx="40" cy="44" r="13" fill="white" fill-opacity="0.06"/>
+  <circle cx="40" cy="44" r="9"  fill="white" fill-opacity="0.12"/>
+  <circle cx="40" cy="44" r="5"  fill="white" fill-opacity="0.92"/>
+</svg>

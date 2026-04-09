@@ -13,38 +13,136 @@ interface WindowProps {
   onSnapZoneChange?: (zone: SnapZone) => void;
 }
 
-export function Window({ window: win, children, onSnapZoneChange }: WindowProps) {
-  const { focusWindow, updatePosition, updateSize, snapWindow } = useWindowStore();
-  const [animating, setAnimating] = useState(true);
-  // 松手 snap 时短暂开启位移动画
+type ExitAnim = "close" | "minimize" | null;
+
+export function Window({
+  window: win,
+  children,
+  onSnapZoneChange,
+}: WindowProps) {
+  const {
+    focusWindow,
+    updatePosition,
+    updateSize,
+    snapWindow,
+    closeWindow,
+    minimizeWindow,
+    requestMinimize,
+    toggleMaximize,
+  } = useWindowStore();
+
+  // 开场动画
+  const [entering, setEntering] = useState(true);
+  // 退出动画
+  const [exitAnim, setExitAnim] = useState<ExitAnim>(null);
+  // snap 过渡
   const [snapping, setSnapping] = useState(false);
   const snapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 最大化/还原过渡
+  const [maxTransition, setMaxTransition] = useState(false);
+  const maxTransTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 上一次的 state，用于检测 restore
+  const prevState = useRef(win.state);
+  const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
-    const t = requestAnimationFrame(() => setAnimating(false));
-    return () => cancelAnimationFrame(t);
+    const t = setTimeout(() => setEntering(false), 260);
+    return () => clearTimeout(t);
   }, []);
 
-  // 清理 timer
-  useEffect(() => () => { if (snapTimer.current) clearTimeout(snapTimer.current); }, []);
+  // 检测 minimized ↔ normal 和 maximized ↔ normal 的状态变化
+  useEffect(() => {
+    const prev = prevState.current;
+    const curr = win.state;
 
-  if (win.state === "minimized") return null;
+    if (prev === "minimized" && curr === "normal") {
+      // 最小化还原
+      setExitAnim(null);
+      setRestoring(true);
+      const t = setTimeout(() => setRestoring(false), 260);
+      prevState.current = curr;
+      return () => clearTimeout(t);
+    }
+
+    prevState.current = curr;
+  }, [win.state]);
+
+  useEffect(
+    () => () => {
+      if (snapTimer.current) clearTimeout(snapTimer.current);
+      if (maxTransTimer.current) clearTimeout(maxTransTimer.current);
+    },
+    [],
+  );
+
+  // 带动画的最大化/还原
+  const handleToggleMaximize = () => {
+    setMaxTransition(true);
+    if (maxTransTimer.current) clearTimeout(maxTransTimer.current);
+    maxTransTimer.current = setTimeout(() => setMaxTransition(false), 380);
+    toggleMaximize(win.id);
+  };
+
+  // 带动画的关闭
+  const handleClose = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExitAnim("close");
+    setTimeout(() => closeWindow(win.id), 200);
+  };
+
+  // 带动画的最小化
+  const handleMinimize = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExitAnim("minimize");
+    // 动画结束后调用 store，组件靠 win.state=minimized + exitAnim=minimize 隐藏
+    setTimeout(() => minimizeWindow(win.id), 240);
+  };
+
+  // 响应 Dock 等外部触发的缩小请求（与 handleMinimize 同等动画）
+  useEffect(() => {
+    if (!win.pendingMinimize) return;
+    setExitAnim("minimize");
+    setTimeout(() => minimizeWindow(win.id), 240);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [win.pendingMinimize]);
+
+  // minimized 且没有 restore 动画时不渲染
+  if (win.state === "minimized" && exitAnim === null && !restoring) return null;
 
   const isMaximized = win.state === "maximized";
 
-  const maxW = typeof globalThis.window !== "undefined" ? globalThis.window.innerWidth : 1920;
-  const maxH = typeof globalThis.window !== "undefined" ? globalThis.window.innerHeight : 1080;
+  const maxW =
+    typeof globalThis.window !== "undefined"
+      ? globalThis.window.innerWidth
+      : 1920;
+  const maxH =
+    typeof globalThis.window !== "undefined"
+      ? globalThis.window.innerHeight
+      : 1080;
 
   const position = isMaximized ? { x: 0, y: 0 } : win.position;
   const size = isMaximized ? { width: maxW, height: maxH } : win.size;
 
-  // snap 动画：给 Rnd 外层加 transition，让位置和尺寸平滑过渡
+  // 动画播完后 win.state 已是 minimized，组件保留但隐藏，等待 restore
+  const isHidden = win.state === "minimized" && exitAnim === "minimize";
+
   const rndStyle: React.CSSProperties = {
-    zIndex: isMaximized ? 10000 : win.zIndex,
-    ...(snapping ? {
-      transition: "transform 0.32s cubic-bezier(0.16,1,0.3,1), width 0.32s cubic-bezier(0.16,1,0.3,1), height 0.32s cubic-bezier(0.16,1,0.3,1)",
-    } : {}),
+    zIndex: win.zIndex,
+    ...(isHidden ? { visibility: "hidden", pointerEvents: "none" } : {}),
+    ...(snapping || maxTransition
+      ? {
+          transition:
+            "transform 0.32s cubic-bezier(0.16,1,0.3,1), width 0.32s cubic-bezier(0.16,1,0.3,1), height 0.32s cubic-bezier(0.16,1,0.3,1)",
+        }
+      : {}),
   };
+
+  // 决定内层 className
+  let animClass = "";
+  if (exitAnim === "close") animClass = "win-close";
+  else if (exitAnim === "minimize") animClass = "win-minimize";
+  else if (restoring) animClass = "win-restore";
+  else if (entering) animClass = "win-open";
 
   return (
     <Rnd
@@ -59,7 +157,6 @@ export function Window({ window: win, children, onSnapZoneChange }: WindowProps)
       style={rndStyle}
       onDragStart={() => {
         if (!win.isFocused) focusWindow(win.id);
-        // 开始拖拽时关闭 snap 动画，防止卡顿
         setSnapping(false);
         if (snapTimer.current) clearTimeout(snapTimer.current);
       }}
@@ -76,35 +173,52 @@ export function Window({ window: win, children, onSnapZoneChange }: WindowProps)
         const zone = detectSnapZone(mouseX, mouseY);
         onSnapZoneChange?.(null);
         if (zone) {
-          // 开启动画，执行 snap，然后 350ms 后关闭动画
           setSnapping(true);
           const target = getSnapTarget(zone);
-          snapWindow(win.id, target.position.x, target.position.y, target.size.width, target.size.height);
+          snapWindow(
+            win.id,
+            target.position.x,
+            target.position.y,
+            target.size.width,
+            target.size.height,
+          );
           snapTimer.current = setTimeout(() => setSnapping(false), 350);
         } else {
           updatePosition(win.id, d.x, d.y);
         }
       }}
-      onResizeStart={() => { if (!win.isFocused) focusWindow(win.id); }}
+      onResizeStart={() => {
+        if (!win.isFocused) focusWindow(win.id);
+      }}
       onResizeStop={(_e, _dir, ref, _delta, pos) => {
         updateSize(win.id, ref.offsetWidth, ref.offsetHeight);
         updatePosition(win.id, pos.x, pos.y);
       }}
-      onMouseDown={() => { if (!win.isFocused) focusWindow(win.id); }}
+      onMouseDown={() => {
+        if (!win.isFocused) focusWindow(win.id);
+      }}
     >
       <div
-        className={`flex flex-col w-full h-full overflow-hidden${animating ? " win-open" : ""}`}
+        className={`flex flex-col w-full h-full overflow-hidden${animClass ? ` ${animClass}` : ""}`}
         style={{
           borderRadius: isMaximized ? 0 : 12,
           background: "rgba(246,246,248,0.82)",
           backdropFilter: "blur(60px) saturate(200%)",
           WebkitBackdropFilter: "blur(60px) saturate(200%)",
           border: `0.5px solid ${win.isFocused ? "rgba(0,0,0,0.22)" : "rgba(0,0,0,0.12)"}`,
-          boxShadow: win.isFocused ? "var(--shadow-window-focus)" : "var(--shadow-window)",
-          transition: "box-shadow 0.2s, border-color 0.2s",
+          boxShadow: win.isFocused
+            ? "var(--shadow-window-focus)"
+            : "var(--shadow-window)",
+          transition:
+            "box-shadow 0.2s, border-color 0.2s, border-radius 0.32s cubic-bezier(0.16,1,0.3,1)",
         }}
       >
-        <TitleBar window={win} />
+        <TitleBar
+          window={win}
+          onClose={handleClose}
+          onMinimize={handleMinimize}
+          onToggleMaximize={handleToggleMaximize}
+        />
         <div
           className="flex-1 overflow-auto window-content"
           style={{ background: "rgba(255,255,255,0.55)" }}

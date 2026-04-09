@@ -1,6 +1,7 @@
 "use client";
 
 import { Settings } from "@/skills/settings/Settings";
+import { AiChat } from "@/skills/ai-chat/AiChat";
 
 interface SkillRendererProps {
   skillId: string;
@@ -12,7 +13,7 @@ export function SkillRenderer({ skillId, windowId }: SkillRendererProps) {
     case "settings":
       return <Settings />;
     case "ai-chat":
-      return <PlaceholderSkill name="AI 助手" description="AI 对话功能将在阶段二实现" />;
+      return <AiChat />;
     case "file-manager":
       return <PlaceholderSkill name="文件管理器" description="文件管理功能将在阶段四实现" />;
     case "terminal":
@@ -31,12 +32,8 @@ export function SkillRenderer({ skillId, windowId }: SkillRendererProps) {
 function PlaceholderSkill({ name, description }: { name: string; description: string }) {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 p-8">
-      <h2 className="text-xl font-medium" style={{ color: "var(--os-text)" }}>
-        {name}
-      </h2>
-      <p className="text-sm" style={{ color: "var(--os-text-muted)" }}>
-        {description}
-      </p>
+      <h2 className="text-xl font-medium" style={{ color: "var(--t1)" }}>{name}</h2>
+      <p className="text-sm" style={{ color: "var(--t2)" }}>{description}</p>
     </div>
   );
 }

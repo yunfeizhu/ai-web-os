@@ -41,29 +41,29 @@ export function Dock() {
   const restoreWindow = useWindowStore((s) => s.restoreWindow);
   const requestMinimize = useWindowStore((s) => s.requestMinimize);
   const openWindow = useWindowStore((s) => s.openWindow);
-  const skills = useDesktopStore((s) => s.skills);
+  const apps = useDesktopStore((s) => s.apps);
 
-  const handleDockClick = (skillId: string) => {
-    // 查找该 skill 是否已有打开的窗口
+  const handleDockClick = (appId: string) => {
+    // 查找该 app 是否已有打开的窗口
     const existingWin = Object.values(windows).find(
-      (w) => w.skillId === skillId,
+      (w) => w.appId === appId,
     );
     if (existingWin) {
       if (existingWin.state === "minimized") restoreWindow(existingWin.id);
       else if (existingWin.isFocused) requestMinimize(existingWin.id);
       else focusWindow(existingWin.id);
     } else {
-      const skill = skills[skillId];
-      if (skill) {
-        openWindow(skillId, skill.manifest.name, skill.manifest.icon, {
-          size: skill.manifest.ui.defaultSize,
-          minSize: skill.manifest.ui.minSize,
+      const app = apps[appId];
+      if (app) {
+        openWindow(appId, app.manifest.name, app.manifest.icon, {
+          size: app.manifest.ui.defaultSize,
+          minSize: app.manifest.ui.minSize,
         });
       }
     }
   };
 
-  const openSkillIds = new Set(Object.values(windows).map((w) => w.skillId));
+  const openAppIds = new Set(Object.values(windows).map((w) => w.appId));
 
   return (
     <>
@@ -80,28 +80,28 @@ export function Dock() {
           height: 62,
         }}
       >
-        {DOCK_APPS.map((skillId) => {
-          const skill = skills[skillId];
-          if (!skill) return null;
-          const IconComp = getIcon(skill.manifest.icon);
+        {DOCK_APPS.map((appId) => {
+          const app = apps[appId];
+          if (!app) return null;
+          const IconComp = getIcon(app.manifest.icon);
           const bg =
-            DOCK_COLORS[skillId] ?? "linear-gradient(180deg, #8E8E93, #636366)";
-          const isOpen = openSkillIds.has(skillId);
+            DOCK_COLORS[appId] ?? "linear-gradient(180deg, #8E8E93, #636366)";
+          const isOpen = openAppIds.has(appId);
           const activeWin = Object.values(windows).find(
-            (w) => w.skillId === skillId,
+            (w) => w.appId === appId,
           );
           const isFocused =
             activeWin?.isFocused && activeWin.state !== "minimized";
 
           return (
             <DockItem
-              key={skillId}
+              key={appId}
               icon={<IconComp size={24} color="#fff" strokeWidth={1.8} />}
               bg={bg}
-              label={skill.manifest.name}
+              label={app.manifest.name}
               isOpen={isOpen}
               isFocused={!!isFocused}
-              onClick={() => handleDockClick(skillId)}
+              onClick={() => handleDockClick(appId)}
             />
           );
         })}

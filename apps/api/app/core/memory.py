@@ -36,7 +36,7 @@ def init_memory_manager(
     embedder_dims: int | None = None,
     # Qdrant 配置
     qdrant_host: str = "localhost",
-    qdrant_port: int = 6333,
+    qdrant_port: int = 16333,
     collection_name: str = "ai_os_memories",
 ) -> MemoryManager:
     global _manager

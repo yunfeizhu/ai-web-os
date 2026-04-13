@@ -2,7 +2,7 @@
 
 export interface Conversation {
   id: string;
-  skillId: string;
+  appId: string;
   title: string;
   createdAt: string;
   updatedAt: string;
@@ -34,7 +34,7 @@ export interface WSClientMessage {
 }
 
 export interface AgentInvokePayload {
-  skillId: string;
+  appId: string;
   sessionId: string;
   message: string;
   attachments?: Attachment[];
@@ -73,7 +73,7 @@ export interface TokenPayload {
 export interface ToolCallStartPayload {
   toolName: string;
   arguments: Record<string, unknown>;
-  skillId: string;
+  appId: string;
 }
 
 export interface ToolCallResultPayload {

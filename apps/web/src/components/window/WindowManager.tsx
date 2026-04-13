@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useWindowStore } from "@/stores/windowStore";
 import { Window } from "./Window";
-import { SkillRenderer } from "@/skills/SkillRenderer";
+import { AppRenderer } from "@/apps/AppRenderer";
 import { WindowSnapZoneOverlay, type SnapZone } from "./WindowSnapZone";
 
 export function WindowManager() {
@@ -19,7 +19,7 @@ export function WindowManager() {
           window={win}
           onSnapZoneChange={setActiveSnapZone}
         >
-          <SkillRenderer skillId={win.skillId} windowId={win.id} />
+          <AppRenderer appId={win.appId} />
         </Window>
       ))}
     </div>

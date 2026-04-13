@@ -16,7 +16,7 @@
 - [x] ContextMenu（右键菜单）
 - [x] SystemTray（时钟）
 - [x] Zustand stores：windowStore / desktopStore / settingsStore（localStorage 持久化）
-- [x] Settings Skill：API Key 配置 / 壁纸选择 / 关于
+- [x] Settings App：API Key 配置 / 壁纸选择 / 关于
 
 ### 后端
 
@@ -47,7 +47,7 @@
 
 ### 前端
 
-- [x] AI Chat Skill UI
+- [x] AI Chat App UI
   - [x] 消息列表（user / assistant / error 三种气泡）
   - [x] 输入框（Enter 发送，Shift+Enter 换行）
   - [x] 流式输出渲染（逐 token + StreamingDots 动画）
@@ -95,9 +95,9 @@
 
 ### 前端
 
-- [ ] File Manager Skill（双面板、图标/列表视图、右键菜单、拖拽上传、文件预览）
-- [ ] Terminal Skill（AI 命令模式）
-- [ ] Notes Skill（Markdown 编辑器 + AI 辅助写作）
+- [ ] File Manager App（双面板、图标/列表视图、右键菜单、拖拽上传、文件预览）
+- [ ] Terminal App（AI 命令模式）
+- [ ] Notes App（Markdown 编辑器 + AI 辅助写作）
 - [ ] Settings → Skill 管理页
 
 ---

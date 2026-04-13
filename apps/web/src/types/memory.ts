@@ -4,7 +4,7 @@ export interface MemoryEntry {
   id: string;
   type: "user" | "agent" | "fact";
   content: string;
-  sourceSkill: string;
+  sourceApp: string;
   createdAt: string;
 }
 
@@ -16,5 +16,5 @@ export interface MemorySearchResult {
 export interface MemoryStats {
   totalEntries: number;
   byType: Record<string, number>;
-  bySkill: Record<string, number>;
+  byApp: Record<string, number>;
 }

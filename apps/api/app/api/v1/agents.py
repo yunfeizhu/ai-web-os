@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.core.llm_provider import stream_chat, agent_loop
@@ -108,14 +108,14 @@ DEFAULT_USER_ID = "default"
 class ConversationCreate(BaseModel):
     title: str = "新对话"
     model: str = "claude-sonnet-4-6"
-    skill_id: str = "ai-chat"
+    app_id: str = Field(default="ai-chat")
 
 
 class ConversationResponse(BaseModel):
     id: str
     title: str
     model: str
-    skill_id: str
+    app_id: str
     created_at: str
     updated_at: str
 
@@ -145,7 +145,7 @@ async def list_conversations(db: AsyncSession = Depends(get_db)):
     convs = result.scalars().all()
     return [
         ConversationResponse(
-            id=c.id, title=c.title, model=c.model, skill_id=c.skill_id,
+            id=c.id, title=c.title, model=c.model, app_id=c.app_id,
             created_at=c.created_at.isoformat(), updated_at=c.updated_at.isoformat(),
         )
         for c in convs
@@ -162,12 +162,12 @@ async def create_conversation(
         user_id=DEFAULT_USER_ID,
         title=data.title,
         model=data.model,
-        skill_id=data.skill_id,
+        app_id=data.app_id,
     )
     db.add(conv)
     await db.flush()
     return ConversationResponse(
-        id=conv.id, title=conv.title, model=conv.model, skill_id=conv.skill_id,
+        id=conv.id, title=conv.title, model=conv.model, app_id=conv.app_id,
         created_at=conv.created_at.isoformat(), updated_at=conv.updated_at.isoformat(),
     )
 

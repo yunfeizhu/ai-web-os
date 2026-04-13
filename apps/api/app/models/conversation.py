@@ -9,7 +9,7 @@ class Conversation(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(String(128), default="default", index=True)
-    skill_id: Mapped[str] = mapped_column(String(128), default="ai-chat")
+    app_id: Mapped[str] = mapped_column(String(128), default="ai-chat")
     title: Mapped[str] = mapped_column(String(255), default="新对话")
     model: Mapped[str] = mapped_column(String(128), default="claude-sonnet-4-6")
     created_at: Mapped[datetime] = mapped_column(

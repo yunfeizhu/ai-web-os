@@ -1,12 +1,12 @@
-// Skill 类型定义
+// App 类型定义
 
-export interface SkillManifest {
+export interface AppManifest {
   id: string;
   name: string;
   version: string;
   description: string;
   icon: string;
-  category: SkillCategory;
+  category: AppCategory;
   agent: {
     systemPrompt: string;
     model: string;
@@ -25,10 +25,10 @@ export interface SkillManifest {
     env?: Record<string, string>;
   };
   requires?: string[];
-  settings?: SkillSettingsSchema;
+  settings?: AppSettingsSchema;
 }
 
-export type SkillCategory =
+export type AppCategory =
   | "productivity"
   | "communication"
   | "development"
@@ -36,7 +36,7 @@ export type SkillCategory =
   | "utility"
   | "system";
 
-export interface SkillSettingsSchema {
+export interface AppSettingsSchema {
   [key: string]: {
     type: "string" | "number" | "boolean" | "select";
     label: string;
@@ -46,8 +46,8 @@ export interface SkillSettingsSchema {
   };
 }
 
-export interface InstalledSkill {
-  manifest: SkillManifest;
+export interface InstalledApp {
+  manifest: AppManifest;
   status: "installed" | "active" | "disabled";
   isBuiltin: boolean;
   isPinned: boolean;

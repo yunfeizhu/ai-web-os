@@ -14,7 +14,7 @@ export type WindowDisplayState = "normal" | "minimized" | "maximized";
 
 export interface WindowState {
   id: string;
-  skillId: string;
+  appId: string;
   title: string;
   icon: string;
   position: WindowPosition;
@@ -25,7 +25,7 @@ export interface WindowState {
   isFocused: boolean;
   isAnimating: boolean;
   pendingMinimize?: boolean;
-  skillState?: Record<string, unknown>;
+  appState?: Record<string, unknown>;
   // 最大化前的快照，用于还原
   preMaximizeSnapshot?: { position: WindowPosition; size: WindowSize };
 }

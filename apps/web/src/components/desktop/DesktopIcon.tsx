@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useWindowStore } from "@/stores/windowStore";
-import type { InstalledSkill } from "@/types/skill";
+import type { InstalledApp } from "@/types/app";
 import * as Icons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -22,10 +22,10 @@ const ICON_STYLE: Record<string, { bg: string }> = {
 
 const FALLBACK = { bg: "linear-gradient(180deg, #8E8E93, #636366)" };
 
-export function DesktopIcon({ skill }: { skill: InstalledSkill }) {
+export function DesktopIcon({ app }: { app: InstalledApp }) {
   const openWindow = useWindowStore((s) => s.openWindow);
   const [hovered, setHovered] = useState(false);
-  const { manifest } = skill;
+  const { manifest } = app;
   const IconComponent = getIcon(manifest.icon);
   const { bg } = ICON_STYLE[manifest.id] ?? FALLBACK;
 

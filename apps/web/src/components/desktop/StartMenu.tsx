@@ -22,20 +22,20 @@ const ICON_BG: Record<string, string> = {
 };
 
 export function StartMenu({ onClose }: { onClose: () => void }) {
-  const skills = useDesktopStore((s) => s.skills);
+  const apps = useDesktopStore((s) => s.apps);
   const openWindow = useWindowStore((s) => s.openWindow);
   const [query, setQuery] = useState("");
 
-  const filtered = Object.values(skills).filter((s) =>
+  const filtered = Object.values(apps).filter((s) =>
     !query ||
     s.manifest.name.toLowerCase().includes(query.toLowerCase()) ||
     s.manifest.description.toLowerCase().includes(query.toLowerCase()),
   );
 
-  const handleOpen = (skillId: string) => {
-    const s = skills[skillId];
+  const handleOpen = (appId: string) => {
+    const s = apps[appId];
     if (!s) return;
-    openWindow(skillId, s.manifest.name, s.manifest.icon, {
+    openWindow(appId, s.manifest.name, s.manifest.icon, {
       size: s.manifest.ui.defaultSize,
       minSize: s.manifest.ui.minSize,
     });
@@ -81,13 +81,13 @@ export function StartMenu({ onClose }: { onClose: () => void }) {
           className="grid grid-cols-5 gap-x-10 gap-y-6"
           onClick={(e) => e.stopPropagation()}
         >
-          {filtered.map((skill) => {
-            const IconComp = getIcon(skill.manifest.icon);
-            const bg = ICON_BG[skill.manifest.id] ?? "linear-gradient(180deg, #8E8E93, #636366)";
+          {filtered.map((app) => {
+            const IconComp = getIcon(app.manifest.icon);
+            const bg = ICON_BG[app.manifest.id] ?? "linear-gradient(180deg, #8E8E93, #636366)";
             return (
               <button
-                key={skill.manifest.id}
-                onClick={() => handleOpen(skill.manifest.id)}
+                key={app.manifest.id}
+                onClick={() => handleOpen(app.manifest.id)}
                 className="flex flex-col items-center gap-1.5 group"
               >
                 <div
@@ -104,7 +104,7 @@ export function StartMenu({ onClose }: { onClose: () => void }) {
                   className="text-[12px] font-medium"
                   style={{ color: "var(--t1)" }}
                 >
-                  {skill.manifest.name}
+                  {app.manifest.name}
                 </span>
               </button>
             );

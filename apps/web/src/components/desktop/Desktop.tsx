@@ -8,7 +8,7 @@ import { DesktopIcon } from "./DesktopIcon";
 import { useDesktopStore } from "@/stores/desktopStore";
 import { useWindowStore } from "@/stores/windowStore";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { BUILTIN_SKILLS } from "@/lib/skill-registry";
+import { BUILTIN_APPS } from "@/lib/app-registry";
 import { DesktopClock } from "./DesktopClock";
 
 // macOS 风格壁纸 — Unsplash 免费可商用
@@ -20,7 +20,7 @@ const WALLPAPERS = {
 };
 
 export function Desktop() {
-  const { wallpaper, skills, registerSkill } = useDesktopStore();
+  const { wallpaper, apps, registerApp } = useDesktopStore();
   const openWindow = useWindowStore((s) => s.openWindow);
   const windows = useWindowStore((s) => s.windows);
   const hasMaximized = Object.values(windows).some((w) => w.state === "maximized");
@@ -29,8 +29,8 @@ export function Desktop() {
   const { embeddingConfig, providers, defaultModel } = useSettingsStore();
 
   useEffect(() => {
-    BUILTIN_SKILLS.forEach((skill) => registerSkill(skill, true));
-  }, [registerSkill]);
+    BUILTIN_APPS.forEach((app) => registerApp(app, true));
+  }, [registerApp]);
 
   // 应用启动时自动恢复记忆管理器和知识库管理器（后端重启后 _manager 为 None）
   // 监听 embeddingConfig：Zustand persist hydration 完成后触发
@@ -40,7 +40,7 @@ export function Desktop() {
 
     (async () => {
       try {
-        const { decodeModel, PROVIDERS } = await import("@/skills/settings/providers");
+        const { decodeModel, PROVIDERS } = await import("@/apps/settings/providers");
         let llmModel = "";
         let llmApiKey: string | null = null;
         let llmApiBase: string | null = null;
@@ -110,7 +110,7 @@ export function Desktop() {
     { label: "显示设置", onClick: () => openWindow("settings", "设置", "Settings") },
   ];
 
-  const desktopSkills = Object.values(skills);
+  const desktopApps = Object.values(apps);
 
   // 当前壁纸 URL
   const wpUrl = wallpaper
@@ -140,8 +140,8 @@ export function Desktop() {
         className="absolute top-3 right-3 flex flex-col gap-1"
         style={{ zIndex: 1 }}
       >
-        {desktopSkills.map((skill) => (
-          <DesktopIcon key={skill.manifest.id} skill={skill} />
+        {desktopApps.map((app) => (
+          <DesktopIcon key={app.manifest.id} app={app} />
         ))}
       </div>
 

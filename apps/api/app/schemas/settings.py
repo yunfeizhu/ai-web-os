@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Any
 
 
@@ -21,7 +21,7 @@ class UserSettingsResponse(BaseModel):
 
 
 class DesktopIconItem(BaseModel):
-    skill_id: str
+    app_id: str = Field()
     x: int
     y: int
 

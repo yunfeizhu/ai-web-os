@@ -1,12 +1,12 @@
-import type { SkillManifest } from "@/types/skill";
+import type { AppManifest } from "@/types/app";
 
-// 内置 Skill 清单
-export const BUILTIN_SKILLS: SkillManifest[] = [
+// 内置 App 清单
+export const BUILTIN_APPS: AppManifest[] = [
   {
     id: "ai-chat",
     name: "AI 助手",
     version: "1.0.0",
-    description: "智能 AI 对话助手，支持多模型、工具调用",
+    description: "智能 AI 对话助手，支持多模型和工具调用。",
     icon: "MessageSquare",
     category: "productivity",
     agent: {
@@ -26,7 +26,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     id: "file-manager",
     name: "文件管理器",
     version: "1.0.0",
-    description: "管理你的文件和文档",
+    description: "管理你的文件和文档。",
     icon: "FolderOpen",
     category: "utility",
     agent: {
@@ -46,7 +46,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     id: "settings",
     name: "设置",
     version: "1.0.0",
-    description: "系统设置与偏好配置",
+    description: "系统设置与偏好配置。",
     icon: "Settings",
     category: "system",
     agent: {
@@ -66,7 +66,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     id: "terminal",
     name: "终端",
     version: "1.0.0",
-    description: "AI 命令行终端",
+    description: "AI 命令行终端。",
     icon: "Terminal",
     category: "development",
     agent: {
@@ -86,7 +86,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     id: "browser",
     name: "浏览器",
     version: "1.0.0",
-    description: "内置网页浏览器，支持 AI 摘要",
+    description: "内置网页浏览器，支持 AI 摘要。",
     icon: "Globe",
     category: "utility",
     agent: {
@@ -106,7 +106,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     id: "notes",
     name: "笔记",
     version: "1.0.0",
-    description: "Markdown 笔记，AI 辅助写作",
+    description: "Markdown 笔记，AI 辅助写作。",
     icon: "FileText",
     category: "productivity",
     agent: {
@@ -126,7 +126,7 @@ export const BUILTIN_SKILLS: SkillManifest[] = [
     id: "calendar",
     name: "日历",
     version: "1.0.0",
-    description: "日程管理与 AI 日程助手",
+    description: "日程管理与 AI 日程助手。",
     icon: "Calendar",
     category: "productivity",
     agent: {

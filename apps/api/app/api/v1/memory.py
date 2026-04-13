@@ -26,7 +26,7 @@ class InitMemoryRequest(BaseModel):
     embedder_dims: int | None = None
     # Qdrant
     qdrant_host: str = "localhost"
-    qdrant_port: int = 6333
+    qdrant_port: int = 16333
 
 
 def _collection_name(model: str, dims: int | None) -> str:

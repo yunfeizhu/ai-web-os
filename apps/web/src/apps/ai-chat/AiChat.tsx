@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Send, Square, PenSquare, Sparkles } from "lucide-react";
 import { streamChat } from "@/hooks/useStream";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { decodeModel, PROVIDERS } from "@/skills/settings/providers";
+import { decodeModel, PROVIDERS } from "@/apps/settings/providers";
 import { MessageBubble } from "./MessageBubble";
 import { ModelPicker } from "./ModelPicker";
 import type { ChatMessage, Conversation } from "./types";

@@ -1,8 +1,8 @@
 import { create } from "zustand";
-import type { InstalledSkill, SkillManifest } from "@/types/skill";
+import type { AppManifest, InstalledApp } from "@/types/app";
 
 interface DesktopIcon {
-  skillId: string;
+  appId: string;
   x: number;
   y: number;
 }
@@ -12,15 +12,15 @@ interface DesktopState {
   theme: "dark" | "light";
   icons: DesktopIcon[];
   taskbarPins: string[];
-  skills: Record<string, InstalledSkill>;
+  apps: Record<string, InstalledApp>;
 
   setWallpaper: (url: string) => void;
   setTheme: (theme: "dark" | "light") => void;
   setIcons: (icons: DesktopIcon[]) => void;
-  addTaskbarPin: (skillId: string) => void;
-  removeTaskbarPin: (skillId: string) => void;
-  registerSkill: (manifest: SkillManifest, isBuiltin?: boolean) => void;
-  getSkill: (id: string) => InstalledSkill | undefined;
+  addTaskbarPin: (appId: string) => void;
+  removeTaskbarPin: (appId: string) => void;
+  registerApp: (manifest: AppManifest, isBuiltin?: boolean) => void;
+  getApp: (id: string) => InstalledApp | undefined;
 }
 
 export const useDesktopStore = create<DesktopState>((set, get) => ({
@@ -28,28 +28,28 @@ export const useDesktopStore = create<DesktopState>((set, get) => ({
   theme: "dark",
   icons: [],
   taskbarPins: [],
-  skills: {},
+  apps: {},
 
   setWallpaper: (url) => set({ wallpaper: url }),
   setTheme: (theme) => set({ theme }),
   setIcons: (icons) => set({ icons }),
 
-  addTaskbarPin: (skillId) =>
+  addTaskbarPin: (appId) =>
     set((s) => ({
-      taskbarPins: s.taskbarPins.includes(skillId)
+      taskbarPins: s.taskbarPins.includes(appId)
         ? s.taskbarPins
-        : [...s.taskbarPins, skillId],
+        : [...s.taskbarPins, appId],
     })),
 
-  removeTaskbarPin: (skillId) =>
+  removeTaskbarPin: (appId) =>
     set((s) => ({
-      taskbarPins: s.taskbarPins.filter((id) => id !== skillId),
+      taskbarPins: s.taskbarPins.filter((id) => id !== appId),
     })),
 
-  registerSkill: (manifest, isBuiltin = false) =>
+  registerApp: (manifest, isBuiltin = false) =>
     set((s) => ({
-      skills: {
-        ...s.skills,
+      apps: {
+        ...s.apps,
         [manifest.id]: {
           manifest,
           status: "active",
@@ -60,5 +60,5 @@ export const useDesktopStore = create<DesktopState>((set, get) => ({
       },
     })),
 
-  getSkill: (id) => get().skills[id],
+  getApp: (id) => get().apps[id],
 }));

@@ -56,7 +56,7 @@ def init_knowledge_manager(
     embedder_model: str,
     embedder_api_key: str | None = None,
     embedder_api_base: str | None = None,
-    qdrant_url: str = "http://localhost:6333",
+    qdrant_url: str = "http://localhost:16333",
     max_concurrent_jobs: int = 3,
 ) -> "KnowledgeManager":
     """Create or reuse the singleton knowledge manager."""

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Settings } from "lucide-react";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { PROVIDERS, encodeModel, decodeModel } from "@/skills/settings/providers";
+import { PROVIDERS, encodeModel, decodeModel } from "@/apps/settings/providers";
 import { useWindowStore } from "@/stores/windowStore";
 
 interface Props {

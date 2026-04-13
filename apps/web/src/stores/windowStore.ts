@@ -8,7 +8,7 @@ interface WindowManagerState {
   nextZIndex: number;
 
   openWindow: (
-    skillId: string,
+    appId: string,
     title: string,
     icon: string,
     options?: Partial<WindowState>,
@@ -30,7 +30,7 @@ interface WindowManagerState {
     height: number,
   ) => void;
   setWindowState: (id: string, state: WindowDisplayState) => void;
-  updateSkillState: (id: string, state: Record<string, unknown>) => void;
+  updateAppState: (id: string, state: Record<string, unknown>) => void;
 }
 
 const DEFAULT_SIZE = { width: 960, height: 680 };
@@ -54,11 +54,11 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
   focusOrder: [],
   nextZIndex: 100,
 
-  openWindow: (skillId, title, icon, options) => {
+  openWindow: (appId, title, icon, options) => {
     const state = get();
-    // 如果该 Skill 已有窗口且是 singleton，聚焦已有窗口
+    // 如果该 App 已有窗口且是 singleton，聚焦已有窗口
     const existing = Object.values(state.windows).find(
-      (w) => w.skillId === skillId,
+      (w) => w.appId === appId,
     );
     if (existing) {
       get().focusWindow(existing.id);
@@ -76,7 +76,7 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
 
     const newWindow: WindowState = {
       id,
-      skillId,
+      appId,
       title,
       icon,
       position,
@@ -86,7 +86,7 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
       zIndex: state.nextZIndex,
       isFocused: true,
       isAnimating: false,
-      skillState: options?.skillState,
+      appState: options?.appState,
     };
 
     set((s) => ({
@@ -292,14 +292,14 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
     }));
   },
 
-  updateSkillState: (id, skillState) => {
+  updateAppState: (id, appState) => {
     set((s) => ({
       windows: {
         ...s.windows,
         [id]: s.windows[id]
           ? {
               ...s.windows[id],
-              skillState: { ...s.windows[id].skillState, ...skillState },
+              appState: { ...s.windows[id].appState, ...appState },
             }
           : s.windows[id],
       },

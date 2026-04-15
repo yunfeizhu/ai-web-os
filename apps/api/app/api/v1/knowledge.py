@@ -23,7 +23,7 @@ class InitKnowledgeRequest(BaseModel):
     embedder_model: str
     embedder_api_key: str | None = None
     embedder_base_url: str | None = None
-    qdrant_url: str = "http://localhost:16333"
+    qdrant_url: str = "http://127.0.0.1:16333"
 
 
 class AddTextRequest(BaseModel):

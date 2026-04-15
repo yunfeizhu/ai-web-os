@@ -1,0 +1,20 @@
+{
+  "id": "file-manager",
+  "name": "文件管理器",
+  "version": "1.0.0",
+  "description": "浏览与管理虚拟文件系统。",
+  "category": "utility",
+  "permissions": ["filesystem", "storage"],
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md"
+  },
+  "tools": [
+    { "name": "list_files", "description": "列出指定目录下的文件与文件夹" },
+    { "name": "read_file", "description": "读取文本文件内容" },
+    { "name": "write_file", "description": "写入或覆盖文本文件内容" }
+  ],
+  "mcp": {
+    "transport": "builtin"
+  }
+}

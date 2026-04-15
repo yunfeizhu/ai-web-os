@@ -19,11 +19,18 @@ export interface AppManifest {
     minSize: { width: number; height: number };
     singleton: boolean;
   };
-  mcp?: {
-    command: string;
-    args: string[];
-    env?: Record<string, string>;
-  };
+  mcp?:
+    | {
+        transport: "stdio";
+        command: string;
+        args: string[];
+        env?: Record<string, string>;
+      }
+    | {
+        transport: "streamable-http" | "http" | "remote-http";
+        url: string;
+        headers?: Record<string, string>;
+      };
   requires?: string[];
   settings?: AppSettingsSchema;
 }

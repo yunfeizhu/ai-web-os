@@ -1,11 +1,10 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Search, Link, Calculator, Code2, Loader2, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
+import { ChevronDown, ChevronRight, Link, Calculator, Code2, Loader2, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
 import type { ToolCall } from "./types";
 
 const TOOL_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  web_search:         { label: "网络搜索",  icon: <Search size={13} />,     color: "#007AFF" },
   fetch_url:          { label: "读取网页",  icon: <Link size={13} />,       color: "#5856D6" },
   calculator:         { label: "计算器",    icon: <Calculator size={13} />, color: "#34C759" },
   python_exec:        { label: "执行代码",  icon: <Code2 size={13} />,      color: "#FF9F0A" },
@@ -13,7 +12,6 @@ const TOOL_META: Record<string, { label: string; icon: React.ReactNode; color: s
 };
 
 function getArgsSummary(name: string, args: Record<string, unknown>): string {
-  if (name === "web_search")  return String(args.query ?? "");
   if (name === "fetch_url")   return String(args.url ?? "");
   if (name === "calculator")  return String(args.expression ?? "");
   if (name === "python_exec") {
@@ -31,7 +29,7 @@ interface ToolCallItemProps {
 
 function ToolCallItem({ tc }: ToolCallItemProps) {
   const [expanded, setExpanded] = useState(false);
-  const meta = TOOL_META[tc.name] ?? { label: tc.name, icon: <Code2 size={13} />, color: "#888" };
+  const meta = TOOL_META[tc.name] ?? { label: tc.displayName || tc.name, icon: <Code2 size={13} />, color: "#888" };
   const argsSummary = getArgsSummary(tc.name, tc.args);
 
   return (

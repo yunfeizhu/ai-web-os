@@ -30,7 +30,6 @@ const QUICK_PROMPTS = [
 export function AiChat() {
   const {
     providers,
-    toolKeys,
     defaultModel,
     setDefaultModel,
     embeddingConfig,
@@ -64,7 +63,7 @@ export function AiChat() {
 
   const loadConversations = useCallback(async () => {
     try {
-      const data = await apiFetch<Conversation[]>("/conversations");
+      const data = await apiFetch<Conversation[]>("/conversations?app_id=ai-chat");
       setConversations(data);
     } catch {}
   }, []);
@@ -82,7 +81,7 @@ export function AiChat() {
           role: string;
           content: string | null;
           tool_calls:
-            | { id: string; name: string; args: Record<string, unknown> }[]
+            | { id: string; name: string; displayName?: string | null; args: Record<string, unknown> }[]
             | null;
           tool_call_id: string | null;
         }[]
@@ -108,6 +107,7 @@ export function AiChat() {
           toolCalls: m.tool_calls?.map((tc) => ({
             id: tc.id,
             name: tc.name,
+            displayName: tc.displayName ?? null,
             args: tc.args,
             result: toolResultMap[tc.id],
             status: "done" as const,
@@ -235,13 +235,13 @@ export function AiChat() {
         const { title } = await streamChat(
           {
             conversationId: convId,
+            appId: "ai-chat",
             message: content,
             model: modelId,
             providerId,
             history,
             apiKey,
             apiBase,
-            tavilyKey: toolKeys["tavily"] || undefined,
             enableMemory: true,
             compatType: providerCfg.compatType ?? "openai",
             embeddingConfig: embeddingConfig ?? undefined,
@@ -276,6 +276,7 @@ export function AiChat() {
                       {
                         id: event.id,
                         name: event.name,
+                        displayName: event.displayName ?? null,
                         args: event.args,
                         status: "running" as const,
                       },
@@ -294,6 +295,7 @@ export function AiChat() {
                       tc.id === event.id
                         ? {
                             ...tc,
+                            displayName: event.displayName ?? tc.displayName ?? null,
                             result: event.result,
                             error: event.error,
                             status: event.error
@@ -348,7 +350,7 @@ export function AiChat() {
         abortRef.current = null;
       }
     },
-    [input, loading, activeId, messages, selectedModel, providers],
+    [input, loading, activeId, messages, selectedModel, providers, embeddingConfig],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

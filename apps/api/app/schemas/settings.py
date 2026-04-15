@@ -1,21 +1,17 @@
-from pydantic import BaseModel, Field
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 
 class UserSettingsUpdate(BaseModel):
     theme: str | None = None
     language: str | None = None
-    api_keys: dict[str, str] | None = None
-    default_model: str | None = None
 
 
 class UserSettingsResponse(BaseModel):
     user_id: str
     theme: str
     language: str
-    default_model: str
-    # api_keys 不在响应中返回完整 key，只返回是否已配置
-    api_keys_configured: dict[str, bool]
 
     model_config = {"from_attributes": True}
 

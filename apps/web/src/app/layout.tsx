@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import "@univerjs/preset-sheets-core/lib/index.css";
 
 const sans = Plus_Jakarta_Sans({
   subsets: ["latin"],

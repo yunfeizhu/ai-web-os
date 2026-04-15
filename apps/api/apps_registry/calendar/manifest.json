@@ -1,0 +1,16 @@
+{
+  "id": "calendar",
+  "name": "日历",
+  "version": "1.0.0",
+  "description": "日程视图与未来 AI 日程助手入口。",
+  "category": "productivity",
+  "permissions": [],
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md"
+  },
+  "tools": [],
+  "mcp": {
+    "transport": "builtin"
+  }
+}

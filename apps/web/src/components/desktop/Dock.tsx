@@ -20,6 +20,7 @@ const DOCK_COLORS: Record<string, string> = {
   terminal: "linear-gradient(180deg, #3A3A3C, #1C1C1E)",
   browser: "linear-gradient(180deg, #5AC8FA, #0A84FF)",
   notes: "linear-gradient(180deg, #FFD60A, #FF9F0A)",
+  "text-editor": "linear-gradient(180deg, #7BD4FF, #3B82F6)",
   calendar: "linear-gradient(180deg, #FF453A, #D70015)",
 };
 
@@ -28,6 +29,7 @@ const DOCK_APPS = [
   "ai-chat",
   "file-manager",
   "notes",
+  "text-editor",
   "calendar",
   "browser",
   "terminal",
@@ -58,6 +60,7 @@ export function Dock() {
         openWindow(appId, app.manifest.name, app.manifest.icon, {
           size: app.manifest.ui.defaultSize,
           minSize: app.manifest.ui.minSize,
+          singleton: app.manifest.ui.singleton,
         });
       }
     }
@@ -68,6 +71,7 @@ export function Dock() {
   return (
     <>
       <div
+        data-desktop-blocker="true"
         className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-end gap-1 px-2.5 py-1.5"
         style={{
           zIndex: 9999,

@@ -100,6 +100,15 @@ export function Desktop() {
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
+    e.stopPropagation();
+    const target = e.target as HTMLElement | null;
+    const isBlockedArea = Boolean(
+      target?.closest("[data-desktop-blocker='true']"),
+    );
+    if (isBlockedArea) {
+      setContextMenu(null);
+      return;
+    }
     setContextMenu({ x: e.clientX, y: e.clientY });
   }, []);
 
@@ -119,6 +128,9 @@ export function Desktop() {
   return (
     <div
       className="desktop-bg"
+      onContextMenuCapture={(event) => {
+        event.preventDefault();
+      }}
       onContextMenu={handleContextMenu}
       onClick={() => setContextMenu(null)}
     >
@@ -137,6 +149,7 @@ export function Desktop() {
 
       {/* Desktop icon grid — macOS 风格：纵向排列，紧贴右侧 */}
       <div
+        data-desktop-blocker="true"
         className="absolute top-3 right-3 flex flex-col gap-1"
         style={{ zIndex: 1 }}
       >

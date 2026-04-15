@@ -25,7 +25,7 @@ class InitMemoryRequest(BaseModel):
     embedder_base_url: str | None = None
     embedder_dims: int | None = None
     # Qdrant
-    qdrant_host: str = "localhost"
+    qdrant_host: str = "127.0.0.1"
     qdrant_port: int = 16333
 
 

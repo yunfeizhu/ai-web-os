@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import {
@@ -758,102 +758,6 @@ function ModelSelector({ fetchedModels, enabledModels, color, customInput, setCu
 }
 
 
-// ── 工具 Key 卡片 ─────────────────────────────────────
-
-const TOOL_KEYS_DEF = [
-  { id: "tavily", name: "Tavily Search", description: "用于 AI 联网搜索（web_search 工具）", color: "#0EA5E9", keyUrl: "https://app.tavily.com/", placeholder: "tvly-..." },
-];
-
-function ToolKeyCard({ def }: { def: typeof TOOL_KEYS_DEF[0] }) {
-  const { toolKeys, setToolKey, removeToolKey } = useSettingsStore();
-  const saved = toolKeys[def.id] ?? "";
-  const isConfigured = !!saved;
-
-  const [expanded, setExpanded] = useState(false);
-  const [key, setKey] = useState(saved);
-  const [showKey, setShowKey] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
-
-  const handleExpand = () => { if (!expanded) setKey(saved); setExpanded((v) => !v); };
-  const handleSave = () => { if (!key.trim()) return; setToolKey(def.id, key.trim()); setExpanded(false); };
-  const handleDelete = () => { removeToolKey(def.id); setKey(""); setExpanded(false); };
-  const handleTest = async () => {
-    const k = key.trim() || saved;
-    if (!k) return;
-    setTesting(true); setTestResult(null);
-    try {
-      const result = await testConnection({ type: "tool", tool: def.id, api_key: k });
-      setTestResult(result);
-    } catch { setTestResult({ ok: false, message: "无法连接后端服务" }); }
-    finally { setTesting(false); }
-  };
-
-  return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `0.5px solid ${isConfigured ? def.color + "50" : "rgba(0,0,0,0.08)"}`, background: "rgba(0,0,0,0.01)" }}>
-      <button className="w-full flex items-center gap-3 px-4 py-3 text-left" onClick={handleExpand}>
-        <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: isConfigured ? def.color : "rgba(0,0,0,0.1)" }}>
-          {def.name.slice(0, 2).toUpperCase()}
-        </div>
-        <div className="flex-1 min-w-0">
-          <span className="text-[14px] font-semibold block" style={{ color: "var(--t1)" }}>{def.name}</span>
-          {isConfigured
-            ? <div className="flex items-center gap-1.5 mt-0.5"><div className="w-1.5 h-1.5 rounded-full" style={{ background: "#22C55E" }} /><span className="text-[13px]" style={{ color: "#22C55E" }}>已配置</span></div>
-            : <span className="text-[13px]" style={{ color: "var(--t3)" }}>{def.description}</span>}
-        </div>
-        {expanded ? <ChevronUp size={14} color="var(--t3)" /> : <ChevronDown size={14} color="var(--t3)" />}
-      </button>
-      {expanded && (
-        <div className="px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid rgba(0,0,0,0.06)" }}>
-          <div className="pt-3">
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-[13px] font-medium" style={{ color: "var(--t3)" }}>API Key</label>
-              <a href={def.keyUrl} target="_blank" rel="noreferrer" className="flex items-center gap-0.5 text-[13px]" style={{ color: def.color }}>
-                获取 Key <ExternalLink size={10} />
-              </a>
-            </div>
-            <div className="relative">
-              <input type={showKey ? "text" : "password"} value={key} onChange={(e) => { setKey(e.target.value); setTestResult(null); }}
-                placeholder={def.placeholder}
-                className="w-full pr-8 pl-3 py-1.5 rounded-lg text-[13px] outline-none"
-                style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
-              />
-              <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setShowKey((v) => !v)}>
-                {showKey ? <EyeOff size={13} color="rgba(0,0,0,0.3)" /> : <Eye size={13} color="rgba(0,0,0,0.3)" />}
-              </button>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={handleSave} disabled={!key.trim() || !testResult?.ok}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[13px] font-medium"
-              style={key.trim() && testResult?.ok ? { background: def.color, color: "#fff" } : { background: "rgba(0,0,0,0.06)", color: "rgba(0,0,0,0.25)", cursor: "not-allowed", opacity: 0.5, border: "0.5px dashed rgba(0,0,0,0.15)" }}>
-              <Check size={12} /> 保存
-            </button>
-            <button onClick={handleTest} disabled={testing || (!key.trim() && !saved)}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[13px] font-medium"
-              style={{ background: "rgba(0,0,0,0.05)", color: "var(--t2)" }}>
-              {testing ? <Loader size={12} className="animate-spin" /> : <Wifi size={12} />}
-              {testing ? "测试中…" : "测试连接"}
-            </button>
-            {isConfigured && (
-              <button onClick={handleDelete} className="ml-auto flex items-center gap-1 px-2 py-1.5 rounded-lg text-[13px]" style={{ color: "var(--red)" }}>
-                <Trash2 size={12} /> 删除
-              </button>
-            )}
-          </div>
-          {testResult && (
-            <p className="text-[13px] px-3 py-2 rounded-lg flex items-center gap-1.5"
-              style={testResult.ok ? { background: "rgba(34,197,94,0.08)", color: "#22C55E" } : { background: "rgba(255,59,48,0.08)", color: "var(--red, #ef4444)" }}>
-              {testResult.ok ? <Wifi size={12} /> : <WifiOff size={12} />} {testResult.message}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-
 // ── 分组折叠面板 ──────────────────────────────────────
 
 function GroupPanel({ title, description, defaultOpen = false, children }: {
@@ -912,9 +816,6 @@ export function ApiKeyConfig() {
         <EmbeddingSection />
       </GroupPanel>
 
-      <GroupPanel title="工具 API Keys" description="AI 工具调用所需的第三方服务密钥">
-        {TOOL_KEYS_DEF.map((t) => <ToolKeyCard key={t.id} def={t} />)}
-      </GroupPanel>
     </div>
   );
 }

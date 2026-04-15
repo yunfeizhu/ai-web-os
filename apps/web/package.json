@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@types/react-syntax-highlighter": "^15.5.13",
+    "@univerjs/preset-sheets-core": "^0.20.1",
+    "@univerjs/presets": "^0.20.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.474.0",
@@ -21,6 +23,7 @@
     "react-syntax-highlighter": "^16.1.1",
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.0.0",
+    "xlsx": "^0.18.5",
     "zustand": "^5.0.0"
   },
   "devDependencies": {

@@ -18,6 +18,7 @@ const ICON_BG: Record<string, string> = {
   "terminal":     "linear-gradient(180deg, #3A3A3C, #1C1C1E)",
   "browser":      "linear-gradient(180deg, #5AC8FA, #0A84FF)",
   "notes":        "linear-gradient(180deg, #FFD60A, #FF9F0A)",
+  "text-editor":  "linear-gradient(180deg, #7BD4FF, #3B82F6)",
   "calendar":     "linear-gradient(180deg, #FF453A, #D70015)",
 };
 
@@ -38,6 +39,7 @@ export function StartMenu({ onClose }: { onClose: () => void }) {
     openWindow(appId, s.manifest.name, s.manifest.icon, {
       size: s.manifest.ui.defaultSize,
       minSize: s.manifest.ui.minSize,
+      singleton: s.manifest.ui.singleton,
     });
     onClose();
   };

@@ -1,0 +1,16 @@
+{
+  "id": "browser",
+  "name": "浏览器",
+  "version": "1.0.0",
+  "description": "轻量网页浏览与链接预览应用。",
+  "category": "utility",
+  "permissions": ["network"],
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md"
+  },
+  "tools": [],
+  "mcp": {
+    "transport": "builtin"
+  }
+}

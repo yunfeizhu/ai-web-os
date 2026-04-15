@@ -5,6 +5,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy import select, func
 from app.core.database import AsyncSessionLocal
 from app.core.llm_provider import agent_loop
+from app.core.skill_context import build_skill_augmented_system_prompt
 from app.models.conversation import Conversation, Message
 
 DEFAULT_USER_ID = "default"
@@ -63,81 +64,95 @@ async def websocket_endpoint(websocket: WebSocket):
                 continue
 
             if msg_type == "agent_invoke":
-                request_id = msg.get("requestId", str(uuid.uuid4()))
-                payload = msg.get("payload", {})
+                try:
+                    request_id = msg.get("requestId", str(uuid.uuid4()))
+                    payload = msg.get("payload", {})
 
-                conv_id: str = payload.get("conversationId", "")
-                user_message: str = payload.get("message", "")
-                model: str = payload.get("model", "claude-sonnet-4-6")
-                provider_id: str = payload.get("providerId", "")
-                history: list = payload.get("history", [])
-                system_prompt: str = payload.get("systemPrompt", "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。")
-                api_key: str = payload.get("apiKey", "")
-                api_base: str | None = payload.get("apiBase") or None
-                tavily_key: str | None = payload.get("tavilyKey") or None
-                enable_memory: bool = payload.get("enableMemory", True)
-                user_id: str = payload.get("userId", DEFAULT_USER_ID)
-                compat_type: str = payload.get("compatType", "openai")
+                    conv_id: str = payload.get("conversationId", "")
+                    user_message: str = payload.get("message", "")
+                    model: str = payload.get("model", "claude-sonnet-4-6")
+                    app_id: str | None = payload.get("appId")
+                    provider_id: str = payload.get("providerId", "")
+                    history: list = payload.get("history", [])
+                    system_prompt: str = payload.get("systemPrompt", "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。")
+                    api_key: str = payload.get("apiKey", "")
+                    api_base: str | None = payload.get("apiBase") or None
+                    enable_memory: bool = payload.get("enableMemory", True)
+                    user_id: str = payload.get("userId", DEFAULT_USER_ID)
+                    compat_type: str = payload.get("compatType", "openai")
 
-                if not api_key:
-                    await websocket.send_json({
-                        "type": "agent_error",
-                        "requestId": request_id,
-                        "payload": {"error": "未配置 API Key，请在设置中添加对应模型的 Key"},
-                    })
-                    continue
+                    if not api_key:
+                        await websocket.send_json({
+                            "type": "agent_error",
+                            "requestId": request_id,
+                            "payload": {"error": "未配置 API Key，请在设置中添加对应模型的 Key"},
+                        })
+                        continue
 
-                embedding_cfg: dict | None = payload.get("embeddingConfig")
-                llm_api_key: str = payload.get("llmApiKey") or api_key
-                llm_api_base: str | None = payload.get("llmApiBase") or None
+                    embedding_cfg: dict | None = payload.get("embeddingConfig")
+                    llm_api_key: str = payload.get("llmApiKey") or api_key
+                    llm_api_base: str | None = payload.get("llmApiBase") or None
 
-                # ── 记忆检索（按需自动初始化）────────────────────────────
-                from app.core.memory import get_memory_manager, init_memory_manager
-                memory_mgr = get_memory_manager()
-                if memory_mgr is None and embedding_cfg and llm_api_key:
-                    import asyncio
-                    loop = asyncio.get_event_loop()
-                    try:
-                        memory_mgr = await loop.run_in_executor(None, lambda: init_memory_manager(
-                            llm_provider="litellm",
-                            llm_model=model,
-                            llm_api_key=llm_api_key,
-                            llm_api_base=llm_api_base,
-                            embedder_provider="openai",
-                            embedder_model=embedding_cfg["model"],
-                            embedder_api_key=embedding_cfg["apiKey"],
-                            embedder_base_url=embedding_cfg["baseUrl"],
-                            embedder_dims=embedding_cfg.get("dims", 1024),
-                        ))
-                        if memory_mgr:
-                            memory_mgr.start()
-                    except Exception:
-                        memory_mgr = None
-                effective_system = system_prompt
-                if enable_memory and memory_mgr:
-                    memories = await memory_mgr.search(query=user_message, user_id=user_id, limit=5)
-                    relevant = [
-                        m for m in memories
-                        if isinstance(m, dict) and m.get("memory") and (m.get("score") or 0) >= 0.45
-                    ]
-                    if relevant:
-                        facts = "\n".join(f"- {m['memory']}" for m in relevant)
-                        effective_system = (
-                            f"{system_prompt}\n\n"
-                            f"## 关于用户的已知信息（来自记忆）\n{facts}"
+                    # ── 记忆检索（按需自动初始化）────────────────────────────
+                    from app.core.memory import get_memory_manager, init_memory_manager
+                    memory_mgr = get_memory_manager()
+                    if memory_mgr is None and embedding_cfg and llm_api_key:
+                        import asyncio
+                        loop = asyncio.get_event_loop()
+                        try:
+                            memory_mgr = await loop.run_in_executor(None, lambda: init_memory_manager(
+                                llm_provider="litellm",
+                                llm_model=model,
+                                llm_api_key=llm_api_key,
+                                llm_api_base=llm_api_base,
+                                embedder_provider="openai",
+                                embedder_model=embedding_cfg["model"],
+                                embedder_api_key=embedding_cfg["apiKey"],
+                                embedder_base_url=embedding_cfg["baseUrl"],
+                                embedder_dims=embedding_cfg.get("dims", 1024),
+                            ))
+                            if memory_mgr:
+                                memory_mgr.start()
+                        except Exception:
+                            memory_mgr = None
+                    async with AsyncSessionLocal() as db:
+                        effective_system, skill_info = await build_skill_augmented_system_prompt(
+                            db,
+                            system_prompt,
+                            user_message,
+                            conversation_id=conv_id,
+                            requested_app_id=app_id,
                         )
+                    if skill_info:
                         await websocket.send_json({
                             "type": "status",
                             "requestId": request_id,
-                            "payload": {"status": "recalled", "count": len(relevant)},
+                            "payload": {"status": "skill_loaded", **skill_info},
                         })
 
-                # ── 流式生成 ──────────────────────────────────────────────
-                full_response = ""
-                tool_calls: list[dict] = []
-                tool_results: list[dict] = []
+                    if enable_memory and memory_mgr:
+                        memories = await memory_mgr.search(query=user_message, user_id=user_id, limit=5)
+                        relevant = [
+                            m for m in memories
+                            if isinstance(m, dict) and m.get("memory") and (m.get("score") or 0) >= 0.45
+                        ]
+                        if relevant:
+                            facts = "\n".join(f"- {m['memory']}" for m in relevant)
+                            effective_system = (
+                                f"{effective_system}\n\n"
+                                f"## 关于用户的已知信息（来自记忆）\n{facts}"
+                            )
+                            await websocket.send_json({
+                                "type": "status",
+                                "requestId": request_id,
+                                "payload": {"status": "recalled", "count": len(relevant)},
+                            })
 
-                try:
+                    # ── 流式生成 ──────────────────────────────────────────────
+                    full_response = ""
+                    tool_calls: list[dict] = []
+                    tool_results: list[dict] = []
+
                     async for event_type, event_payload in agent_loop(
                         model=model,
                         messages=[*history, {"role": "user", "content": user_message}],
@@ -146,7 +161,6 @@ async def websocket_endpoint(websocket: WebSocket):
                         compat_type=compat_type,
                         system_prompt=effective_system,
                         api_base=api_base,
-                        tavily_key=tavily_key,
                     ):
                         if event_type == "token":
                             full_response += event_payload
@@ -196,6 +210,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
 
                 except Exception as e:
+                    print(f"[WebSocket agent_invoke error] {e}")
                     await websocket.send_json({
                         "type": "agent_error",
                         "requestId": request_id,

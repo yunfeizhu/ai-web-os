@@ -11,7 +11,16 @@ export function WindowManager() {
   const [activeSnapZone, setActiveSnapZone] = useState<SnapZone>(null);
 
   return (
-    <div className="absolute inset-0 overflow-hidden">
+    <div
+      className="absolute inset-0 overflow-hidden"
+      onContextMenu={(event) => {
+        if (event.target === event.currentTarget) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+    >
       <WindowSnapZoneOverlay activeZone={activeSnapZone} />
       {Object.values(windows).map((win) => (
         <Window
@@ -19,7 +28,7 @@ export function WindowManager() {
           window={win}
           onSnapZoneChange={setActiveSnapZone}
         >
-          <AppRenderer appId={win.appId} />
+          <AppRenderer appId={win.appId} appState={win.appState} windowId={win.id} />
         </Window>
       ))}
     </div>

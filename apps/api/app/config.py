@@ -4,13 +4,13 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     # 数据库
-    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:15432/ainative"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@127.0.0.1:15432/ainative"
 
     # Redis
-    redis_url: str = "redis://localhost:16379/0"
+    redis_url: str = "redis://127.0.0.1:16379/0"
 
     # MinIO
-    minio_endpoint: str = "localhost:19000"
+    minio_endpoint: str = "127.0.0.1:19000"
     minio_access_key: str = "minioadmin"
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "ainative-files"

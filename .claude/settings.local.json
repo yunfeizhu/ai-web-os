@@ -80,7 +80,13 @@
       "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\(''''result'''',{}\\).get\\(''''vectors_count''''\\) or d, indent=2\\)\\)\")",
       "Bash(docker restart:*)",
       "Bash(.venv/Scripts/python.exe -c ':*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "mcp__chrome-devtools__list_pages",
+      "mcp__chrome-devtools__navigate_page",
+      "mcp__chrome-devtools__take_screenshot",
+      "mcp__chrome-devtools__take_snapshot",
+      "mcp__chrome-devtools__click",
+      "mcp__chrome-devtools__evaluate_script"
     ]
   }
 }

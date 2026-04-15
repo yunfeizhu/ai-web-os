@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "turbo dev",
+    "api:dev": "cd apps/api && uv run uvicorn app.main:app --reload",
     "build": "turbo build",
     "lint": "turbo lint",
     "clean": "turbo clean"

@@ -1,26 +1,37 @@
 "use client";
 
 import { AiChat } from "@/apps/ai-chat/AiChat";
+import { FileManager } from "@/apps/file-manager/FileManager";
+import { Notes } from "@/apps/notes/Notes";
 import { Settings } from "@/apps/settings/Settings";
+import { SpreadsheetEditor } from "@/apps/spreadsheet-viewer/SpreadsheetEditor";
+import { Terminal } from "@/apps/terminal/Terminal";
+import { TextEditor } from "@/apps/text-editor/TextEditor";
 
 interface AppRendererProps {
   appId: string;
+  appState?: Record<string, unknown>;
+  windowId: string;
 }
 
-export function AppRenderer({ appId }: AppRendererProps) {
+export function AppRenderer({ appId, appState, windowId }: AppRendererProps) {
   switch (appId) {
     case "settings":
       return <Settings />;
     case "ai-chat":
       return <AiChat />;
     case "file-manager":
-      return <PlaceholderApp name="文件管理器" description="文件管理功能正在开发中，敬请期待。" />;
+      return <FileManager />;
     case "terminal":
-      return <PlaceholderApp name="终端" description="终端功能正在开发中，敬请期待。" />;
+      return <Terminal windowId={windowId} />;
     case "browser":
       return <PlaceholderApp name="浏览器" description="浏览器功能正在开发中，敬请期待。" />;
     case "notes":
-      return <PlaceholderApp name="笔记" description="笔记功能正在开发中，敬请期待。" />;
+      return <Notes />;
+    case "text-editor":
+      return <TextEditor appState={appState} windowId={windowId} />;
+    case "spreadsheet-viewer":
+      return <SpreadsheetEditor appState={appState} windowId={windowId} />;
     case "calendar":
       return <PlaceholderApp name="日历" description="日历功能正在开发中，敬请期待。" />;
     default:

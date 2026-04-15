@@ -1,0 +1,16 @@
+{
+  "id": "ai-chat",
+  "name": "AI 助手",
+  "version": "1.0.0",
+  "description": "多模型聊天与工具调用应用。",
+  "category": "productivity",
+  "permissions": ["network"],
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md"
+  },
+  "tools": [],
+  "mcp": {
+    "transport": "builtin"
+  }
+}

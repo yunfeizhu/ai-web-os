@@ -1,0 +1,16 @@
+{
+  "id": "terminal",
+  "name": "终端",
+  "version": "1.0.0",
+  "description": "AI 命令模式终端。",
+  "category": "development",
+  "permissions": ["network", "filesystem"],
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md"
+  },
+  "tools": [],
+  "mcp": {
+    "transport": "builtin"
+  }
+}

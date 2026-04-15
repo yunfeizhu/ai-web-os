@@ -2,7 +2,7 @@
 import uuid
 import json
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.core.llm_provider import stream_chat, agent_loop
 from app.core.memory import get_memory_manager
+from app.core.skill_context import build_skill_augmented_system_prompt
 from app.models.conversation import Conversation, Message
 
 router = APIRouter()
@@ -136,12 +137,19 @@ class MessageResponse(BaseModel):
 # ── Conversations ─────────────────────────────────────
 
 @router.get("/conversations", response_model=list[ConversationResponse])
-async def list_conversations(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
+async def list_conversations(
+    app_id: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = (
         select(Conversation)
         .where(Conversation.user_id == DEFAULT_USER_ID)
         .order_by(Conversation.updated_at.desc())
     )
+    if app_id:
+        stmt = stmt.where(Conversation.app_id == app_id)
+
+    result = await db.execute(stmt)
     convs = result.scalars().all()
     return [
         ConversationResponse(
@@ -218,12 +226,21 @@ class ChatRequest(BaseModel):
     message: str
     model: str = "claude-sonnet-4-6"
     provider_id: str = ""
+    app_id: str | None = None
     history: list[dict] = []
     system_prompt: str = "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。"
     api_base: str | None = None
-    tavily_key: str | None = None
     user_id: str = DEFAULT_USER_ID
     enable_memory: bool = True
+
+
+class CompleteRequest(BaseModel):
+    message: str
+    model: str
+    provider_id: str = ""
+    compat_type: str = "openai"
+    system_prompt: str = "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。"
+    api_base: str | None = None
 
 
 @router.post("/conversations/{conv_id}/chat")
@@ -245,7 +262,16 @@ async def chat(
         tool_results: list[dict] = []
 
         memory_mgr = get_memory_manager()
-        effective_system = req.system_prompt
+        effective_system, skill_info = await build_skill_augmented_system_prompt(
+            db,
+            req.system_prompt,
+            req.message,
+            conversation_id=conv_id,
+            requested_app_id=req.app_id,
+        )
+        if skill_info:
+            yield f"data: {json.dumps({'x_skill_loaded': skill_info}, ensure_ascii=False)}\n\n"
+
         if req.enable_memory and memory_mgr:
             memories = await memory_mgr.search(query=req.message, user_id=req.user_id, limit=5)
             relevant = [
@@ -255,7 +281,7 @@ async def chat(
             if relevant:
                 facts = "\n".join(f"- {m['memory']}" for m in relevant)
                 effective_system = (
-                    f"{req.system_prompt}\n\n"
+                    f"{effective_system}\n\n"
                     f"## 关于用户的已知信息（来自记忆）\n{facts}"
                 )
                 yield f"data: {json.dumps({'x_recalled': len(relevant)}, ensure_ascii=False)}\n\n"
@@ -268,7 +294,6 @@ async def chat(
                 provider_id=req.provider_id,
                 system_prompt=effective_system,
                 api_base=req.api_base,
-                tavily_key=req.tavily_key,
             ):
                 if event_type == "token":
                     full_response += payload
@@ -333,3 +358,22 @@ async def chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/complete")
+async def complete(
+    req: CompleteRequest,
+    x_api_key: str = Header(..., alias="X-Api-Key"),
+):
+    content = ""
+    async for token in stream_chat(
+        model=req.model,
+        messages=[{"role": "user", "content": req.message}],
+        api_key=x_api_key,
+        provider_id=req.provider_id,
+        compat_type=req.compat_type,
+        system_prompt=req.system_prompt,
+        api_base=req.api_base,
+    ):
+        content += token
+    return {"content": content}

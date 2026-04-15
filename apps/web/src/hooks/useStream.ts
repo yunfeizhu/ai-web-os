@@ -5,12 +5,14 @@ const WS_URL = "ws://localhost:8000/ws";
 export interface ToolCallEvent {
   id: string;
   name: string;
+  displayName?: string | null;
   args: Record<string, unknown>;
 }
 
 export interface ToolResultEvent {
   id: string;
   name: string;
+  displayName?: string | null;
   result: string;
   error: boolean;
 }
@@ -24,6 +26,7 @@ export interface EmbeddingParams {
 
 export interface ChatParams {
   conversationId: string;
+  appId?: string;
   message: string;
   model: string;
   providerId: string;
@@ -31,7 +34,6 @@ export interface ChatParams {
   systemPrompt?: string;
   apiKey: string;
   apiBase?: string;
-  tavilyKey?: string;
   enableMemory?: boolean;
   compatType?: string;
   embeddingConfig?: EmbeddingParams;
@@ -166,6 +168,7 @@ export async function streamChat(
       requestId,
       {
         conversationId: params.conversationId,
+        appId: params.appId ?? null,
         message: params.message,
         model: params.model,
         providerId: params.providerId,
@@ -173,7 +176,6 @@ export async function streamChat(
         systemPrompt: params.systemPrompt ?? "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。",
         apiKey: params.apiKey,
         apiBase: params.apiBase ?? null,
-        tavilyKey: params.tavilyKey ?? null,
         enableMemory: params.enableMemory ?? true,
         compatType: params.compatType ?? "openai",
         embeddingConfig: params.embeddingConfig ?? null,

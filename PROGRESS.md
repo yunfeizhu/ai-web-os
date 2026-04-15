@@ -43,7 +43,7 @@
 - [x] 内置工具：calculator / fetch_url / web_search（Tavily）/ python_exec（subprocess）
 - [x] Conversation & Message CRUD（PostgreSQL，含 tool_calls / tool_call_id 字段）
 - [x] 模型列表代理 /api/v1/agents/models/fetch（绕过浏览器 CORS）
-- [ ] MCP Skill server 标准协议 ← 推迟到阶段四
+- [ ] MCP Agent Skill 标准协议 ← 推迟到阶段四
 
 ### 前端
 
@@ -84,21 +84,59 @@
 
 ---
 
-## 阶段四：文件系统与 Skill 框架
+## 阶段四：文件系统与 App 框架
 
 ### 后端
 
-- [ ] MinIO 文件管理（上传/下载/删除/移动/复制）
-- [ ] 虚拟目录结构（PostgreSQL files 表）
-- [ ] Skill Registry 完善（Manifest 解析、MCP server 进程管理）
-- [ ] MCP Manager（tool 调用路由）
+- [x] MinIO 文件管理（FileManager）：上传 / 下载 / 删除 / 移动 / 复制 / 复制对象
+- [x] 虚拟目录结构（PostgreSQL `FileEntry` model，path + parent_path 索引，自动初始化默认目录）
+- [x] App Registry 完善
+  - [x] apps_registry 目录结构（8 个内置 App：ai-chat / file-manager / terminal / notes / browser / calendar / settings / text-editor）
+  - [x] 每个 App 含 manifest.json + SKILL.md 双文件
+  - [x] Manifest 解析与同步（`sync_builtin_apps`）
+  - [x] App Skill 标准化元数据（`skill.entrypoint` / `skill.format`）
+  - [x] App 生命周期管理（activate / deactivate / enable / disable）
+  - [x] 内置工具注册（list_files / read_file / write_file / list_notes / save_note）
+  - [x] 当前入口 App 的 `SKILL.md` 自动注入到 Agent 上下文
+  - [x] 第一版多 Skill 规则匹配与组合加载（最多 3 个 Skills）
+  - [x] 规则增强版语义路由（primary / secondary / conflict resolution）
+  - [ ] 更强语义理解的多 Skill 路由器与阶段式规划
+- [x] MCP Manager
+  - [x] builtin transport tool 路由（`call_tool` → handler 函数）
+  - [x] stdio 进程管理框架（启动/终止/健康检查，协议层 NotImplemented 预留）
+- [x] Files API（`/api/v1/files`）：列表 / 上传 / 下载 / 文本读写 / 新建目录 / 重命名 / 移动 / 复制 / 删除 / 目录树
+- [x] Apps API（`/api/v1/apps`）：列表 / 激活 / 停用 / 启用禁用 / 工具列表
+- [ ] stdio MCP tool routing 协议实现（当前 `NotImplementedError`，等待 MCP Python SDK 接入）
 
 ### 前端
 
-- [ ] File Manager App（双面板、图标/列表视图、右键菜单、拖拽上传、文件预览）
-- [ ] Terminal App（AI 命令模式）
-- [ ] Notes App（Markdown 编辑器 + AI 辅助写作）
-- [ ] Settings → Skill 管理页
+- [x] File Manager App
+  - [x] 双面板布局（左侧目录树 + 右侧内容区）
+  - [x] 图标视图 / 列表视图切换
+  - [x] 文件操作：新建目录、重命名、移动、复制、删除（带二次确认）
+  - [x] 拖拽上传（dragover / drop 事件）
+  - [x] 文本文件预览（.txt / .md / .json）
+  - [x] 右键上下文菜单
+  - [x] 路径导航面包屑
+  - [x] 图片 / PDF 预览
+  - [x] 音频 / 视频 / 表格预览
+  - [x] 文本编辑器与表格编辑器打开链路
+- [x] Terminal App
+  - [x] AI 命令模式（自然语言 → Agent 执行工具）
+  - [x] macOS Terminal Pro 主题（黑底、彩色 zsh 提示符、Cascadia Code 字体）
+  - [x] 工具调用日志展示（▶ 折叠/展开，旋转动画）
+  - [x] 去除 Markdown 代码块（系统提示 + stripCodeFences 双重保障）
+  - [x] Tavily Key 正确透传（修复了漏传 bug）
+- [x] Notes App
+  - [x] Markdown 编辑器（raw 编辑 + 预览双模式）
+  - [x] AI 辅助写作（续写 / 改写 / 润色，流式输出建议）
+  - [x] 笔记列表与切换
+  - [x] 保存到虚拟文件系统（`/Notes/*.md`）
+- [x] Settings → App 管理页
+  - [x] 已安装 App 列表（builtin 标识）
+  - [x] 启用 / 禁用切换
+  - [x] 激活 / 停用（MCP 进程控制）
+  - [x] App 工具列表展示（permissions + tools）
 
 ---
 
@@ -114,8 +152,8 @@
 
 ## 阶段六：多 Agent 协作与完善
 
-- [ ] Meta-Agent（LangGraph 意图路由 + 多 Skill 工作流编排）
+- [ ] Meta-Agent（LangGraph 意图路由 + 多 Agent Skill 工作流编排）
 - [ ] Agent 状态可视化（执行流程图、token 用量）
-- [ ] Skill Marketplace
+- [ ] App Marketplace
 - [ ] 系统级 AI 助手（Cmd+Space 全局搜索）
 - [ ] 性能优化（窗口虚拟化、WebSocket 重连、代码分割）

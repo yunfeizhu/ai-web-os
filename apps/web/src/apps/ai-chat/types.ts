@@ -1,6 +1,7 @@
 export interface ToolCall {
   id: string;
   name: string;
+  displayName?: string | null;
   args: Record<string, unknown>;
   result?: string;
   error?: boolean;
@@ -13,6 +14,7 @@ export interface ChatMessage {
   content: string;
   streaming?: boolean;
   toolCalls?: ToolCall[];
+  cwdLabel?: string;
 }
 
 export interface Conversation {

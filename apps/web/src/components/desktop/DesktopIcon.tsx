@@ -17,6 +17,7 @@ const ICON_STYLE: Record<string, { bg: string }> = {
   "terminal":     { bg: "linear-gradient(180deg, #3A3A3C 0%, #1C1C1E 100%)" },
   "browser":      { bg: "linear-gradient(180deg, #5AC8FA 0%, #0A84FF 100%)" },
   "notes":        { bg: "linear-gradient(180deg, #FFD60A 0%, #FF9F0A 100%)" },
+  "text-editor":  { bg: "linear-gradient(180deg, #7BD4FF 0%, #3B82F6 100%)" },
   "calendar":     { bg: "linear-gradient(180deg, #FF6961 0%, #FF3B30 100%)" },
 };
 
@@ -46,6 +47,7 @@ export function DesktopIcon({ app }: { app: InstalledApp }) {
         openWindow(manifest.id, manifest.name, manifest.icon, {
           size: manifest.ui.defaultSize,
           minSize: manifest.ui.minSize,
+          singleton: manifest.ui.singleton,
         })
       }
     >

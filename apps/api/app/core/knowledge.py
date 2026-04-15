@@ -29,6 +29,8 @@ from qdrant_client.models import (
 )
 from sqlalchemy import delete, select, update
 
+from app.core.object_storage import download_object_bytes, upload_object_bytes
+
 if TYPE_CHECKING:
     import httpx
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,7 +58,7 @@ def init_knowledge_manager(
     embedder_model: str,
     embedder_api_key: str | None = None,
     embedder_api_base: str | None = None,
-    qdrant_url: str = "http://localhost:16333",
+    qdrant_url: str = "http://127.0.0.1:16333",
     max_concurrent_jobs: int = 3,
 ) -> "KnowledgeManager":
     """Create or reuse the singleton knowledge manager."""
@@ -119,44 +121,12 @@ async def extract_text(data: bytes, filename: str) -> str:
 
 def _upload_minio(data: bytes, object_name: str) -> None:
     """Upload a file to MinIO. Intended to run inside an executor."""
-    from minio import Minio
-
-    from app.config import get_settings
-
-    settings = get_settings()
-    client = Minio(
-        settings.minio_endpoint,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key,
-        secure=False,
-    )
-
-    if not client.bucket_exists(settings.minio_bucket):
-        client.make_bucket(settings.minio_bucket)
-
-    client.put_object(settings.minio_bucket, object_name, io.BytesIO(data), len(data))
+    upload_object_bytes(object_name, data)
 
 
 def _download_minio(object_name: str) -> bytes:
     """Download a file from MinIO. Intended to run inside an executor."""
-    from minio import Minio
-
-    from app.config import get_settings
-
-    settings = get_settings()
-    client = Minio(
-        settings.minio_endpoint,
-        access_key=settings.minio_access_key,
-        secret_key=settings.minio_secret_key,
-        secure=False,
-    )
-
-    response = client.get_object(settings.minio_bucket, object_name)
-    try:
-        return response.read()
-    finally:
-        response.close()
-        response.release_conn()
+    return download_object_bytes(object_name)
 
 
 @dataclass(slots=True)

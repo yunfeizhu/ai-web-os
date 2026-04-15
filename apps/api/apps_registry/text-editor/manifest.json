@@ -1,0 +1,19 @@
+{
+  "id": "text-editor",
+  "name": "文本编辑",
+  "version": "1.0.0",
+  "description": "打开并编辑纯文本文件。",
+  "category": "productivity",
+  "permissions": ["filesystem"],
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md"
+  },
+  "tools": [
+    { "name": "read_file", "description": "读取文本文件内容" },
+    { "name": "write_file", "description": "写入纯文本文件内容" }
+  ],
+  "mcp": {
+    "transport": "builtin"
+  }
+}

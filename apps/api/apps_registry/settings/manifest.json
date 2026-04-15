@@ -1,0 +1,16 @@
+{
+  "id": "settings",
+  "name": "设置",
+  "version": "1.0.0",
+  "description": "系统设置、知识库、记忆与 App 管理。",
+  "category": "system",
+  "permissions": [],
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md"
+  },
+  "tools": [],
+  "mcp": {
+    "transport": "builtin"
+  }
+}

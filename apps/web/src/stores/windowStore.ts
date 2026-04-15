@@ -11,7 +11,7 @@ interface WindowManagerState {
     appId: string,
     title: string,
     icon: string,
-    options?: Partial<WindowState>,
+    options?: OpenWindowOptions,
   ) => string;
   closeWindow: (id: string) => void;
   focusWindow: (id: string) => void;
@@ -32,6 +32,11 @@ interface WindowManagerState {
   setWindowState: (id: string, state: WindowDisplayState) => void;
   updateAppState: (id: string, state: Record<string, unknown>) => void;
 }
+
+type OpenWindowOptions = Partial<WindowState> & {
+  singleton?: boolean;
+  instanceKey?: string;
+};
 
 const DEFAULT_SIZE = { width: 960, height: 680 };
 const DEFAULT_MIN_SIZE = { width: 400, height: 300 };
@@ -56,10 +61,15 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
 
   openWindow: (appId, title, icon, options) => {
     const state = get();
-    // 如果该 App 已有窗口且是 singleton，聚焦已有窗口
-    const existing = Object.values(state.windows).find(
-      (w) => w.appId === appId,
-    );
+    const existing = options?.instanceKey
+      ? Object.values(state.windows).find(
+          (w) => w.appId === appId && w.instanceKey === options.instanceKey,
+        )
+      : options?.singleton !== false
+        ? Object.values(state.windows).find(
+            (w) => w.appId === appId,
+          )
+        : undefined;
     if (existing) {
       get().focusWindow(existing.id);
       if (existing.state === "minimized") {
@@ -77,6 +87,7 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
     const newWindow: WindowState = {
       id,
       appId,
+      instanceKey: options?.instanceKey,
       title,
       icon,
       position,

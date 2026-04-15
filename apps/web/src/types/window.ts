@@ -15,6 +15,7 @@ export type WindowDisplayState = "normal" | "minimized" | "maximized";
 export interface WindowState {
   id: string;
   appId: string;
+  instanceKey?: string;
   title: string;
   icon: string;
   position: WindowPosition;

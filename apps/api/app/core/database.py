@@ -9,6 +9,72 @@ class Base(DeclarativeBase):
     pass
 
 
+SCHEMA_PATCHES: dict[str, list[str]] = {
+    "user_settings": [
+        "ADD COLUMN IF NOT EXISTS theme VARCHAR(32) DEFAULT 'light'",
+        "ADD COLUMN IF NOT EXISTS language VARCHAR(16) DEFAULT 'zh-CN'",
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+    ],
+    "desktop_layouts": [
+        "ADD COLUMN IF NOT EXISTS icons JSON DEFAULT '[]'::json",
+        "ADD COLUMN IF NOT EXISTS taskbar_pins JSON DEFAULT '[]'::json",
+        "ADD COLUMN IF NOT EXISTS wallpaper VARCHAR(512) DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS theme VARCHAR(32) DEFAULT 'light'",
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+    ],
+    "conversations": [
+        "ADD COLUMN IF NOT EXISTS user_id VARCHAR(128) DEFAULT 'default'",
+        "ADD COLUMN IF NOT EXISTS app_id VARCHAR(128) DEFAULT 'ai-chat'",
+        "ADD COLUMN IF NOT EXISTS title VARCHAR(255) DEFAULT '新对话'",
+        "ADD COLUMN IF NOT EXISTS model VARCHAR(128) DEFAULT 'claude-sonnet-4-6'",
+        "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+    ],
+    "messages": [
+        "ADD COLUMN IF NOT EXISTS content TEXT",
+        "ADD COLUMN IF NOT EXISTS tool_calls JSON",
+        "ADD COLUMN IF NOT EXISTS tool_call_id VARCHAR(128)",
+        "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+    ],
+    "knowledge_documents": [
+        "ADD COLUMN IF NOT EXISTS source_url VARCHAR(512)",
+        "ADD COLUMN IF NOT EXISTS raw_content TEXT",
+        "ADD COLUMN IF NOT EXISTS chunk_count INTEGER DEFAULT 0",
+        "ADD COLUMN IF NOT EXISTS status VARCHAR(16) DEFAULT 'pending'",
+        "ADD COLUMN IF NOT EXISTS error_msg TEXT",
+        "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+    ],
+    "knowledge_chunks": [
+        "ADD COLUMN IF NOT EXISTS qdrant_point_id VARCHAR(36)",
+    ],
+    "file_entries": [
+        "ADD COLUMN IF NOT EXISTS user_id VARCHAR(128) DEFAULT 'default'",
+        "ADD COLUMN IF NOT EXISTS parent_path VARCHAR(1024) DEFAULT '/'",
+        "ADD COLUMN IF NOT EXISTS kind VARCHAR(16) DEFAULT 'file'",
+        "ADD COLUMN IF NOT EXISTS mime_type VARCHAR(255)",
+        "ADD COLUMN IF NOT EXISTS size INTEGER DEFAULT 0",
+        "ADD COLUMN IF NOT EXISTS storage_key VARCHAR(1024)",
+        "ADD COLUMN IF NOT EXISTS content_text TEXT",
+        "ADD COLUMN IF NOT EXISTS extra JSON DEFAULT '{}'::json",
+        "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+    ],
+    "apps": [
+        "ADD COLUMN IF NOT EXISTS version VARCHAR(64) DEFAULT '0.1.0'",
+        "ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'inactive'",
+        "ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT TRUE",
+        "ADD COLUMN IF NOT EXISTS is_builtin BOOLEAN DEFAULT TRUE",
+        "ADD COLUMN IF NOT EXISTS source_path VARCHAR(1024) DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS manifest JSON DEFAULT '{}'::json",
+        "ADD COLUMN IF NOT EXISTS settings JSON DEFAULT '{}'::json",
+        "ADD COLUMN IF NOT EXISTS last_error TEXT",
+        "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+    ],
+}
+
+
 def create_engine():
     settings = get_settings()
     return create_async_engine(
@@ -37,17 +103,28 @@ async def get_db():
             raise
 
 
+async def apply_development_schema_patches(conn) -> None:
+    """Best-effort schema healing for local/dev databases.
+
+    开发期大量直接演进 ORM 模型时，历史数据库常出现“表已存在但缺少新列”的情况。
+    这里统一维护可重复执行的 ADD COLUMN IF NOT EXISTS 补丁，降低手动迁移成本。
+    """
+    for table_name, statements in SCHEMA_PATCHES.items():
+        for statement in statements:
+            await conn.execute(text(f"ALTER TABLE {table_name} {statement}"))
+
+
 async def init_db():
     """Create all local tables used in development."""
     async with engine.begin() as conn:
-        from app.models import conversation, desktop_layout, knowledge, user_settings  # noqa: F401
+        from app.models import (  # noqa: F401
+            app,
+            conversation,
+            desktop_layout,
+            file_entry,
+            knowledge,
+            user_settings,
+        )
 
         await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(
-            text(
-                """
-                ALTER TABLE knowledge_documents
-                ADD COLUMN IF NOT EXISTS raw_content TEXT
-                """
-            )
-        )
+        await apply_development_schema_patches(conn)

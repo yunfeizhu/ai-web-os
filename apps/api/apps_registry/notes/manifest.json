@@ -1,0 +1,19 @@
+{
+  "id": "notes",
+  "name": "笔记",
+  "version": "1.0.0",
+  "description": "Markdown 编辑与 AI 辅助写作应用。",
+  "category": "productivity",
+  "permissions": ["filesystem"],
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md"
+  },
+  "tools": [
+    { "name": "list_notes", "description": "列出 Notes 目录下的 Markdown 文件" },
+    { "name": "save_note", "description": "保存 Markdown 笔记内容" }
+  ],
+  "mcp": {
+    "transport": "builtin"
+  }
+}

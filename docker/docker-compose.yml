@@ -5,6 +5,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE: http://localhost:18000/api/v1
+        NEXT_PUBLIC_BROWSER_LIVE_BASE: http://localhost:16080
     container_name: ainative-web
     ports:
       - "13000:3000"
@@ -26,6 +27,7 @@ services:
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: ainative-files
       AI_NATIVE_OS_HOME: /root/.ai-native-os
+      BROWSER_RUNTIME_URL: http://browser-runtime:18100
     volumes:
       - api_home:/root/.ai-native-os
     depends_on:
@@ -33,6 +35,16 @@ services:
       - redis
       - minio
       - qdrant
+      - browser-runtime
+
+  browser-runtime:
+    build:
+      context: ..
+      dockerfile: infra/browser-runtime/Dockerfile
+    container_name: ainative-browser-runtime
+    ports:
+      - "18100:18100"
+      - "16080:6080"
 
   postgres:
     image: pgvector/pgvector:pg16

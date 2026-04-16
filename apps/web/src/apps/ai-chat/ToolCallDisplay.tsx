@@ -1,7 +1,22 @@
 ﻿"use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Link, Calculator, Code2, Loader2, CheckCircle2, AlertCircle, BookOpen } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Link,
+  Calculator,
+  Code2,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  BookOpen,
+  Globe,
+  MousePointerClick,
+  Keyboard,
+  Hourglass,
+  XCircle,
+} from "lucide-react";
 import type { ToolCall } from "./types";
 
 const TOOL_META: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
@@ -9,6 +24,15 @@ const TOOL_META: Record<string, { label: string; icon: React.ReactNode; color: s
   calculator:         { label: "计算器",    icon: <Calculator size={13} />, color: "#34C759" },
   python_exec:        { label: "执行代码",  icon: <Code2 size={13} />,      color: "#FF9F0A" },
   retrieve_knowledge: { label: "知识库检索", icon: <BookOpen size={13} />,  color: "#5AC8FA" },
+  browser_create_session: { label: "创建浏览器会话", icon: <Globe size={13} />, color: "#0A84FF" },
+  browser_open: { label: "打开网页", icon: <Globe size={13} />, color: "#0A84FF" },
+  browser_click: { label: "点击页面元素", icon: <MousePointerClick size={13} />, color: "#2563EB" },
+  browser_type: { label: "输入文本", icon: <Keyboard size={13} />, color: "#2563EB" },
+  browser_press: { label: "按键", icon: <Keyboard size={13} />, color: "#2563EB" },
+  browser_wait_for: { label: "等待页面", icon: <Hourglass size={13} />, color: "#F59E0B" },
+  browser_extract_text: { label: "提取页面正文", icon: <BookOpen size={13} />, color: "#14B8A6" },
+  browser_get_state: { label: "读取页面状态", icon: <Globe size={13} />, color: "#6366F1" },
+  browser_close_session: { label: "关闭浏览器会话", icon: <XCircle size={13} />, color: "#EF4444" },
 };
 
 function getArgsSummary(name: string, args: Record<string, unknown>): string {
@@ -20,6 +44,19 @@ function getArgsSummary(name: string, args: Record<string, unknown>): string {
     return firstLine.length > 50 ? firstLine.slice(0, 50) + "…" : firstLine;
   }
   if (name === "retrieve_knowledge") return String(args.query ?? "");
+  if (name === "browser_open") return String(args.url ?? "");
+  if (name === "browser_click" || name === "browser_type" || name === "browser_wait_for") {
+    return String(args.selector ?? "");
+  }
+  if (name === "browser_press") return String(args.key ?? "");
+  if (
+    name === "browser_create_session" ||
+    name === "browser_extract_text" ||
+    name === "browser_get_state" ||
+    name === "browser_close_session"
+  ) {
+    return String(args.session_id ?? "");
+  }
   return JSON.stringify(args).slice(0, 60);
 }
 

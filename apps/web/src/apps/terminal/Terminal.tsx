@@ -8,27 +8,21 @@ import { apiFetch, getActiveModelContext } from "@/lib/backend";
 import { useWindowStore } from "@/stores/windowStore";
 import type { ChatMessage, ToolCall } from "@/apps/ai-chat/types";
 
-const EXAMPLES = [
-  "列出 /Notes 目录",
-  "读取 /Notes/todo.md",
-  "把今天的计划写到 /Notes/today.txt",
-];
-
-// macOS Terminal "Pro" dark theme palette
+// Windows Terminal / CMD inspired palette
 const T = {
-  bg: "#000000",
-  text: "#F0F0F0",
-  muted: "#686868",
-  promptUser: "#00D900",   // ANSI bright green
-  promptAt: "#00D900",
-  promptHost: "#00D900",
-  promptDir: "#00E5E5",    // ANSI bright cyan
-  promptSign: "#F0F0F0",   // white
-  output: "#F0F0F0",
-  error: "#E50000",        // ANSI red
-  toolLabel: "#00E5E5",
-  toolResult: "#BFBFBF",
-  toolError: "#E50000",
+  bg: "#0C0C0C",
+  text: "#CCCCCC",
+  muted: "#8A8A8A",
+  promptUser: "#CCCCCC",
+  promptAt: "#CCCCCC",
+  promptHost: "#CCCCCC",
+  promptDir: "#CCCCCC",
+  promptSign: "#CCCCCC",
+  output: "#CCCCCC",
+  error: "#F48771",
+  toolLabel: "#9CDCFE",
+  toolResult: "#CCCCCC",
+  toolError: "#F48771",
   scrollThumb: "rgba(255,255,255,0.2)",
 };
 
@@ -54,11 +48,18 @@ type TerminalBuiltinResult = {
   nextPath?: string;
 };
 
-
-// Shell prompt prefix: ai-os@mac-mini ~ %
 function PromptPrefix({ dir = "~" }: { dir?: string }) {
   return (
-    <span style={{ fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace", fontSize: 15, lineHeight: "1.6", userSelect: "none", whiteSpace: "nowrap" }}>
+    <span
+      style={{
+        fontFamily:
+          "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
+        fontSize: 15,
+        lineHeight: "1.6",
+        userSelect: "none",
+        whiteSpace: "nowrap",
+      }}
+    >
       <span style={{ color: T.promptUser }}>{USERNAME}</span>
       <span style={{ color: T.promptAt }}>@</span>
       <span style={{ color: T.promptHost }}>{HOSTNAME}</span>
@@ -74,11 +75,16 @@ export function Terminal({ windowId }: { windowId: string }) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [currentPath, setCurrentPath] = useState("/");
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState<number | null>(null);
   const outputRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const focusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyDraftRef = useRef("");
   const ctx = getActiveModelContext();
-  const isFocused = useWindowStore((state) => state.windows[windowId]?.isFocused ?? false);
+  const isFocused = useWindowStore(
+    (state) => state.windows[windowId]?.isFocused ?? false,
+  );
 
   const focusInput = (delay = 30) => {
     if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
@@ -117,11 +123,45 @@ export function Terminal({ windowId }: { windowId: string }) {
     });
   }, [messages, loading]);
 
+  const handleHistoryNavigation = (direction: "up" | "down") => {
+    if (commandHistory.length === 0) return;
+
+    if (direction === "up") {
+      if (historyIndex === null) {
+        historyDraftRef.current = input;
+        const nextIndex = commandHistory.length - 1;
+        setHistoryIndex(nextIndex);
+        setInput(commandHistory[nextIndex] ?? "");
+        return;
+      }
+
+      const nextIndex = Math.max(0, historyIndex - 1);
+      setHistoryIndex(nextIndex);
+      setInput(commandHistory[nextIndex] ?? "");
+      return;
+    }
+
+    if (historyIndex === null) return;
+
+    if (historyIndex >= commandHistory.length - 1) {
+      setHistoryIndex(null);
+      setInput(historyDraftRef.current);
+      return;
+    }
+
+    const nextIndex = historyIndex + 1;
+    setHistoryIndex(nextIndex);
+    setInput(commandHistory[nextIndex] ?? "");
+  };
+
   const sendCommand = async (raw?: string) => {
     const command = (raw ?? input).trim();
     if (!command || loading) return;
 
     const promptDir = formatPromptDir(currentPath);
+    setCommandHistory((prev) => [...prev, command]);
+    setHistoryIndex(null);
+    historyDraftRef.current = "";
 
     try {
       const builtinResult = await executeBuiltinCommand(command, currentPath);
@@ -129,9 +169,20 @@ export function Terminal({ windowId }: { windowId: string }) {
         const nextPath = builtinResult.nextPath ?? currentPath;
         setMessages((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), role: "user" as const, content: command, cwdLabel: promptDir },
+          {
+            id: crypto.randomUUID(),
+            role: "user" as const,
+            content: command,
+            cwdLabel: promptDir,
+          },
           ...(builtinResult.output
-            ? [{ id: crypto.randomUUID(), role: "assistant" as const, content: builtinResult.output }]
+            ? [
+                {
+                  id: crypto.randomUUID(),
+                  role: "assistant" as const,
+                  content: builtinResult.output,
+                },
+              ]
             : []),
         ]);
         setCurrentPath(nextPath);
@@ -142,7 +193,12 @@ export function Terminal({ windowId }: { windowId: string }) {
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { id: crypto.randomUUID(), role: "user" as const, content: command, cwdLabel: promptDir },
+        {
+          id: crypto.randomUUID(),
+          role: "user" as const,
+          content: command,
+          cwdLabel: promptDir,
+        },
         {
           id: crypto.randomUUID(),
           role: "error" as const,
@@ -169,7 +225,12 @@ export function Terminal({ windowId }: { windowId: string }) {
     const assistantId = crypto.randomUUID();
     setMessages((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), role: "user" as const, content: command, cwdLabel: promptDir },
+      {
+        id: crypto.randomUUID(),
+        role: "user" as const,
+        content: command,
+        cwdLabel: promptDir,
+      },
       { id: assistantId, role: "assistant" as const, content: "", streaming: true },
     ]);
     setInput("");
@@ -234,7 +295,9 @@ export function Terminal({ windowId }: { windowId: string }) {
                             displayName: event.displayName ?? t.displayName ?? null,
                             result: event.result,
                             error: event.error,
-                            status: event.error ? ("error" as const) : ("done" as const),
+                            status: event.error
+                              ? ("error" as const)
+                              : ("done" as const),
                           }
                         : t,
                     ),
@@ -301,66 +364,57 @@ export function Terminal({ windowId }: { windowId: string }) {
           animation: mac-blink 1.2s step-end infinite;
         }
         @keyframes mac-blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0;
+          }
         }
       `}</style>
 
       <div
         className="mac-terminal-root flex h-full flex-col overflow-hidden"
-        style={{ background: T.bg, fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace" }}
+        style={{
+          background: T.bg,
+          fontFamily:
+            "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
+        }}
       >
-        {/* Terminal output */}
         <div
           ref={outputRef}
           className="mac-terminal-scroll min-h-0 flex-1 overflow-y-auto px-4 py-3"
           style={{ background: T.bg }}
           onClick={() => inputRef.current?.focus()}
         >
-          {/* Login banner */}
-          <div style={{ color: "#A0A0A0", fontSize: 15, lineHeight: "1.6", marginBottom: 4 }}>
+          <div
+            style={{
+              color: T.text,
+              fontSize: 15,
+              lineHeight: "1.6",
+              marginBottom: 4,
+            }}
+          >
             Last login: {new Date().toUTCString().replace(" GMT", "")} on ttys000
           </div>
 
           {messages.length === 0 ? (
-            <div style={{ fontSize: 15, lineHeight: "1.6" }}>
-              <div style={{ color: T.text, marginBottom: 8 }}>
-                输入自然语言命令，系统将以终端方式响应。
-              </div>
-              <div style={{ color: T.muted, marginBottom: 4, fontSize: 14 }}>示例：</div>
-              {EXAMPLES.map((item) => (
-                <div key={item} style={{ display: "flex", alignItems: "baseline", marginBottom: 2 }}>
-                  <PromptPrefix dir={formatPromptDir(currentPath)} />
-                  <button
-                    onClick={() => void sendCommand(item)}
-                    style={{
-                      color: T.text,
-                      fontSize: 15,
-                      fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
-                      background: "none",
-                      border: "none",
-                      padding: 0,
-                      cursor: "pointer",
-                      textAlign: "left",
-                      textDecoration: "underline",
-                      textDecorationColor: "rgba(240,240,240,0.3)",
-                    }}
-                  >
-                    {item}
-                  </button>
-                </div>
-              ))}
+            <div style={{ fontSize: 15, lineHeight: "1.6", color: T.text }}>
+              输入自然语言命令，系统将以终端方式响应。
             </div>
           ) : (
             <div>
               {messages.map((message) => (
-                <TerminalEntry key={message.id} message={message} loading={loading} />
+                <TerminalEntry
+                  key={message.id}
+                  message={message}
+                  loading={loading}
+                />
               ))}
             </div>
           )}
         </div>
 
-        {/* Input line — styled as terminal prompt */}
         <div
           style={{
             background: T.bg,
@@ -375,12 +429,35 @@ export function Terminal({ windowId }: { windowId: string }) {
         >
           <div style={{ display: "flex", alignItems: "baseline" }}>
             <PromptPrefix dir={formatPromptDir(currentPath)} />
-            <div style={{ position: "relative", flex: 1, display: "flex", alignItems: "center" }}>
+            <div
+              style={{
+                position: "relative",
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
               <input
                 ref={inputRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setInput(nextValue);
+                  if (historyIndex === null) {
+                    historyDraftRef.current = nextValue;
+                  }
+                }}
                 onKeyDown={(e) => {
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    handleHistoryNavigation("up");
+                    return;
+                  }
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    handleHistoryNavigation("down");
+                    return;
+                  }
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     void sendCommand();
@@ -392,7 +469,8 @@ export function Terminal({ windowId }: { windowId: string }) {
                 className="w-full bg-transparent outline-none"
                 style={{
                   color: T.text,
-                  fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
+                  fontFamily:
+                    "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
                   fontSize: 15,
                   lineHeight: "1.6",
                   caretColor: T.text,
@@ -401,7 +479,18 @@ export function Terminal({ windowId }: { windowId: string }) {
                 }}
               />
               {loading && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, color: T.muted, fontSize: 13, marginLeft: 6, whiteSpace: "nowrap", flexShrink: 0 }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                    color: T.muted,
+                    fontSize: 13,
+                    marginLeft: 6,
+                    whiteSpace: "nowrap",
+                    flexShrink: 0,
+                  }}
+                >
                   <Loader2 size={11} className="animate-spin" />
                   执行中…
                 </span>
@@ -425,7 +514,14 @@ function TerminalEntry({
     return (
       <div style={{ display: "flex", alignItems: "baseline", marginBottom: 2 }}>
         <PromptPrefix dir={message.cwdLabel || "~"} />
-        <span style={{ color: T.text, fontSize: 15, lineHeight: "1.6", whiteSpace: "pre-wrap" }}>
+        <span
+          style={{
+            color: T.text,
+            fontSize: 15,
+            lineHeight: "1.6",
+            whiteSpace: "pre-wrap",
+          }}
+        >
           {message.content}
         </span>
       </div>
@@ -434,7 +530,6 @@ function TerminalEntry({
 
   return (
     <div style={{ marginBottom: 10, paddingLeft: 0 }}>
-      {/* Tool calls */}
       {message.toolCalls?.length ? (
         <div style={{ marginBottom: 4 }}>
           {message.toolCalls.map((tool) => (
@@ -443,14 +538,14 @@ function TerminalEntry({
         </div>
       ) : null}
 
-      {/* Output text */}
       {(message.content || message.streaming || loading) && (
         <pre
           style={{
             color: message.role === "error" ? T.error : T.output,
             fontSize: 15,
             lineHeight: "1.6",
-            fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
+            fontFamily:
+              "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
             whiteSpace: "pre-wrap",
             margin: 0,
             padding: 0,
@@ -531,7 +626,9 @@ async function executeBuiltinCommand(
   const enterDriveMatch = trimmed.match(/^进入\s*([a-zA-Z])\s*盘$/i);
   if (enterDriveMatch) {
     const nextPath = `/${enterDriveMatch[1].toUpperCase()}`;
-    const response = await apiFetch<FilesResponse>(`/files?path=${encodeURIComponent(nextPath)}`);
+    const response = await apiFetch<FilesResponse>(
+      `/files?path=${encodeURIComponent(nextPath)}`,
+    );
     return {
       nextPath,
       output: response.entries.length
@@ -543,7 +640,9 @@ async function executeBuiltinCommand(
   const listCommand = parseListCommand(trimmed);
   if (listCommand) {
     const targetPath = resolveTerminalPath(listCommand.path ?? ".", currentPath);
-    const response = await apiFetch<FilesResponse>(`/files?path=${encodeURIComponent(targetPath)}`);
+    const response = await apiFetch<FilesResponse>(
+      `/files?path=${encodeURIComponent(targetPath)}`,
+    );
     return {
       output: response.entries.length
         ? response.entries.map(formatEntryLine).join("\n")
@@ -587,7 +686,6 @@ function ToolLog({ tool }: { tool: ToolCall }) {
 
   return (
     <div style={{ marginBottom: 2 }}>
-      {/* Tool header line */}
       <div
         style={{
           display: "flex",
@@ -600,24 +698,31 @@ function ToolLog({ tool }: { tool: ToolCall }) {
         }}
         onClick={() => setOpen((v) => !v)}
       >
-        <span style={{
-          color: T.muted,
-          display: "inline-block",
-          transform: open ? "rotate(90deg)" : "rotate(0deg)",
-          transition: "transform 0.15s ease",
-        }}>▶</span>
+        <span
+          style={{
+            color: T.muted,
+            display: "inline-block",
+            transform: open ? "rotate(90deg)" : "rotate(0deg)",
+            transition: "transform 0.15s ease",
+          }}
+        >
+          ▶
+        </span>
         <span style={{ color: tool.status === "error" ? T.toolError : T.toolLabel }}>
-          {tool.status === "running" && <Loader2 size={11} className="animate-spin" style={{ display: "inline", marginRight: 4 }} />}
+          {tool.status === "running" && (
+            <Loader2
+              size={11}
+              className="animate-spin"
+              style={{ display: "inline", marginRight: 4 }}
+            />
+          )}
           [{tool.displayName || tool.name}]
         </span>
-        <span style={{ color: T.muted }}>
-          {getToolSummary(tool)}
-        </span>
+        <span style={{ color: T.muted }}>{getToolSummary(tool)}</span>
         {tool.status === "done" && <span style={{ color: "#00D900" }}>✓</span>}
         {tool.status === "error" && <span style={{ color: T.toolError }}>✗</span>}
       </div>
 
-      {/* Tool result */}
       {open && tool.result && (
         <pre
           style={{
@@ -625,10 +730,13 @@ function ToolLog({ tool }: { tool: ToolCall }) {
             padding: "2px 0",
             fontSize: 14,
             lineHeight: "1.5",
-            fontFamily: "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
+            fontFamily:
+              "'Cascadia Code', 'Cascadia Mono', Consolas, Menlo, 'SF Mono', Monaco, 'Courier New', monospace",
             color: tool.error ? T.toolError : T.toolResult,
             whiteSpace: "pre-wrap",
-            borderLeft: `2px solid ${tool.error ? "rgba(229,0,0,0.3)" : "rgba(0,230,230,0.2)"}`,
+            borderLeft: `2px solid ${
+              tool.error ? "rgba(229,0,0,0.3)" : "rgba(0,230,230,0.2)"
+            }`,
             paddingLeft: 8,
           }}
         >
@@ -639,9 +747,7 @@ function ToolLog({ tool }: { tool: ToolCall }) {
   );
 }
 
-// Strip markdown code fences that the model may still emit
 function stripCodeFences(text: string): string {
-  // Remove ```lang ... ``` or ``` ... ```
   return text.replace(/^```[^\n]*\n?([\s\S]*?)```\s*$/gm, "$1").trim();
 }
 

@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from app.core.app_registry import get_app_registry
+from app.core.browser_tools import BROWSER_TOOL_SCHEMAS, dispatch_browser_tool
 from app.core.database import AsyncSessionLocal
 
 BUILTIN_TOOL_SCHEMAS: list[dict] = [
@@ -128,6 +129,8 @@ BUILTIN_TOOL_SCHEMAS: list[dict] = [
         },
     },
 ]
+
+BUILTIN_TOOL_SCHEMAS.extend(BROWSER_TOOL_SCHEMAS)
 
 RETRIEVE_KNOWLEDGE_SCHEMA: dict = {
     "type": "function",
@@ -390,7 +393,7 @@ async def execute_tool(
         rows = await list_entries(None, str(args.get("path", "/")))
         if not rows:
             return "目录为空。"
-        lines = [f"{'馃搧' if row.kind == 'dir' else '馃搫'} {row.path}" for row in rows]
+        lines = [f"{'📁' if row.kind == 'dir' else '📄'} {row.path}" for row in rows]
         return "\n".join(lines)
 
     if name == "read_file":
@@ -429,6 +432,9 @@ async def execute_tool(
                 f"{index}. 【{result['title']}】（相关度 {result['score']:.2f}）\n{result['content']}"
             )
         return "\n\n".join(lines)
+
+    if name.startswith("browser_"):
+        return await dispatch_browser_tool(name, args)
 
     routes = await _list_external_mcp_tool_routes()
     route = next((item for item in routes if item["alias"] == name), None)

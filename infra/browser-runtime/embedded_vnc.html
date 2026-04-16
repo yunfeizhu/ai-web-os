@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Embedded noVNC</title>
+    <style>
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #f8fafc;
+        }
+
+        body {
+            position: relative;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        #screen {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            background: #f8fafc;
+        }
+
+        body.precise-mode #screen {
+            overflow: auto;
+            background: #eef2f7;
+        }
+
+        #screen canvas {
+            display: block;
+        }
+
+        #status {
+            position: absolute;
+            left: 16px;
+            bottom: 16px;
+            z-index: 10;
+            max-width: min(420px, calc(100vw - 32px));
+            padding: 10px 14px;
+            border-radius: 14px;
+            background: rgba(15, 23, 42, 0.72);
+            color: rgba(255, 255, 255, 0.94);
+            backdrop-filter: blur(12px);
+            font-size: 12px;
+            line-height: 1.5;
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.2);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 160ms ease;
+        }
+
+        #status.visible {
+            opacity: 1;
+        }
+
+        #status.error {
+            background: rgba(185, 28, 28, 0.84);
+        }
+    </style>
+</head>
+<body>
+    <div id="screen"></div>
+    <div id="status" aria-live="polite"></div>
+
+    <script src="vendor/promise.js"></script>
+    <script type="module">
+        import * as WebUtil from "./app/webutil.js";
+        import RFB from "./core/rfb.js";
+
+        let rfb;
+        let desktopName = "";
+        let pendingWheelX = 0;
+        let pendingWheelY = 0;
+        let wheelFlushScheduled = false;
+
+        const screen = document.getElementById("screen");
+        const status = document.getElementById("status");
+        const urlParams = new URLSearchParams(window.location.search);
+        const sessionId = urlParams.get("session_id") || "";
+        const apiBase = (urlParams.get("api_base") || "").replace(/\/$/, "");
+        const preciseMode = WebUtil.getConfigVar("precise", false);
+
+        if (preciseMode) {
+            document.body.classList.add("precise-mode");
+        }
+
+        function showStatus(text, level = "normal", persistent = false) {
+            if (!status) return;
+
+            status.textContent = text;
+            status.className = level === "error" ? "visible error" : "visible";
+
+            if (!persistent) {
+                window.clearTimeout(showStatus._timer);
+                showStatus._timer = window.setTimeout(() => {
+                    status.className = "";
+                }, 1600);
+            }
+        }
+
+        function buildWebSocketUrl() {
+            const host = WebUtil.getConfigVar("host", window.location.hostname);
+            let port = WebUtil.getConfigVar("port", window.location.port);
+            const path = WebUtil.getConfigVar("path", "websockify");
+            const encrypt = WebUtil.getConfigVar("encrypt", window.location.protocol === "https:");
+
+            if (!port) {
+                port = encrypt ? 443 : 80;
+            }
+
+            const protocol = encrypt ? "wss" : "ws";
+            return `${protocol}://${host}:${port}/${path}`;
+        }
+
+        function requestPassword() {
+            const password = window.prompt("VNC password required");
+            if (password && rfb) {
+                rfb.sendCredentials({ password });
+            }
+        }
+
+        async function flushWheel() {
+            wheelFlushScheduled = false;
+
+            if (!apiBase || !sessionId) {
+                pendingWheelX = 0;
+                pendingWheelY = 0;
+                return;
+            }
+
+            const deltaX = pendingWheelX;
+            const deltaY = pendingWheelY;
+            pendingWheelX = 0;
+            pendingWheelY = 0;
+
+            try {
+                await fetch(`${apiBase}/sessions/${encodeURIComponent(sessionId)}/wheel`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        delta_x: deltaX,
+                        delta_y: deltaY,
+                    }),
+                    mode: "cors",
+                    credentials: "omit",
+                });
+            } catch (error) {
+                showStatus("滚动同步失败", "error");
+            }
+        }
+
+        function handleWheel(event) {
+            if (!apiBase || !sessionId) {
+                return;
+            }
+
+            pendingWheelX += event.deltaX;
+            pendingWheelY += event.deltaY;
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (!wheelFlushScheduled) {
+                wheelFlushScheduled = true;
+                window.requestAnimationFrame(() => {
+                    void flushWheel();
+                });
+            }
+        }
+
+        try {
+            rfb = new RFB(screen, buildWebSocketUrl(), {
+                repeaterID: WebUtil.getConfigVar("repeaterID", ""),
+                shared: WebUtil.getConfigVar("shared", true),
+                credentials: {
+                    password: WebUtil.getConfigVar("password", ""),
+                },
+            });
+
+            rfb.viewOnly = WebUtil.getConfigVar("view_only", false);
+            rfb.scaleViewport = preciseMode ? false : WebUtil.getConfigVar("scale", true);
+            rfb.resizeSession = WebUtil.getConfigVar("resize", false);
+            rfb.clipViewport = false;
+            rfb.background = "#f8fafc";
+
+            rfb.addEventListener("desktopname", (event) => {
+                desktopName = event.detail.name || "";
+            });
+
+            rfb.addEventListener("connect", () => {
+                status.className = "";
+                if (preciseMode) {
+                    showStatus("精准模式已开启，当前按原始像素显示，可滚动查看完整页面。");
+                }
+            });
+
+            rfb.addEventListener("disconnect", (event) => {
+                if (event.detail.clean) {
+                    status.className = "";
+                    return;
+                }
+                showStatus("浏览器连接异常断开", "error", true);
+            });
+
+            rfb.addEventListener("credentialsrequired", () => {
+                requestPassword();
+            });
+
+            screen.addEventListener("wheel", handleWheel, {
+                passive: false,
+                capture: true,
+            });
+
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to initialize noVNC";
+            showStatus(message, "error", true);
+        }
+    </script>
+</body>
+</html>

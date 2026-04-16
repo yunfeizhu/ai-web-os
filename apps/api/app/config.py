@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     debug: bool = True
+    browser_session_enabled: bool = True
+    browser_runtime_url: str = "http://127.0.0.1:18100"
 
     # 安全
     secret_key: str = "change-me-in-production"

@@ -1,6 +1,7 @@
 "use client";
 
 import { AiChat } from "@/apps/ai-chat/AiChat";
+import { Browser } from "@/apps/browser/Browser";
 import { FileManager } from "@/apps/file-manager/FileManager";
 import { Notes } from "@/apps/notes/Notes";
 import { Settings } from "@/apps/settings/Settings";
@@ -25,7 +26,7 @@ export function AppRenderer({ appId, appState, windowId }: AppRendererProps) {
     case "terminal":
       return <Terminal windowId={windowId} />;
     case "browser":
-      return <PlaceholderApp name="浏览器" description="浏览器功能正在开发中，敬请期待。" />;
+      return <Browser appState={appState} windowId={windowId} />;
     case "notes":
       return <Notes />;
     case "text-editor":

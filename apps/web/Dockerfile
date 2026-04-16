@@ -14,7 +14,9 @@ RUN corepack enable
 WORKDIR /app
 
 ARG NEXT_PUBLIC_API_BASE=http://localhost:18000/api/v1
+ARG NEXT_PUBLIC_BROWSER_LIVE_BASE=http://localhost:16080
 ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
+ENV NEXT_PUBLIC_BROWSER_LIVE_BASE=${NEXT_PUBLIC_BROWSER_LIVE_BASE}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/package.json ./apps/web/package.json

@@ -4,6 +4,8 @@
   "scripts": {
     "dev": "turbo dev",
     "api:dev": "cd apps/api && uv run uvicorn app.main:app --reload",
+    "browser-runtime:build": "docker build -f infra/browser-runtime/Dockerfile -t ai-native-os/browser-runtime:dev .",
+    "browser-runtime:dev": "docker run --rm -p 18100:18100 ai-native-os/browser-runtime:dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "clean": "turbo clean"

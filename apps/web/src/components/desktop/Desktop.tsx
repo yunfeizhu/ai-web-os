@@ -10,6 +10,7 @@ import { useWindowStore } from "@/stores/windowStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { BUILTIN_APPS } from "@/lib/app-registry";
 import { DesktopClock } from "./DesktopClock";
+import { API_BASE } from "@/lib/backend";
 
 // macOS 风格壁纸 — Unsplash 免费可商用
 const WALLPAPERS = {
@@ -67,7 +68,7 @@ export function Desktop() {
         }
         if (!llmModel) return;
 
-        await fetch("http://localhost:8000/api/v1/memory/init", {
+        await fetch(`${API_BASE}/memory/init`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -83,7 +84,7 @@ export function Desktop() {
           }),
         });
 
-        await fetch("http://localhost:8000/api/v1/knowledge/init", {
+        await fetch(`${API_BASE}/knowledge/init`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

@@ -20,6 +20,7 @@ ENV NEXT_PUBLIC_BROWSER_LIVE_BASE=${NEXT_PUBLIC_BROWSER_LIVE_BASE}
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/apps/web/package.json ./apps/web/package.json
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 
 RUN pnpm --filter web build

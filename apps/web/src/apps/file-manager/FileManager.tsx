@@ -36,7 +36,7 @@ import {
   isSpreadsheetFileName,
   parseSpreadsheetBuffer,
 } from "@/apps/spreadsheet-viewer/spreadsheet-utils";
-import { apiFetch } from "@/lib/backend";
+import { apiFetch, buildApiUrl } from "@/lib/backend";
 import { downloadFileBuffer, invalidateFileBufferCache } from "@/lib/file-download-cache";
 import { invalidateFileTextCache, loadFileText } from "@/lib/file-text-cache";
 import { useDesktopStore } from "@/stores/desktopStore";
@@ -407,13 +407,10 @@ export function FileManager() {
   const uploadRawFile = async (file: File) => {
     const form = new FormData();
     form.append("file", file);
-    await fetch(
-      `http://localhost:8000/api/v1/files/upload?path=${encodeURIComponent(currentPath)}`,
-      {
-        method: "POST",
-        body: form,
-      },
-    );
+    await fetch(buildApiUrl(`/files/upload?path=${encodeURIComponent(currentPath)}`), {
+      method: "POST",
+      body: form,
+    });
     await refresh();
   };
 
@@ -1366,7 +1363,7 @@ function isDrivePath(path: string) {
 }
 
 function getDownloadUrl(entry: FileEntry) {
-  return `http://localhost:8000/api/v1/files/${entry.id}/download`;
+  return buildApiUrl(`/files/${entry.id}/download`);
 }
 
 function getPreviewKind(entry: FileEntry | null) {

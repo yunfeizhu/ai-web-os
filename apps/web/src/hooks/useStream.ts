@@ -1,6 +1,28 @@
 "use client";
 
-const WS_URL = "ws://localhost:8000/ws";
+import { API_BASE, DEFAULT_API_BASE } from "@/lib/backend";
+
+const STREAM_IDLE_TIMEOUT_MS = 45_000;
+
+function resolveWebSocketUrl() {
+  const httpBase = API_BASE.replace(/\/api\/v1\/?$/, "");
+  const fallbackWsBase = DEFAULT_API_BASE.replace(/\/api\/v1\/?$/, "").replace(/^http/i, "ws");
+  if (/^https?:\/\//i.test(httpBase)) {
+    return `${httpBase.replace(/^http/i, "ws")}/ws`;
+  }
+
+  if (typeof window !== "undefined") {
+    const url = new URL(httpBase || "/", window.location.origin);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = "/ws";
+    url.search = "";
+    return url.toString();
+  }
+
+  return `${fallbackWsBase}/ws`;
+}
+
+const WS_URL = resolveWebSocketUrl();
 
 export interface ToolCallEvent {
   id: string;
@@ -52,6 +74,7 @@ type PendingHandler = {
   onToolCall?: (event: ToolCallEvent) => void;
   onToolResult?: (event: ToolResultEvent) => void;
   onStatus?: (status: string, event?: Record<string, unknown>) => void;
+  touch: () => void;
   resolve: (result: { title: string }) => void;
   reject: (err: Error) => void;
   aborted: () => boolean;
@@ -108,22 +131,28 @@ class WsManager {
 
         switch (type) {
           case "status":
+            handler.touch();
             handler.onStatus?.(payload.status as string, payload);
             break;
           case "token":
+            handler.touch();
             handler.onToken(payload.token as string);
             break;
           case "tool_call":
+            handler.touch();
             handler.onToolCall?.(payload as unknown as ToolCallEvent);
             break;
           case "tool_result":
+            handler.touch();
             handler.onToolResult?.(payload as unknown as ToolResultEvent);
             break;
           case "agent_done":
+            handler.touch();
             this.pending.delete(requestId);
             handler.resolve({ title: (payload.title as string) ?? "" });
             break;
           case "agent_error":
+            handler.touch();
             this.pending.delete(requestId);
             handler.reject(new Error((payload.error as string) ?? "未知错误"));
             break;
@@ -157,12 +186,32 @@ export async function streamChat(
 
   return new Promise((resolve, reject) => {
     let aborted = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+
+    const clearIdleTimer = () => {
+      if (timeoutHandle !== null) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+    };
+
+    const touch = () => {
+      clearIdleTimer();
+      timeoutHandle = setTimeout(() => {
+        aborted = true;
+        wsManager.abort(requestId);
+        reject(new Error("聊天连接等待超时，工具调用可能卡住了。请重试一次。"));
+      }, STREAM_IDLE_TIMEOUT_MS);
+    };
 
     signal?.addEventListener("abort", () => {
       aborted = true;
+      clearIdleTimer();
       wsManager.abort(requestId);
       reject(new DOMException("Aborted", "AbortError"));
     });
+
+    touch();
 
     wsManager.send(
       requestId,
@@ -187,8 +236,15 @@ export async function streamChat(
         onToolCall: params.onToolCall,
         onToolResult: params.onToolResult,
         onStatus: params.onStatus,
-        resolve,
-        reject,
+        touch,
+        resolve: (result) => {
+          clearIdleTimer();
+          resolve(result);
+        },
+        reject: (error) => {
+          clearIdleTimer();
+          reject(error);
+        },
         aborted: () => aborted,
       },
     );

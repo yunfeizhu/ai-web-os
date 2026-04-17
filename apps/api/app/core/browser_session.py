@@ -154,6 +154,26 @@ class BrowserSessionManager:
             },
         )
 
+    async def request_human(
+        self,
+        session_id: str,
+        reason: str,
+        wait_for_resume: bool = True,
+        timeout_ms: int = 600000,
+    ) -> dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/sessions/{session_id}/request-human",
+            json={
+                "reason": reason,
+                "wait_for_resume": wait_for_resume,
+                "timeout_ms": timeout_ms,
+            },
+        )
+
+    async def resume(self, session_id: str) -> dict[str, Any]:
+        return await self._request("POST", f"/sessions/{session_id}/resume")
+
     async def click(self, session_id: str, selector: str) -> str:
         payload = await self._request(
             "POST", f"/sessions/{session_id}/click", json={"selector": selector}

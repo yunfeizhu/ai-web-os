@@ -4,21 +4,30 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
+  BookOpen,
   Cookie,
   Globe,
   Loader2,
   Monitor,
   Plus,
+  Play,
   RefreshCw,
+  Save,
   SendHorizontal,
   Sparkles,
   Trash2,
   UserRound,
   X,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import type { Components } from "react-markdown";
 
-import { apiFetch, completeOnce } from "@/lib/backend";
+import { apiFetch, API_BASE, completeOnce } from "@/lib/backend";
 import { useWindowStore } from "@/stores/windowStore";
+import { useSettingsStore } from "@/stores/settingsStore";
 
 const LIVE_BASE_FROM_ENV = (
   process.env.NEXT_PUBLIC_BROWSER_LIVE_BASE || ""
@@ -36,6 +45,8 @@ interface BrowserRuntime {
 
 interface BrowserSessionSummary {
   id: string;
+  status?: string;
+  takeover_reason?: string | null;
   current_url: string;
   current_title: string;
   created_at: string;
@@ -53,6 +64,7 @@ interface BrowserTab {
 
 interface BrowserSessionDetail extends BrowserSessionSummary {
   tabs: BrowserTab[];
+  action_log?: { ts: string; action: string; detail: string }[];
 }
 
 interface ExtractResponse {
@@ -60,6 +72,32 @@ interface ExtractResponse {
   url: string;
   content: string;
   truncated: boolean;
+}
+
+interface BrowserLoginProfile {
+  id: string;
+  label: string;
+  site_url: string;
+  site_host: string;
+  cookie_count: number;
+  source_session_id: string | null;
+  created_at: string;
+  updated_at: string;
+  last_used_at: string | null;
+}
+
+interface BrowserSessionHistory {
+  id: string;
+  status: string;
+  current_url: string;
+  current_title: string;
+  tab_count: number;
+  takeover_reason: string | null;
+  last_error: string | null;
+  action_log: { ts: string; action: string; detail: string }[];
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
 }
 
 interface BrowserChatMessage {
@@ -100,6 +138,53 @@ interface BrowserAgentStepPlan {
   reply: string;
   action: BrowserAutomationAction | null;
 }
+
+const browserMarkdownComponents: Components = {
+  code({ className, children, ...props }) {
+    const match = /language-(\w+)/.exec(className ?? "");
+    const isBlock = !!match || String(children).includes("\n");
+
+    if (isBlock) {
+      const lang = match?.[1] ?? "text";
+      const code = String(children).replace(/\n$/, "");
+      return (
+        <SyntaxHighlighter
+          language={lang}
+          style={oneLight}
+          customStyle={{
+            margin: "0.6em 0",
+            padding: "0.8em 1em",
+            fontSize: "0.92em",
+            background: "rgba(15, 23, 42, 0.04)",
+            borderRadius: 12,
+            border: "1px solid rgba(18, 30, 56, 0.08)",
+          }}
+          codeTagProps={{
+            style: { fontFamily: "var(--font-mono, ui-monospace, monospace)" },
+          }}
+        >
+          {code}
+        </SyntaxHighlighter>
+      );
+    }
+
+    return (
+      <code
+        className={className}
+        style={{
+          fontFamily: "var(--font-mono, ui-monospace, monospace)",
+          fontSize: "0.95em",
+          background: "rgba(15, 23, 42, 0.06)",
+          padding: "0.14em 0.42em",
+          borderRadius: 6,
+        }}
+        {...props}
+      >
+        {children}
+      </code>
+    );
+  },
+};
 
 function normalizeUrl(input: string) {
   const trimmed = input.trim();
@@ -163,6 +248,13 @@ function formatBrowserErrorMessage(
         : "";
   if (!raw.trim()) return fallback;
 
+  try {
+    const parsed = JSON.parse(raw) as { detail?: unknown };
+    if (typeof parsed.detail === "string" && parsed.detail.trim()) {
+      return parsed.detail;
+    }
+  } catch {}
+
   const textMatch = raw.match(/get_by_text\("([^"]+)"\)/);
   const selectorMatch =
     raw.match(/selector[:=]\s*([^\n]+)/i) ||
@@ -176,8 +268,8 @@ function formatBrowserErrorMessage(
         : "点击失败：目标元素当前被其他内容遮挡，暂时无法点击。";
     }
     return target
-      ? `点击失败：未能在页面稳定后点击 ${target}。`
-      : "点击失败：页面在超时前没有进入可点击状态。";
+      ? `点击失败：未能在页面稳定后点击 ${target}。通常是页面刚刷新、列表重排、元素被顶开，或者这个元素已经变了。`
+      : "点击失败：页面在超时前没有进入可点击状态，通常是页面仍在变化、元素被遮挡，或者目标已经改变。";
   }
 
   if (raw.includes("Timeout") && raw.includes("wait")) {
@@ -374,6 +466,7 @@ function sleep(ms: number) {
 
 export function Browser({ appState, windowId }: BrowserProps) {
   const updateAppState = useWindowStore((state) => state.updateAppState);
+  const embeddingConfig = useSettingsStore((state) => state.embeddingConfig);
 
   const [runtime, setRuntime] = useState<BrowserRuntime>({
     ready: false,
@@ -395,6 +488,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
   const [chatInput, setChatInput] = useState(
     typeof appState?.chatInput === "string" ? appState.chatInput : "",
   );
+  const [notice, setNotice] = useState("");
   const [summaryError, setSummaryError] = useState(
     typeof appState?.summaryError === "string" ? appState.summaryError : "",
   );
@@ -418,6 +512,21 @@ export function Browser({ appState, windowId }: BrowserProps) {
   const [cookieHeader, setCookieHeader] = useState("");
   const [cookieJsonInput, setCookieJsonInput] = useState("");
   const [cookieLoading, setCookieLoading] = useState(false);
+  const [profilesDialogOpen, setProfilesDialogOpen] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<"profiles" | "history">("profiles");
+  const [profileScope, setProfileScope] = useState<"current" | "all">("current");
+  const [profilesLoading, setProfilesLoading] = useState(false);
+  const [savedProfiles, setSavedProfiles] = useState<BrowserLoginProfile[]>([]);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [applyingProfileId, setApplyingProfileId] = useState("");
+  const [deletingProfileId, setDeletingProfileId] = useState("");
+  const [historySessions, setHistorySessions] = useState<BrowserSessionHistory[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<"all" | "active" | "closed">("all");
+  const [expandedHistoryId, setExpandedHistoryId] = useState("");
+  const [switchingHistoryId, setSwitchingHistoryId] = useState("");
+  const [reopeningHistoryId, setReopeningHistoryId] = useState("");
+  const [savingKnowledge, setSavingKnowledge] = useState(false);
   const isEditingUrlRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -464,7 +573,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
       typeof window === "undefined"
         ? "http://localhost:18100"
         : `${window.location.protocol}//${window.location.hostname}:18100`;
-    return `${liveBase}/embedded_vnc.html?autoconnect=1&scale=${preciseControl ? 0 : 1}&precise=${preciseControl ? 1 : 0}&path=websockify&reconnect=1&session_id=${encodeURIComponent(activeSessionId)}&api_base=${encodeURIComponent(apiBase)}`;
+    return `${liveBase}/embedded_vnc.html?autoconnect=1&scale=${preciseControl ? 0 : 1}&precise=${preciseControl ? 1 : 0}&view_only=0&path=websockify&reconnect=1&session_id=${encodeURIComponent(activeSessionId)}&api_base=${encodeURIComponent(apiBase)}`;
   }, [activeSessionId, liveBase, preciseControl]);
 
   const updateChatMessage = (
@@ -540,11 +649,18 @@ export function Browser({ appState, windowId }: BrowserProps) {
     }
   };
 
+  const resolveCurrentSiteUrl = () => {
+    if (detail?.current_url && detail.current_url !== "about:blank") {
+      return detail.current_url;
+    }
+    if (urlInput.trim() && urlInput.trim() !== "about:blank") {
+      return urlInput.trim();
+    }
+    return "";
+  };
+
   const openCookieDialog = () => {
-    const nextSiteUrl =
-      detail?.current_url && detail.current_url !== "about:blank"
-        ? detail.current_url
-        : urlInput.trim();
+    const nextSiteUrl = resolveCurrentSiteUrl();
     setCookieImportMode("header");
     setCookieSiteUrl(nextSiteUrl);
     setCookieHeader("");
@@ -555,6 +671,329 @@ export function Browser({ appState, windowId }: BrowserProps) {
   const closeCookieDialog = () => {
     if (cookieLoading) return;
     setCookieDialogOpen(false);
+  };
+
+  const loadProfiles = async (
+    scope: "current" | "all" = profileScope,
+    siteUrl?: string,
+  ) => {
+    const effectiveSiteUrl =
+      scope === "current" ? siteUrl?.trim() || resolveCurrentSiteUrl() : "";
+    if (scope === "current" && !effectiveSiteUrl) {
+      setSavedProfiles([]);
+      return [];
+    }
+    const query = effectiveSiteUrl
+      ? `?site_url=${encodeURIComponent(effectiveSiteUrl)}`
+      : "";
+    const data = await apiFetch<BrowserLoginProfile[]>(`/browser/profiles${query}`);
+    setSavedProfiles(data);
+    return data;
+  };
+
+  const handleRefreshProfiles = async (
+    scope: "current" | "all" = profileScope,
+  ) => {
+    setProfilesLoading(true);
+    setSummaryError("");
+    try {
+      await loadProfiles(scope);
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "读取已保存登录态失败。",
+      );
+    } finally {
+      setProfilesLoading(false);
+    }
+  };
+
+  const loadHistorySessions = async (
+    status: "all" | "active" | "closed" = historyFilter,
+  ) => {
+    const query =
+      status === "all" ? "" : `?status=${encodeURIComponent(status)}`;
+    const data = await apiFetch<BrowserSessionHistory[]>(
+      `/browser/history-sessions${query}`,
+    );
+    setHistorySessions(data);
+    return data;
+  };
+
+  const openLibraryDialog = async (
+    initialTab: "profiles" | "history" = "profiles",
+  ) => {
+    setProfilesDialogOpen(true);
+    setLibraryTab(initialTab);
+    setSummaryError("");
+    setNotice("");
+    if (initialTab === "profiles") {
+      const suggestedScope = resolveCurrentSiteUrl() ? "current" : "all";
+      setProfileScope(suggestedScope);
+      await handleRefreshProfiles(suggestedScope);
+      return;
+    }
+
+    setHistoryLoading(true);
+    try {
+      await loadHistorySessions(initialTab === "history" ? historyFilter : "all");
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "读取历史会话失败。",
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleChangeLibraryTab = async (nextTab: "profiles" | "history") => {
+    setLibraryTab(nextTab);
+    setSummaryError("");
+    if (nextTab === "profiles" && savedProfiles.length === 0 && !profilesLoading) {
+      await handleRefreshProfiles(profileScope);
+      return;
+    }
+
+    if (nextTab === "history" && historySessions.length === 0 && !historyLoading) {
+      setHistoryLoading(true);
+      try {
+        await loadHistorySessions();
+      } finally {
+        setHistoryLoading(false);
+      }
+    }
+  };
+
+  const handleChangeProfileScope = async (nextScope: "current" | "all") => {
+    if (nextScope === profileScope) return;
+    setProfileScope(nextScope);
+    await handleRefreshProfiles(nextScope);
+  };
+
+  const handleSaveLoginProfile = async () => {
+    if (!activeSessionId) {
+      setSummaryError("请先创建一个浏览器会话，再保存登录态。");
+      return;
+    }
+    setSavingProfile(true);
+    setSummaryError("");
+    setNotice("");
+    try {
+      const data = await apiFetch<BrowserLoginProfile>(
+        `/browser/sessions/${activeSessionId}/profiles`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            label:
+              detail?.current_title && detail.current_title.trim()
+                ? `${detail.current_title.trim()} 登录态`
+                : undefined,
+            site_url:
+              detail?.current_url && detail.current_url !== "about:blank"
+                ? detail.current_url
+                : undefined,
+          }),
+        },
+      );
+      setNotice(`已保存登录态：${data.label}`);
+      if (profilesDialogOpen && libraryTab === "profiles") {
+        await loadProfiles(profileScope, data.site_url);
+      }
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "保存登录态失败。",
+      );
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const handleApplyLoginProfile = async (profileId: string) => {
+    if (!activeSessionId) return;
+    setApplyingProfileId(profileId);
+    setSummaryError("");
+    setNotice("");
+    try {
+      const data = await apiFetch<{
+        profile: BrowserLoginProfile;
+        session: BrowserSessionDetail;
+      }>(`/browser/sessions/${activeSessionId}/profiles/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: profileId }),
+      });
+      setDetail(data.session);
+      syncUrlInput(data.session.current_url || "", true);
+      setNotice(`已恢复登录态，并已打开 ${data.profile.site_url || data.profile.label}`);
+      await loadSessions();
+      await loadProfiles(profileScope, data.profile.site_url);
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "恢复登录态失败。",
+      );
+    } finally {
+      setApplyingProfileId("");
+    }
+  };
+
+  const handleDeleteLoginProfile = async (profileId: string) => {
+    setDeletingProfileId(profileId);
+    setSummaryError("");
+    setNotice("");
+    try {
+      await apiFetch(`/browser/profiles/${profileId}`, {
+        method: "DELETE",
+      });
+      setSavedProfiles((prev) => prev.filter((profile) => profile.id !== profileId));
+      setNotice("已删除登录态资料。");
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "删除登录态资料失败。",
+      );
+    } finally {
+      setDeletingProfileId("");
+    }
+  };
+
+  const handleRefreshHistorySessions = async (
+    status: "all" | "active" | "closed" = historyFilter,
+  ) => {
+    setHistoryLoading(true);
+    setSummaryError("");
+    try {
+      await loadHistorySessions(status);
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "读取历史会话失败。",
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleSwitchToHistorySession = async (sessionId: string) => {
+    setSwitchingHistoryId(sessionId);
+    setSummaryError("");
+    setNotice("");
+    try {
+      setActiveSessionId(sessionId);
+      const data = await apiFetch<BrowserSessionDetail>(
+        `/browser/sessions/${sessionId}/focus`,
+        {
+          method: "POST",
+        },
+      );
+      setDetail(data);
+      syncUrlInput(data.current_url || "", true);
+      await loadSessions();
+      setNotice("已切换到所选浏览器会话。");
+      setProfilesDialogOpen(false);
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "切换历史会话失败。",
+      );
+    } finally {
+      setSwitchingHistoryId("");
+    }
+  };
+
+  const handleReopenHistorySession = async (session: BrowserSessionHistory) => {
+    if (!session.current_url || session.current_url === "about:blank") {
+      setSummaryError("这个历史会话没有可重新打开的网址。");
+      return;
+    }
+    setReopeningHistoryId(session.id);
+    setSummaryError("");
+    setNotice("");
+    try {
+      const created = await apiFetch<BrowserSessionDetail>("/browser/sessions", {
+        method: "POST",
+      });
+      const reopened = await apiFetch<BrowserSessionDetail>(
+        `/browser/sessions/${created.id}/navigate`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: normalizeUrl(session.current_url) }),
+        },
+      );
+      setActiveSessionId(reopened.id);
+      setDetail(reopened);
+      syncUrlInput(reopened.current_url || session.current_url, true);
+      await loadSessions();
+      setNotice("已按该历史会话的网址重新打开新会话。");
+      setProfilesDialogOpen(false);
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "重新打开历史会话失败。",
+      );
+    } finally {
+      setReopeningHistoryId("");
+    }
+  };
+
+  const ensureKnowledgeReady = async () => {
+    const status = await apiFetch<{ initialized: boolean }>("/knowledge/status");
+    if (status.initialized) return;
+
+    if (
+      !embeddingConfig?.apiKey ||
+      !embeddingConfig.model ||
+      !embeddingConfig.baseUrl
+    ) {
+      throw new Error(
+        "知识库还没有初始化。请先到设置里的 Embedding / 知识库 页面完成配置后再试。",
+      );
+    }
+
+    const response = await fetch(`${API_BASE}/knowledge/init`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        embedder_model: embeddingConfig.model,
+        embedder_api_key: embeddingConfig.apiKey,
+        embedder_base_url: embeddingConfig.baseUrl,
+      }),
+    });
+
+    if (!response.ok) {
+      const raw = await response.text();
+      throw new Error(raw || "知识库初始化失败。");
+    }
+  };
+
+  const handleSavePageToKnowledge = async () => {
+    if (!activeSessionId) {
+      setSummaryError("请先创建一个浏览器会话，再保存页面内容。");
+      return;
+    }
+    setSavingKnowledge(true);
+    setSummaryError("");
+    setNotice("");
+    try {
+      await ensureKnowledgeReady();
+      const data = await apiFetch<{ title: string }>(
+        `/browser/sessions/${activeSessionId}/save-page`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title:
+              detail?.current_title && detail.current_title.trim()
+                ? detail.current_title.trim()
+                : undefined,
+            max_chars: 12000,
+          }),
+        },
+      );
+      setNotice(`已存入知识库：${data.title}`);
+    } catch (error) {
+      setSummaryError(
+        error instanceof Error ? error.message : "保存页面到知识库失败。",
+      );
+    } finally {
+      setSavingKnowledge(false);
+    }
   };
 
   const handleImportCookieHeader = async () => {
@@ -729,6 +1168,11 @@ export function Browser({ appState, windowId }: BrowserProps) {
     }, 1500);
     return () => window.clearInterval(timer);
   }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!profilesDialogOpen || libraryTab !== "history") return;
+    void handleRefreshHistorySessions(historyFilter);
+  }, [historyFilter]);
 
   const fetchPageText = async (sessionId: string, maxChars = 4000) => {
     return apiFetch<ExtractResponse>(`/browser/sessions/${sessionId}/extract`, {
@@ -977,7 +1421,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
           });
           return `已按下 ${action.key ?? "Enter"}`;
         case "wait_for":
-          await apiFetch(`/browser/sessions/${sessionId}/wait`, {
+          await apiFetch(`/browser/sessions/${sessionId}/wait-for`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -1013,9 +1457,11 @@ export function Browser({ appState, windowId }: BrowserProps) {
       onStatus?: (status: string) => void;
       onActionStart?: (message: string) => void;
       onActionFinish?: (message: string) => void;
+      onNeedHuman?: (reason: string) => Promise<void> | void;
     },
   ) => {
     let finalReply = "";
+    let requiresHuman = false;
     const stepLogs: string[] = [];
 
     callbacks?.onStatus?.("正在读取当前页面");
@@ -1061,7 +1507,11 @@ export function Browser({ appState, windowId }: BrowserProps) {
       ) {
         finalReply = plan.reply.trim();
         if (plan.status === "need_user") {
+          requiresHuman = true;
           callbacks?.onStatus?.("需要你补充信息后我才能继续");
+          await callbacks?.onNeedHuman?.(
+            finalReply || "需要你手动完成当前网页步骤后，我再继续。",
+          );
         }
         break;
       }
@@ -1082,7 +1532,10 @@ export function Browser({ appState, windowId }: BrowserProps) {
         "我已经执行了一轮浏览器任务，但还没拿到明确结论。你可以再补一句更具体的目标，或者让我继续。";
     }
 
-    return finalReply;
+    return {
+      reply: finalReply,
+      requiresHuman,
+    };
   };
 
   const handleAskPage = async () => {
@@ -1119,6 +1572,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
     try {
       const quickCommand = parseQuickBrowserCommand(content);
       let assistantReply = "";
+      let assistantNeedsHuman = false;
 
       if (quickCommand?.actions.length) {
         setAssistantStatus(assistantId, "正在执行快捷网页操作");
@@ -1131,24 +1585,49 @@ export function Browser({ appState, windowId }: BrowserProps) {
         await loadDetail(activeSessionId);
         await loadSessions();
 
-        assistantReply = quickCommand.followupPrompt
+        const followupResult = quickCommand.followupPrompt
           ? await runBrowserTaskAgent(activeSessionId, quickCommand.followupPrompt, {
               onStatus: (status) => setAssistantStatus(assistantId, status),
               onActionStart: (message) => pushAssistantEvent(assistantId, message),
               onActionFinish: (message) => pushAssistantEvent(assistantId, message),
+              onNeedHuman: async (reason) => {
+                const normalizedReason =
+                  reason.trim() || "请直接在左侧浏览器继续处理这个步骤。";
+                pushAssistantEvent(assistantId, normalizedReason);
+              },
             })
-          : "已完成网页操作。";
+          : { reply: "已完成网页操作。", requiresHuman: false };
+        assistantReply = followupResult.reply;
+        if (followupResult.requiresHuman) {
+          assistantNeedsHuman = true;
+          setAssistantStatus(assistantId, "需要你继续操作");
+        }
       } else {
-        assistantReply = await runBrowserTaskAgent(activeSessionId, content, {
+        const taskResult = await runBrowserTaskAgent(activeSessionId, content, {
           onStatus: (status) => setAssistantStatus(assistantId, status),
           onActionStart: (message) => pushAssistantEvent(assistantId, message),
           onActionFinish: (message) => pushAssistantEvent(assistantId, message),
+          onNeedHuman: async (reason) => {
+            const normalizedReason =
+              reason.trim() || "请直接在左侧浏览器继续处理这个步骤。";
+            pushAssistantEvent(assistantId, normalizedReason);
+          },
         });
+        assistantReply = taskResult.reply;
+        if (taskResult.requiresHuman) {
+          assistantNeedsHuman = true;
+          setAssistantStatus(assistantId, "需要你继续操作");
+        }
       }
 
-      setAssistantStatus(assistantId, "正在整理回复");
+      if (!assistantNeedsHuman) {
+        setAssistantStatus(assistantId, "正在整理回复");
+      }
       await streamAssistantText(assistantId, assistantReply);
-      finalizeAssistantMessage(assistantId, "本轮任务已完成");
+      finalizeAssistantMessage(
+        assistantId,
+        assistantNeedsHuman ? "需要你继续操作" : "本轮任务已完成",
+      );
     } catch (error) {
       const errorMessage = formatBrowserErrorMessage(error, "网页任务执行失败。");
       updateChatMessage(assistantId, (message) => ({
@@ -1257,6 +1736,57 @@ export function Browser({ appState, windowId }: BrowserProps) {
             </button>
             <button
               type="button"
+              onClick={() => void handleSaveLoginProfile()}
+              disabled={!activeSessionId || savingProfile}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
+              style={{
+                background: "rgba(15, 23, 42, 0.06)",
+                color: activeSessionId ? "#4c5d79" : "#9ba8bd",
+                border: "1px solid rgba(18, 30, 56, 0.08)",
+                opacity: !activeSessionId || savingProfile ? 0.7 : 1,
+              }}
+            >
+              {savingProfile ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <Save size={13} />
+              )}
+              保存登录态
+            </button>
+            <button
+              type="button"
+              onClick={() => void openLibraryDialog("profiles")}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
+              style={{
+                background: "rgba(15, 23, 42, 0.06)",
+                color: "#4c5d79",
+                border: "1px solid rgba(18, 30, 56, 0.08)",
+              }}
+            >
+              <BookOpen size={13} />
+              资料库
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleSavePageToKnowledge()}
+              disabled={!activeSessionId || savingKnowledge}
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
+              style={{
+                background: "rgba(15, 92, 214, 0.08)",
+                color: activeSessionId ? "#0f56cf" : "#9ba8bd",
+                border: "1px solid rgba(17, 92, 214, 0.08)",
+                opacity: !activeSessionId || savingKnowledge ? 0.7 : 1,
+              }}
+            >
+              {savingKnowledge ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <BookOpen size={13} />
+              )}
+              存入知识库
+            </button>
+            <button
+              type="button"
               onClick={() => void handleCreateSession()}
               disabled={!runtime.ready || creating}
               className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px] font-medium"
@@ -1282,6 +1812,18 @@ export function Browser({ appState, windowId }: BrowserProps) {
             style={{ background: "rgba(255, 159, 10, 0.12)", color: "#b86a00" }}
           >
             {runtime.error}
+          </div>
+        ) : null}
+
+        {notice ? (
+          <div
+            className="mb-3 rounded-2xl px-3 py-3 text-[13px] leading-6"
+            style={{
+              background: "rgba(16, 185, 129, 0.1)",
+              color: "#0f8c68",
+            }}
+          >
+            {notice}
           </div>
         ) : null}
 
@@ -1527,7 +2069,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
                     }}
                   >
                     <div
-                      className="h-full overflow-hidden rounded-[20px]"
+                      className="relative h-full overflow-hidden rounded-[20px]"
                       style={{
                         background: "#ffffff",
                         boxShadow: viewportFocused
@@ -1643,7 +2185,9 @@ export function Browser({ appState, windowId }: BrowserProps) {
                       background: activeSessionId
                         ? "rgba(16, 185, 129, 0.1)"
                         : "rgba(148, 163, 184, 0.14)",
-                      color: activeSessionId ? "#0f8c68" : "#64748b",
+                      color: activeSessionId
+                          ? "#0f8c68"
+                          : "#64748b",
                     }}
                   >
                     {activeSessionId ? "已连接" : "未连接"}
@@ -1810,14 +2354,19 @@ export function Browser({ appState, windowId }: BrowserProps) {
 
                                 {message.content ? (
                                   <div
-                                    className="mt-3 min-w-0 whitespace-pre-wrap break-words text-[13px] leading-6"
+                                    className="markdown mt-3 min-w-0 break-words text-[13px] leading-6"
                                     style={{
                                       color: "#22324c",
                                       overflowWrap: "anywhere",
                                       wordBreak: "break-word",
                                     }}
                                   >
-                                    {message.content}
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm]}
+                                      components={browserMarkdownComponents}
+                                    >
+                                      {message.content}
+                                    </ReactMarkdown>
                                     {message.streaming ? (
                                       <span
                                         className="browser-agent-caret ml-0.5 inline-block h-5 w-[2px] align-[-3px]"
@@ -2041,6 +2590,724 @@ export function Browser({ appState, windowId }: BrowserProps) {
           </aside>
         </div>
       </div>
+
+      {profilesDialogOpen ? (
+        <div
+          className="absolute inset-0 z-40 flex items-center justify-center px-5 py-6"
+          style={{
+            background: "rgba(232, 238, 247, 0.5)",
+            backdropFilter: "blur(14px)",
+          }}
+          onClick={() => {
+            if (
+              !savingProfile &&
+              !profilesLoading &&
+              !historyLoading &&
+              !applyingProfileId &&
+              !deletingProfileId &&
+              !switchingHistoryId &&
+              !reopeningHistoryId
+            ) {
+              setProfilesDialogOpen(false);
+            }
+          }}
+        >
+          <div
+            className="w-full max-w-[720px] rounded-[28px] border p-5"
+            style={{
+              borderColor: "rgba(18, 30, 56, 0.08)",
+              background:
+                "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(245,248,253,0.95) 100%)",
+              boxShadow:
+                "0 32px 60px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255,255,255,0.9)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div
+                  className="text-[12px] font-semibold uppercase tracking-[0.18em]"
+                  style={{ color: "#8a9ab5" }}
+                >
+                  资料库
+                </div>
+                <div
+                  className="mt-1 text-[20px] font-semibold tracking-[0.02em]"
+                  style={{ color: "#1d2b42" }}
+                >
+                  登录态与历史会话
+                </div>
+                <div
+                  className="mt-2 max-w-[460px] text-[12px] leading-5"
+                  style={{ color: "#60708f" }}
+                >
+                  这里可以查看已保存登录态、恢复到当前会话，也可以回看最近的浏览器历史操作记录。
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setProfilesDialogOpen(false)}
+                disabled={
+                  savingProfile ||
+                  profilesLoading ||
+                  historyLoading ||
+                  Boolean(applyingProfileId) ||
+                  Boolean(deletingProfileId) ||
+                  Boolean(switchingHistoryId) ||
+                  Boolean(reopeningHistoryId)
+                }
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full"
+                style={{
+                  background: "rgba(15, 23, 42, 0.05)",
+                  color:
+                    savingProfile ||
+                    profilesLoading ||
+                    historyLoading ||
+                    applyingProfileId ||
+                    deletingProfileId ||
+                    switchingHistoryId ||
+                    reopeningHistoryId
+                      ? "#b2bdd0"
+                      : "#64748b",
+                  border: "1px solid rgba(18, 30, 56, 0.06)",
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <div
+                className="inline-flex rounded-[18px] border p-1"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  background: "rgba(244, 247, 252, 0.88)",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => void handleChangeLibraryTab("profiles")}
+                  className="inline-flex h-9 items-center justify-center rounded-[14px] px-3 text-[12px] font-medium"
+                  style={{
+                    background:
+                      libraryTab === "profiles"
+                        ? "linear-gradient(135deg, rgba(22,119,255,0.14) 0%, rgba(10,87,214,0.1) 100%)"
+                        : "transparent",
+                    color: libraryTab === "profiles" ? "#0f56cf" : "#60708f",
+                  }}
+                >
+                  已保存登录态
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleChangeLibraryTab("history")}
+                  className="inline-flex h-9 items-center justify-center rounded-[14px] px-3 text-[12px] font-medium"
+                  style={{
+                    background:
+                      libraryTab === "history"
+                        ? "linear-gradient(135deg, rgba(22,119,255,0.14) 0%, rgba(10,87,214,0.1) 100%)"
+                        : "transparent",
+                    color: libraryTab === "history" ? "#0f56cf" : "#60708f",
+                  }}
+                >
+                  历史会话
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  void (libraryTab === "profiles"
+                    ? handleRefreshProfiles()
+                    : handleRefreshHistorySessions())
+                }
+                className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[12px]"
+                style={{
+                  background: "rgba(15, 23, 42, 0.05)",
+                  color: "#52627d",
+                  border: "1px solid rgba(18, 30, 56, 0.06)",
+                }}
+              >
+                <RefreshCw size={13} />
+                刷新列表
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div
+                className="rounded-[20px] border px-4 py-3"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  background:
+                    "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(246,249,255,0.86) 100%)",
+                }}
+              >
+                <div
+                  className="text-[11px] font-semibold tracking-[0.08em]"
+                  style={{ color: "#8a9ab5" }}
+                >
+                  已保存登录态
+                </div>
+                <div
+                  className="mt-1 text-[24px] font-semibold"
+                  style={{ color: "#1d2b42" }}
+                >
+                  {savedProfiles.length}
+                </div>
+                <div
+                  className="mt-1 text-[12px] leading-5"
+                  style={{ color: "#60708f" }}
+                >
+                  {profileScope === "current"
+                    ? "当前站点可直接恢复的登录资料"
+                    : "你保存过的全部站点登录资料"}
+                </div>
+              </div>
+
+              <div
+                className="rounded-[20px] border px-4 py-3"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  background:
+                    "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(246,249,255,0.86) 100%)",
+                }}
+              >
+                <div
+                  className="text-[11px] font-semibold tracking-[0.08em]"
+                  style={{ color: "#8a9ab5" }}
+                >
+                  历史会话
+                </div>
+                <div
+                  className="mt-1 text-[24px] font-semibold"
+                  style={{ color: "#1d2b42" }}
+                >
+                  {historySessions.length}
+                </div>
+                <div
+                  className="mt-1 text-[12px] leading-5"
+                  style={{ color: "#60708f" }}
+                >
+                  当前筛选条件下可回看的浏览器会话记录
+                </div>
+              </div>
+
+              <div
+                className="rounded-[20px] border px-4 py-3"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  background:
+                    "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(246,249,255,0.86) 100%)",
+                }}
+              >
+                <div
+                  className="text-[11px] font-semibold tracking-[0.08em]"
+                  style={{ color: "#8a9ab5" }}
+                >
+                  当前目标站点
+                </div>
+                <div
+                  className="mt-1 truncate text-[14px] font-medium"
+                  style={{ color: "#1d2b42" }}
+                >
+                  {resolveCurrentSiteUrl() || "尚未打开具体网页"}
+                </div>
+                <div
+                  className="mt-1 text-[12px] leading-5"
+                  style={{ color: "#60708f" }}
+                >
+                  保存或恢复登录态时会优先参考这个地址
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              {libraryTab === "profiles" ? (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleChangeProfileScope("current")}
+                        className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[12px] font-medium"
+                        style={{
+                          background:
+                            profileScope === "current"
+                              ? "rgba(22,119,255,0.12)"
+                              : "rgba(15, 23, 42, 0.05)",
+                          color:
+                            profileScope === "current" ? "#0f56cf" : "#60708f",
+                        }}
+                      >
+                        当前站点
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleChangeProfileScope("all")}
+                        className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[12px] font-medium"
+                        style={{
+                          background:
+                            profileScope === "all"
+                              ? "rgba(22,119,255,0.12)"
+                              : "rgba(15, 23, 42, 0.05)",
+                          color: profileScope === "all" ? "#0f56cf" : "#60708f",
+                        }}
+                      >
+                        全部登录态
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveLoginProfile()}
+                      disabled={!activeSessionId || savingProfile}
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[12px] font-medium"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, rgba(22,119,255,0.14) 0%, rgba(10,87,214,0.1) 100%)",
+                        color: activeSessionId ? "#0f56cf" : "#9ba8bd",
+                        border: "1px solid rgba(17, 92, 214, 0.08)",
+                        opacity: !activeSessionId || savingProfile ? 0.7 : 1,
+                      }}
+                    >
+                      {savingProfile ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Save size={14} />
+                      )}
+                      保存当前会话登录态
+                    </button>
+                  </div>
+
+                  <div
+                    className="rounded-[18px] border px-3.5 py-3 text-[12px] leading-5"
+                    style={{
+                      borderColor: "rgba(18, 30, 56, 0.08)",
+                      color: "#60708f",
+                      background: "rgba(255,255,255,0.72)",
+                    }}
+                  >
+                    {profileScope === "current"
+                      ? resolveCurrentSiteUrl()
+                        ? "这里优先展示和当前网页域名匹配的登录态，恢复后会直接写入当前浏览器会话。"
+                        : "当前还没有明确站点地址，所以建议切到“全部登录态”查看你之前保存过的资料。"
+                      : "这里会列出所有已保存的登录态资料，你可以直接恢复到当前浏览器会话。"}
+                  </div>
+
+                  {profilesLoading ? (
+                    <div
+                      className="flex items-center justify-center gap-2 rounded-[22px] border px-4 py-10 text-[13px]"
+                      style={{
+                        borderColor: "rgba(18, 30, 56, 0.08)",
+                        color: "#60708f",
+                        background:
+                          "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(246,249,255,0.84) 100%)",
+                      }}
+                    >
+                      <Loader2 size={16} className="animate-spin" />
+                      正在读取已保存登录态…
+                    </div>
+                  ) : savedProfiles.length > 0 ? (
+                    <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                    {savedProfiles.map((profile) => (
+                      <div
+                        key={profile.id}
+                        className="rounded-[22px] border px-4 py-3"
+                        style={{
+                          borderColor: "rgba(18, 30, 56, 0.08)",
+                          background:
+                            "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(246,249,255,0.86) 100%)",
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div
+                              className="truncate text-[14px] font-medium"
+                              style={{ color: "#1d2b42" }}
+                            >
+                              {profile.label}
+                            </div>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                              <span
+                                className="rounded-full px-2.5 py-1"
+                                style={{
+                                  background: "rgba(22,119,255,0.12)",
+                                  color: "#0f56cf",
+                                }}
+                              >
+                                {profile.site_host || "未识别域名"}
+                              </span>
+                            </div>
+                            <div
+                              className="mt-1 text-[12px]"
+                              style={{
+                                color: "#60708f",
+                                overflowWrap: "anywhere",
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {profile.site_url}
+                            </div>
+                            <div
+                              className="mt-2 text-[11px]"
+                              style={{ color: "#8a9ab5" }}
+                            >
+                              {profile.cookie_count} 个 Cookie
+                              {profile.last_used_at
+                                ? ` · 最近使用 ${new Date(profile.last_used_at).toLocaleString()}`
+                                : ` · 保存于 ${new Date(profile.created_at).toLocaleString()}`}
+                              {profile.source_session_id
+                                ? ` · 来源会话 ${profile.source_session_id.slice(0, 8)}`
+                                : ""}
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleApplyLoginProfile(profile.id)}
+                              disabled={
+                                !activeSessionId || applyingProfileId === profile.id
+                              }
+                              className="inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-medium"
+                              style={{
+                                background:
+                                  "linear-gradient(135deg, #1677ff 0%, #0a57d6 100%)",
+                                color: "#fff",
+                                opacity:
+                                  !activeSessionId || applyingProfileId === profile.id
+                                    ? 0.7
+                                    : 1,
+                              }}
+                            >
+                              {applyingProfileId === profile.id ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <RefreshCw size={14} />
+                              )}
+                              恢复到当前会话
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteLoginProfile(profile.id)}
+                              disabled={deletingProfileId === profile.id}
+                              className="inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-[13px]"
+                              style={{
+                                background: "rgba(248, 113, 113, 0.08)",
+                                color: "#dc2626",
+                                border: "1px solid rgba(248, 113, 113, 0.12)",
+                                opacity: deletingProfileId === profile.id ? 0.7 : 1,
+                              }}
+                            >
+                              {deletingProfileId === profile.id ? (
+                                <Loader2 size={14} className="animate-spin" />
+                              ) : (
+                                <Trash2 size={14} />
+                              )}
+                              删除
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div
+                    className="rounded-[22px] border border-dashed px-4 py-10 text-center text-[13px] leading-6"
+                    style={{
+                      borderColor: "rgba(18, 30, 56, 0.1)",
+                      color: "#60708f",
+                      background:
+                        "linear-gradient(180deg, rgba(255,255,255,0.88) 0%, rgba(247,250,255,0.82) 100%)",
+                    }}
+                  >
+                    {profileScope === "current"
+                      ? "当前站点还没有已保存的登录态资料。你可以先登录，再点“保存当前会话登录态”，或者切到“全部登录态”查看其他站点。"
+                      : "当前还没有可恢复的登录态资料。"}
+                  </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div
+                    className="rounded-[18px] border px-3.5 py-3 text-[12px] leading-5"
+                    style={{
+                      borderColor: "rgba(18, 30, 56, 0.08)",
+                      color: "#60708f",
+                      background: "rgba(255,255,255,0.72)",
+                    }}
+                  >
+                    进行中的会话可以直接切回去继续操作；已经关闭的会话可以按当时的网址重新打开一个新会话。
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      { id: "all", label: "全部" },
+                      { id: "active", label: "进行中" },
+                      { id: "closed", label: "已关闭" },
+                    ].map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() =>
+                          setHistoryFilter(
+                            item.id as "all" | "active" | "closed",
+                          )
+                        }
+                        className="inline-flex h-8 items-center justify-center rounded-full px-3 text-[12px] font-medium"
+                        style={{
+                          background:
+                            historyFilter === item.id
+                              ? "rgba(22,119,255,0.12)"
+                              : "rgba(15, 23, 42, 0.05)",
+                          color: historyFilter === item.id ? "#0f56cf" : "#60708f",
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {historyLoading ? (
+                    <div
+                      className="flex items-center justify-center gap-2 rounded-[22px] border px-4 py-10 text-[13px]"
+                      style={{
+                        borderColor: "rgba(18, 30, 56, 0.08)",
+                        color: "#60708f",
+                        background:
+                          "linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(246,249,255,0.84) 100%)",
+                      }}
+                    >
+                      <Loader2 size={16} className="animate-spin" />
+                      正在读取历史会话…
+                    </div>
+                  ) : historySessions.length > 0 ? (
+                    <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                      {historySessions.map((session) => {
+                        const expanded = expandedHistoryId === session.id;
+                        const statusColor =
+                          session.status === "closed"
+                              ? "#64748b"
+                              : "#0f8c68";
+                        const statusBg =
+                          session.status === "closed"
+                              ? "rgba(148,163,184,0.14)"
+                              : "rgba(16,185,129,0.1)";
+
+                        return (
+                          <div
+                            key={session.id}
+                            className="rounded-[22px] border px-4 py-3"
+                            style={{
+                              borderColor: "rgba(18, 30, 56, 0.08)",
+                              background:
+                                "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(246,249,255,0.86) 100%)",
+                            }}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div
+                                  className="truncate text-[14px] font-medium"
+                                  style={{ color: "#1d2b42" }}
+                                >
+                                  {session.current_title || "未命名页面"}
+                                </div>
+                                <div
+                                  className="mt-1 text-[12px]"
+                                  style={{
+                                    color: "#60708f",
+                                    overflowWrap: "anywhere",
+                                    wordBreak: "break-word",
+                                  }}
+                                >
+                                  {session.current_url || "about:blank"}
+                                </div>
+                                <div
+                                  className="mt-2 flex flex-wrap items-center gap-2 text-[11px]"
+                                  style={{ color: "#8a9ab5" }}
+                                >
+                                  <span
+                                    className="rounded-full px-2.5 py-1"
+                                    style={{ background: statusBg, color: statusColor }}
+                                  >
+                                    {session.status === "closed"
+                                        ? "已关闭"
+                                        : "进行中"}
+                                  </span>
+                                  <span>{session.tab_count} 个标签页</span>
+                                  <span>
+                                    最近更新 {new Date(session.updated_at).toLocaleString()}
+                                  </span>
+                                  <span>创建于 {new Date(session.created_at).toLocaleString()}</span>
+                                </div>
+                                {session.last_error ? (
+                                  <div
+                                    className="mt-2 text-[12px] leading-5"
+                                    style={{ color: "#d83b3b" }}
+                                  >
+                                    最近错误：{session.last_error}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="flex shrink-0 flex-col items-end gap-2">
+                                {session.status !== "closed" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleSwitchToHistorySession(session.id)
+                                    }
+                                    disabled={switchingHistoryId === session.id}
+                                    className="inline-flex h-9 items-center justify-center gap-2 rounded-full px-3 text-[12px] font-medium"
+                                    style={{
+                                      background:
+                                        "linear-gradient(135deg, rgba(22,119,255,0.14) 0%, rgba(10,87,214,0.1) 100%)",
+                                      color: "#0f56cf",
+                                      opacity:
+                                        switchingHistoryId === session.id ? 0.7 : 1,
+                                    }}
+                                  >
+                                    {switchingHistoryId === session.id ? (
+                                      <Loader2 size={13} className="animate-spin" />
+                                    ) : (
+                                      <Monitor size={13} />
+                                    )}
+                                    {session.id === activeSessionId
+                                      ? "当前会话"
+                                      : "切换到该会话"}
+                                  </button>
+                                ) : null}
+
+                                {session.current_url &&
+                                session.current_url !== "about:blank" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleReopenHistorySession(session)
+                                    }
+                                    disabled={reopeningHistoryId === session.id}
+                                    className="inline-flex h-9 items-center justify-center gap-2 rounded-full px-3 text-[12px]"
+                                    style={{
+                                      background: "rgba(15, 23, 42, 0.05)",
+                                      color: "#52627d",
+                                      opacity:
+                                        reopeningHistoryId === session.id ? 0.7 : 1,
+                                    }}
+                                  >
+                                    {reopeningHistoryId === session.id ? (
+                                      <Loader2 size={13} className="animate-spin" />
+                                    ) : (
+                                      <Play size={13} />
+                                    )}
+                                    按此网址新开
+                                  </button>
+                                ) : null}
+
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedHistoryId(expanded ? "" : session.id)
+                                  }
+                                  className="inline-flex h-9 items-center justify-center rounded-full px-3 text-[12px]"
+                                  style={{
+                                    background: "rgba(15, 23, 42, 0.05)",
+                                    color: "#52627d",
+                                  }}
+                                >
+                                  {expanded ? "收起详情" : "查看详情"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {expanded ? (
+                              <div
+                                className="mt-3 rounded-[18px] border px-3.5 py-3"
+                                style={{
+                                  borderColor: "rgba(18, 30, 56, 0.08)",
+                                  background:
+                                    "linear-gradient(180deg, rgba(249,251,255,0.92) 0%, rgba(244,247,252,0.88) 100%)",
+                                }}
+                              >
+                                <div
+                                  className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em]"
+                                  style={{ color: "#8a9ab5" }}
+                                >
+                                  最近动作
+                                </div>
+                                <div
+                                  className="mb-2 text-[11px]"
+                                  style={{ color: "#8a9ab5" }}
+                                >
+                                  会话 ID：{session.id}
+                                  {session.closed_at
+                                    ? ` · 关闭于 ${new Date(session.closed_at).toLocaleString()}`
+                                    : ""}
+                                  {session.action_log?.length
+                                    ? ` · 共记录 ${session.action_log.length} 条动作`
+                                    : ""}
+                                </div>
+                                {session.action_log?.length ? (
+                                  <div className="space-y-2">
+                                    {session.action_log.slice(0, 10).map((item, index) => (
+                                      <div
+                                        key={`${session.id}-log-${index}`}
+                                        className="rounded-[14px] px-3 py-2"
+                                        style={{
+                                          background: "rgba(255,255,255,0.74)",
+                                          border: "1px solid rgba(18, 30, 56, 0.06)",
+                                        }}
+                                      >
+                                        <div
+                                          className="text-[11px] font-medium"
+                                          style={{ color: "#52627d" }}
+                                        >
+                                          {item.action} · {new Date(item.ts).toLocaleString()}
+                                        </div>
+                                        <div
+                                          className="mt-1 text-[12px] leading-5"
+                                          style={{
+                                            color: "#60708f",
+                                            overflowWrap: "anywhere",
+                                            wordBreak: "break-word",
+                                          }}
+                                        >
+                                          {item.detail}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div
+                                    className="text-[12px]"
+                                    style={{ color: "#60708f" }}
+                                  >
+                                    暂时还没有记录到动作详情。
+                                  </div>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div
+                      className="rounded-[22px] border border-dashed px-4 py-10 text-center text-[13px] leading-6"
+                      style={{
+                        borderColor: "rgba(18, 30, 56, 0.1)",
+                        color: "#60708f",
+                        background:
+                          "linear-gradient(180deg, rgba(255,255,255,0.88) 0%, rgba(247,250,255,0.82) 100%)",
+                      }}
+                    >
+                      还没有可查看的历史会话记录。
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {cookieDialogOpen ? (
         <div

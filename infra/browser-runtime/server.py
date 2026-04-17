@@ -226,6 +226,9 @@ class BrowserSession:
     context: Any
     tabs: dict[str, BrowserTab]
     active_tab_id: str
+    status: str = "active"
+    takeover_reason: str | None = None
+    resume_event: asyncio.Event | None = None
     created_at: datetime = field(default_factory=_utc_now)
     updated_at: datetime = field(default_factory=_utc_now)
     last_error: str | None = None
@@ -369,6 +372,12 @@ class BrowserRuntime:
         }
 
     async def _attach_tab(self, session: BrowserSession, page: Any) -> str:
+        for existing_tab in session.tabs.values():
+            if existing_tab.page is page:
+                session.active_tab_id = existing_tab.id
+                await self._sync_tab(existing_tab)
+                return existing_tab.id
+
         tab_id = str(uuid.uuid4())
         title = ""
         url = "about:blank"
@@ -397,6 +406,30 @@ class BrowserRuntime:
 
         page.on("close", lambda: _on_close())
         return tab_id
+
+    async def _reconcile_tabs(self, session: BrowserSession) -> None:
+        try:
+            context_pages = [page for page in session.context.pages if not page.is_closed()]
+        except Exception:
+            context_pages = [tab.page for tab in session.tabs.values() if not tab.page.is_closed()]
+
+        known_pages = {id(tab.page): tab_id for tab_id, tab in session.tabs.items()}
+        live_page_ids = {id(page) for page in context_pages}
+
+        stale_tab_ids = [
+            tab_id
+            for tab_id, tab in list(session.tabs.items())
+            if tab.page.is_closed() or id(tab.page) not in live_page_ids
+        ]
+        for stale_tab_id in stale_tab_ids:
+            session.tabs.pop(stale_tab_id, None)
+
+        for page in context_pages:
+            if id(page) not in known_pages:
+                await self._attach_tab(session, page)
+
+        if session.active_tab_id not in session.tabs and session.tabs:
+            session.active_tab_id = next(reversed(session.tabs))
 
     async def _sync_tab(self, tab: BrowserTab) -> None:
         if tab.page.is_closed():
@@ -435,11 +468,14 @@ class BrowserRuntime:
         raise RuntimeErrorMessage("No active browser tab is available.")
 
     async def _detail(self, session: BrowserSession) -> dict[str, Any]:
+        await self._reconcile_tabs(session)
         for tab in list(session.tabs.values()):
             await self._sync_tab(tab)
         active = self._get_active_tab(session)
         return {
             "id": session.id,
+            "status": session.status,
+            "takeover_reason": session.takeover_reason,
             "current_url": active.url,
             "current_title": active.title,
             "created_at": _utc_iso(session.created_at),
@@ -542,11 +578,11 @@ class BrowserRuntime:
                 **self._build_context_options(storage_state=normalized_state)
             )
             session.context = new_context
-            self._wire_context(session, new_context)
 
             page = await new_context.new_page()
             await page.bring_to_front()
             await self._attach_tab(session, page)
+            self._wire_context(session, new_context)
             if current_url and current_url != "about:blank":
                 try:
                     await page.goto(current_url, wait_until="domcontentloaded", timeout=20000)
@@ -670,11 +706,14 @@ class BrowserRuntime:
 
     async def activate_tab(self, session_id: str, tab_id: str) -> dict[str, Any]:
         session = self._get_session(session_id)
-        if tab_id not in session.tabs:
-            raise RuntimeErrorMessage("Tab does not exist.")
+        await self._reconcile_tabs(session)
+        tab = session.tabs.get(tab_id)
+        if tab is None:
+            self._log(session, "activate_tab_missing", tab_id)
+            return await self._detail(session)
         session.active_tab_id = tab_id
-        await session.tabs[tab_id].page.bring_to_front()
-        await self._apply_immersive_chrome(session.tabs[tab_id].page)
+        await tab.page.bring_to_front()
+        await self._apply_immersive_chrome(tab.page)
         self._log(session, "activate_tab", tab_id)
         return await self._detail(session)
 
@@ -692,11 +731,52 @@ class BrowserRuntime:
         self._log(session, "create_tab", "about:blank")
         return await self._detail(session)
 
+    async def request_human(
+        self,
+        session_id: str,
+        reason: str,
+        wait_for_resume: bool = True,
+        timeout_ms: int = 600000,
+    ) -> dict[str, Any]:
+        session = self._get_session(session_id)
+        normalized_reason = reason.strip() or "需要人工继续处理当前网页步骤。"
+        session.status = "awaiting_human"
+        session.takeover_reason = normalized_reason
+        if session.resume_event is None or session.resume_event.is_set():
+            session.resume_event = asyncio.Event()
+        self._log(session, "request_human", normalized_reason)
+
+        if not wait_for_resume:
+            return await self._detail(session)
+
+        try:
+            await asyncio.wait_for(session.resume_event.wait(), timeout=timeout_ms / 1000)
+        except TimeoutError as exc:
+            session.last_error = f"Human takeover timed out after {timeout_ms}ms."
+            self._log(session, "request_human_timeout", session.last_error)
+            raise RuntimeErrorMessage(session.last_error) from exc
+
+        session.status = "active"
+        session.takeover_reason = None
+        self._log(session, "resume_ai", "Resumed after human takeover.")
+        return await self._detail(session)
+
+    async def resume(self, session_id: str) -> dict[str, Any]:
+        session = self._get_session(session_id)
+        if session.resume_event is not None and not session.resume_event.is_set():
+            session.resume_event.set()
+        session.status = "active"
+        session.takeover_reason = None
+        self._log(session, "resume_ai", "Resumed by user.")
+        return await self._detail(session)
+
     async def close_tab(self, session_id: str, tab_id: str) -> dict[str, Any]:
         session = self._get_session(session_id)
+        await self._reconcile_tabs(session)
         tab = session.tabs.get(tab_id)
         if tab is None:
-            raise RuntimeErrorMessage("Tab does not exist.")
+            self._log(session, "close_tab_missing", tab_id)
+            return await self._detail(session)
         if len(session.tabs) <= 1:
             raise RuntimeErrorMessage("Cannot close the last tab in the session.")
 
@@ -766,11 +846,39 @@ class BrowserRuntime:
             return page.get_by_text(selector[5:])
         return page.locator(selector)
 
+    async def _click_with_retries(self, page: Any, selector: str) -> None:
+        locator = self._locator(page, selector).first
+        last_error: Exception | None = None
+
+        # Dynamic sites like Zhihu often reflow right after the model picks a target.
+        # We wait for visibility, scroll into view, and retry once after a short settle.
+        for attempt in range(2):
+            try:
+                await locator.wait_for(state="visible", timeout=8000)
+                await locator.scroll_into_view_if_needed(timeout=3000)
+                if attempt > 0:
+                    await page.wait_for_timeout(450)
+                await locator.click(timeout=5000)
+                return
+            except Exception as exc:
+                last_error = exc
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=3000)
+                except Exception:
+                    pass
+                try:
+                    await page.wait_for_timeout(300)
+                except Exception:
+                    pass
+
+        if last_error is not None:
+            raise last_error
+
     async def click(self, session_id: str, selector: str) -> str:
         session = self._get_session(session_id)
         tab = self._get_active_tab(session)
         try:
-            await self._locator(tab.page, selector).first.click(timeout=10000)
+            await self._click_with_retries(tab.page, selector)
             await self._sync_tab(tab)
         except Exception as exc:
             session.last_error = f"Click failed: {exc}"
@@ -1136,6 +1244,12 @@ class CookieImportRequest(BaseModel):
     cookie_json: dict[str, Any] | list[Any] | None = None
 
 
+class RequestHumanRequest(BaseModel):
+    reason: str = Field(..., min_length=1)
+    wait_for_resume: bool = True
+    timeout_ms: int = Field(default=600000, ge=1000, le=3600000)
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
     return {"ready": runtime.playwright is not None, "error": None}
@@ -1200,6 +1314,27 @@ async def import_cookie_header(session_id: str, req: CookieImportRequest) -> dic
             req.cookie_header,
             req.cookie_json,
         )
+    except RuntimeErrorMessage as exc:
+        _raise(exc)
+
+
+@app.post("/sessions/{session_id}/request-human")
+async def request_human(session_id: str, req: RequestHumanRequest) -> dict[str, Any]:
+    try:
+        return await runtime.request_human(
+            session_id,
+            req.reason,
+            req.wait_for_resume,
+            req.timeout_ms,
+        )
+    except RuntimeErrorMessage as exc:
+        _raise(exc)
+
+
+@app.post("/sessions/{session_id}/resume")
+async def resume_ai(session_id: str) -> dict[str, Any]:
+    try:
+        return await runtime.resume(session_id)
     except RuntimeErrorMessage as exc:
         _raise(exc)
 

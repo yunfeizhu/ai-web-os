@@ -8,8 +8,7 @@ import {
 import { useSettingsStore, type EmbeddingConfig } from "@/stores/settingsStore";
 import { PROVIDERS, type ProviderDef, generateCustomProviderId, decodeModel } from "./providers";
 import { SectionTitle } from "./Settings";
-
-const API_BASE = "http://localhost:8000/api/v1";
+import { API_BASE } from "@/lib/backend";
 
 // ── 工具函数 ──────────────────────────────────────────
 

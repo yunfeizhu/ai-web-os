@@ -83,7 +83,32 @@
         const urlParams = new URLSearchParams(window.location.search);
         const sessionId = urlParams.get("session_id") || "";
         const apiBase = (urlParams.get("api_base") || "").replace(/\/$/, "");
-        const preciseMode = WebUtil.getConfigVar("precise", false);
+
+        function getBooleanConfig(name, defaultValue = false) {
+            const raw = WebUtil.getConfigVar(name, defaultValue);
+
+            if (typeof raw === "boolean") {
+                return raw;
+            }
+
+            if (typeof raw === "number") {
+                return raw !== 0;
+            }
+
+            if (typeof raw === "string") {
+                const normalized = raw.trim().toLowerCase();
+                if (normalized === "" || normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off") {
+                    return false;
+                }
+                if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on") {
+                    return true;
+                }
+            }
+
+            return Boolean(raw);
+        }
+
+        const preciseMode = getBooleanConfig("precise", false);
 
         if (preciseMode) {
             document.body.classList.add("precise-mode");
@@ -177,15 +202,15 @@
         try {
             rfb = new RFB(screen, buildWebSocketUrl(), {
                 repeaterID: WebUtil.getConfigVar("repeaterID", ""),
-                shared: WebUtil.getConfigVar("shared", true),
+                shared: getBooleanConfig("shared", true),
                 credentials: {
                     password: WebUtil.getConfigVar("password", ""),
                 },
             });
 
-            rfb.viewOnly = WebUtil.getConfigVar("view_only", false);
-            rfb.scaleViewport = preciseMode ? false : WebUtil.getConfigVar("scale", true);
-            rfb.resizeSession = WebUtil.getConfigVar("resize", false);
+            rfb.viewOnly = getBooleanConfig("view_only", false);
+            rfb.scaleViewport = preciseMode ? false : getBooleanConfig("scale", true);
+            rfb.resizeSession = getBooleanConfig("resize", false);
             rfb.clipViewport = false;
             rfb.background = "#f8fafc";
 

@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { Trash2, RefreshCw, Search, Brain, Database } from "lucide-react";
 import { SectionTitle } from "./Settings";
+import { API_BASE } from "@/lib/backend";
 import { useSettingsStore } from "@/stores/settingsStore";
 
-const API = "http://localhost:8000/api/v1";
+const API = API_BASE;
 
 interface Memory {
   id: string;

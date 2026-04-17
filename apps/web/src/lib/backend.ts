@@ -1,11 +1,16 @@
 import { decodeModel, PROVIDERS } from "@/apps/settings/providers";
 import { useSettingsStore } from "@/stores/settingsStore";
 
-const DEFAULT_API_BASE = "http://localhost:8000/api/v1";
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || DEFAULT_API_BASE).replace(/\/$/, "");
+export const DEFAULT_API_BASE = "http://localhost:8000/api/v1";
+export const API_BASE = (process.env.NEXT_PUBLIC_API_BASE || DEFAULT_API_BASE).replace(/\/$/, "");
+
+export function buildApiUrl(path: string) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return `${API_BASE}${normalizedPath}`;
+}
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  const res = await fetch(buildApiUrl(path), init);
   if (!res.ok) {
     throw new Error(await res.text());
   }

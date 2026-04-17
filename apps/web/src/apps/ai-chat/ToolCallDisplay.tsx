@@ -26,12 +26,25 @@ const TOOL_META: Record<string, { label: string; icon: React.ReactNode; color: s
   retrieve_knowledge: { label: "知识库检索", icon: <BookOpen size={13} />,  color: "#5AC8FA" },
   browser_create_session: { label: "创建浏览器会话", icon: <Globe size={13} />, color: "#0A84FF" },
   browser_open: { label: "打开网页", icon: <Globe size={13} />, color: "#0A84FF" },
+  browser_reload: { label: "刷新网页", icon: <Globe size={13} />, color: "#0A84FF" },
+  browser_back: { label: "后退", icon: <Globe size={13} />, color: "#0A84FF" },
+  browser_forward: { label: "前进", icon: <Globe size={13} />, color: "#0A84FF" },
+  browser_new_tab: { label: "新建标签页", icon: <Globe size={13} />, color: "#0A84FF" },
+  browser_switch_tab: { label: "切换标签页", icon: <Globe size={13} />, color: "#0A84FF" },
+  browser_close_tab: { label: "关闭标签页", icon: <XCircle size={13} />, color: "#EF4444" },
   browser_click: { label: "点击页面元素", icon: <MousePointerClick size={13} />, color: "#2563EB" },
+  browser_click_at: { label: "点击坐标", icon: <MousePointerClick size={13} />, color: "#2563EB" },
   browser_type: { label: "输入文本", icon: <Keyboard size={13} />, color: "#2563EB" },
+  browser_type_text: { label: "输入到焦点", icon: <Keyboard size={13} />, color: "#2563EB" },
   browser_press: { label: "按键", icon: <Keyboard size={13} />, color: "#2563EB" },
+  browser_wheel: { label: "滚动页面", icon: <Hourglass size={13} />, color: "#F59E0B" },
   browser_wait_for: { label: "等待页面", icon: <Hourglass size={13} />, color: "#F59E0B" },
   browser_extract_text: { label: "提取页面正文", icon: <BookOpen size={13} />, color: "#14B8A6" },
   browser_get_state: { label: "读取页面状态", icon: <Globe size={13} />, color: "#6366F1" },
+  browser_focus: { label: "聚焦浏览器", icon: <Globe size={13} />, color: "#6366F1" },
+  browser_import_cookies: { label: "导入 Cookie", icon: <Globe size={13} />, color: "#14B8A6" },
+  browser_import_storage_state: { label: "导入登录态", icon: <BookOpen size={13} />, color: "#14B8A6" },
+  browser_request_human: { label: "请求人工接管", icon: <AlertCircle size={13} />, color: "#F97316" },
   browser_close_session: { label: "关闭浏览器会话", icon: <XCircle size={13} />, color: "#EF4444" },
 };
 
@@ -45,14 +58,26 @@ function getArgsSummary(name: string, args: Record<string, unknown>): string {
   }
   if (name === "retrieve_knowledge") return String(args.query ?? "");
   if (name === "browser_open") return String(args.url ?? "");
+  if (name === "browser_switch_tab" || name === "browser_close_tab") return String(args.tab_id ?? "");
   if (name === "browser_click" || name === "browser_type" || name === "browser_wait_for") {
     return String(args.selector ?? "");
   }
+  if (name === "browser_click_at") return `${String(args.x ?? "")}, ${String(args.y ?? "")}`;
+  if (name === "browser_type_text") return String(args.text ?? "");
   if (name === "browser_press") return String(args.key ?? "");
+  if (name === "browser_request_human") return String(args.reason ?? "");
+  if (name === "browser_import_cookies") return String(args.site_url ?? "");
   if (
     name === "browser_create_session" ||
+    name === "browser_reload" ||
+    name === "browser_back" ||
+    name === "browser_forward" ||
+    name === "browser_new_tab" ||
     name === "browser_extract_text" ||
     name === "browser_get_state" ||
+    name === "browser_focus" ||
+    name === "browser_import_storage_state" ||
+    name === "browser_wheel" ||
     name === "browser_close_session"
   ) {
     return String(args.session_id ?? "");

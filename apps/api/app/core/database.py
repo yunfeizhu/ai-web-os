@@ -72,6 +72,29 @@ SCHEMA_PATCHES: dict[str, list[str]] = {
         "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
         "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
     ],
+    "browser_sessions": [
+        "ADD COLUMN IF NOT EXISTS status VARCHAR(32) DEFAULT 'active'",
+        "ADD COLUMN IF NOT EXISTS current_url VARCHAR(2048) DEFAULT 'about:blank'",
+        "ADD COLUMN IF NOT EXISTS current_title VARCHAR(512) DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS tab_count INTEGER DEFAULT 0",
+        "ADD COLUMN IF NOT EXISTS takeover_reason TEXT",
+        "ADD COLUMN IF NOT EXISTS last_error TEXT",
+        "ADD COLUMN IF NOT EXISTS action_log JSON DEFAULT '[]'::json",
+        "ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP WITH TIME ZONE",
+        "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+    ],
+    "browser_login_profiles": [
+        "ADD COLUMN IF NOT EXISTS label VARCHAR(255) DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS site_url VARCHAR(2048) DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS site_host VARCHAR(255) DEFAULT ''",
+        "ADD COLUMN IF NOT EXISTS source_session_id VARCHAR(64)",
+        "ADD COLUMN IF NOT EXISTS cookie_count INTEGER DEFAULT 0",
+        "ADD COLUMN IF NOT EXISTS storage_state JSON DEFAULT '{}'::json",
+        "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+        "ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",
+        "ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMP WITH TIME ZONE",
+    ],
 }
 
 
@@ -119,6 +142,7 @@ async def init_db():
     async with engine.begin() as conn:
         from app.models import (  # noqa: F401
             app,
+            browser,
             conversation,
             desktop_layout,
             file_entry,

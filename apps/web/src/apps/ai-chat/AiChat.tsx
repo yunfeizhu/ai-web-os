@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Send, Square, PenSquare, Sparkles } from "lucide-react";
 import { streamChat } from "@/hooks/useStream";
+import { API_BASE } from "@/lib/backend";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { decodeModel, PROVIDERS } from "@/apps/settings/providers";
 import { MessageBubble } from "./MessageBubble";
 import { ModelPicker } from "./ModelPicker";
 import type { ChatMessage, Conversation } from "./types";
 
-const API = "http://localhost:8000/api/v1/agents";
+const API = `${API_BASE}/agents`;
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API}${path}`, {

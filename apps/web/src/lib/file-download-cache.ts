@@ -1,6 +1,6 @@
 "use client";
 
-const FILE_API_BASE = "http://localhost:8000/api/v1/files";
+import { buildApiUrl } from "@/lib/backend";
 
 const fileBufferCache = new Map<string, Promise<ArrayBuffer>>();
 
@@ -10,7 +10,7 @@ export function downloadFileBuffer(fileId: string) {
     return cached.then(cloneArrayBuffer);
   }
 
-  const request = fetch(`${FILE_API_BASE}/${fileId}/download`)
+  const request = fetch(buildApiUrl(`/files/${fileId}/download`))
     .then(async (response) => {
       if (!response.ok) {
         throw new Error(await response.text());

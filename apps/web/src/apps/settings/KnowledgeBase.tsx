@@ -16,8 +16,9 @@ import {
 } from "lucide-react";
 import { SectionTitle } from "./Settings";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { API_BASE } from "@/lib/backend";
 
-const API = "http://localhost:8000/api/v1/knowledge";
+const API = `${API_BASE}/knowledge`;
 
 interface KBDocument {
   id: string;

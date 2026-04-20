@@ -25,6 +25,7 @@ export function Window({
     updatePosition,
     updateSize,
     snapWindow,
+    canCloseWindow,
     closeWindow,
     minimizeWindow,
     requestMinimize,
@@ -84,8 +85,10 @@ export function Window({
   };
 
   // 带动画的关闭
-  const handleClose = (e: React.MouseEvent) => {
+  const handleClose = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    const canClose = await canCloseWindow(win.id);
+    if (!canClose) return;
     setExitAnim("close");
     setTimeout(() => closeWindow(win.id), 200);
   };

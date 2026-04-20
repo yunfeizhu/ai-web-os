@@ -10,6 +10,9 @@ from app.api.v1 import memory as memory_router
 from app.api.v1 import test as test_router
 from app.api.v1 import knowledge as knowledge_router
 from app.api.v1 import browser as browser_router
+from app.api.v1 import calendar as calendar_router
+from app.api.v1 import mail as mail_router
+from app.api.v1 import office as office_router
 from app.api.v1 import skills as skills_router
 from app.core.database import init_db
 from app.core.app_registry import get_app_registry, shutdown_app_registry
@@ -60,6 +63,9 @@ def create_app() -> FastAPI:
     app.include_router(test_router.router, prefix="/api/v1", tags=["test"])
     app.include_router(knowledge_router.router, prefix="/api/v1/knowledge", tags=["knowledge"])
     app.include_router(browser_router.router, prefix="/api/v1/browser", tags=["browser"])
+    app.include_router(calendar_router.router, prefix="/api/v1/calendar", tags=["calendar"])
+    app.include_router(mail_router.router, prefix="/api/v1/mail", tags=["mail"])
+    app.include_router(office_router.router, prefix="/api/v1/office", tags=["office"])
     app.include_router(skills_router.router, prefix="/api/v1/skills", tags=["skills"])
 
     from fastapi import WebSocket

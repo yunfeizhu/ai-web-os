@@ -7,7 +7,7 @@
 ### 前端
 
 - [x] Turborepo + pnpm 项目初始化
-- [x] Next.js 15 + Tailwind CSS v4 + 字体方案
+- [x] Next.js 15 + Tailwind CSS v4
 - [x] Desktop 桌面组件
 - [x] DesktopIcon 图标系统与 hover 动效
 - [x] WindowManager + Window 拖拽 / 缩放
@@ -24,7 +24,7 @@
 
 - [x] FastAPI 初始化与健康检查
 - [x] Docker Compose 基础依赖
-- [x] SQLAlchemy async models：`UserSettings`、`DesktopLayout`
+- [x] SQLAlchemy async models：UserSettings、DesktopLayout
 - [x] Alembic 初始化迁移
 - [x] Settings API：`GET/PUT /api/v1/settings`
 - [x] Desktop Layout API：`GET/PUT /api/v1/settings/desktop`
@@ -35,15 +35,13 @@
 
 状态：已完成
 
-目标：能够与 AI 对话、流式输出，并看到工具调用过程。
-
 ### 后端
 
 - [x] LiteLLM 集成，多模型统一接口
 - [x] 用户 API Key 管理，支持自定义 `base_url`
 - [x] Agent 流式对话接口
 - [x] 完整 Agent loop，支持 tool use 循环
-- [x] 内置工具：`calculator` / `fetch_url` / `python_exec` 等
+- [x] 内置工具：`calculator` / `fetch_url` / `python_exec`
 - [x] Conversation & Message CRUD
 - [x] 模型列表代理：`/api/v1/agents/models/fetch`
 
@@ -90,29 +88,26 @@
 ### 后端
 
 - [x] 文件系统能力：上传 / 下载 / 删除 / 移动 / 复制 / 文本读写
-- [x] 虚拟目录结构与路径映射
+- [x] 宿主文件映射与虚拟目录路径映射
 - [x] App Registry
   - [x] `apps_registry` 目录结构
-  - [x] 每个内置 App 含 `manifest.json` + `SKILL.md`
+  - [x] 每个内置 App 的 `manifest.json` + `SKILL.md`
   - [x] Manifest 解析与同步
   - [x] App Skill 元数据标准化
   - [x] App 生命周期管理：activate / deactivate / enable / disable
   - [x] 内置工具注册
   - [x] 当前入口 App 的 `SKILL.md` 自动注入 Agent 上下文
   - [x] 多 Skill 规则匹配与组合加载
-  - [x] 规则增强版语义路由：primary / secondary / conflict resolution
-  - [x] 更强语义理解的多 Skill 路由器
+  - [x] 语义路由增强：primary / secondary / conflict resolution
 - [x] MCP Manager
   - [x] builtin transport tool 路由
   - [x] stdio MCP 进程管理
   - [x] stdio MCP initialize / tools/list / tools/call
   - [x] HTTP MCP initialize / tools/list / tools/call
-  - [x] 外部 MCP 配置切换为 `~/.ai-native-os/mcp.json`
-  - [x] 外部 MCP 不再持久化到数据库
+  - [x] 外部 MCP 配置切换到 `~/.ai-native-os/mcp.json`
   - [x] 固定内置运行时方案：Node.js / Python / uv
 - [x] Files API：列表 / 上传 / 下载 / 文本内容 / 新建文件夹 / 新建文本文件 / 重命名 / 移动 / 复制 / 删除 / 目录树
 - [x] Apps API：列表 / 安装 / 编辑 / 删除 / 激活 / 停用 / 启用 / 禁用 / 工具列表
-- [x] stdio MCP tool routing 协议实现
 
 ### 前端
 
@@ -126,7 +121,7 @@
   - [x] 右键上下文菜单
   - [x] 不同文件类型图标
   - [x] 文本文件编辑链路
-  - [x] 图片 / PDF / 音频 / 视频 / 表格预览与打开链路补全
+  - [x] 图片 / PDF / 音频 / 视频 / 表格预览与打开链路
   - [x] Excel 编辑器切换到 Univer Sheets
 - [x] Terminal App
   - [x] AI 命令模式
@@ -136,7 +131,7 @@
   - [x] 上下方向键命令历史
   - [x] 工具调用显示 MCP 配置名称
   - [x] Windows 风格终端配色
-  - [ ] 可选增强：xterm.js 渲染层升级（当前为自定义 AI 终端实现，后续按需评估）
+  - [ ] 可选增强：xterm.js 渲染层升级
 - [x] Notes App
   - [x] Markdown 编辑与预览
   - [x] AI 辅助写作
@@ -152,34 +147,54 @@
 
 - [x] LLM / Embedding 配置改为浏览器 `localStorage` 持久化，不再入库
 - [x] 外部 MCP 配置改为本地 `mcp.json` 持久化，不再入库
-- [x] 后端启动期历史敏感配置清理逻辑已移除
 - [x] “文件预览服务”不再作为阶段四阻塞项
 
 ---
 
 ## 阶段五：办公套件
 
-状态：进行中（浏览器子项已基本完成，文档/表格已有基础能力，日历/邮件/白板未开始）
+状态：已完成（首个完整可用版）
 
-- [~] 文档与笔记
-  - [x] Markdown Notes：本地笔记列表、打开、保存
-  - [x] AI 写作辅助：润色 / 扩写 / 总结
+- [x] 文档与笔记
+  - [x] Markdown Notes：本地笔记列表、打开、自动保存
+  - [x] Notes：macOS 风格三栏界面、稳定切换、列表搜索
+  - [x] Notes：AI 写作辅助（润色 / 扩写 / 总结）直接写回正文
   - [x] Text Editor：文本文件打开、编辑、保存
-  - [ ] Tiptap / ProseMirror 富文本编辑器
-  - [ ] 选中文本级 AI 操作与自动补全
-  - [ ] 导出 PDF / DOCX / MD
-- [~] 表格
+  - [x] Document Editor：基于 TipTap 的富文本编辑
+  - [x] Document Editor：局部 AI 改写 / 翻译 / 扩写、全文大纲整理 / 调整语气 / 续写
+  - [x] Document Editor：文档列表内联重命名 / 删除、未保存状态提示、关闭前确认
+  - [x] 导出 MD / PDF / DOCX
+- [x] 表格
   - [x] 文件管理器表格预览
   - [x] Spreadsheet Editor：基于 Univer Sheets 的表格打开、编辑、保存
   - [x] 支持 xlsx / xls / xlsm / ods / csv
-  - [ ] AI 表格助手
-- [ ] 日历：月 / 周 / 日视图 + AI 日程助手
-- [ ] 邮件客户端：IMAP / SMTP + AI 智能回复
-- [ ] 白板：tldraw / Excalidraw + AI 生成图表
-- [x] 浏览器：页面容器 + AI 网页摘要
+- [x] 日历
+  - [x] 月 / 周 / 日视图
+  - [x] 事件 CRUD
+  - [x] AI 日程助手：自然语言生成事件并写入日历
+  - [x] macOS 风格当前日期高亮、焦点日期联动与年月快速切换
+  - [x] 自定义日期时间选择器与年份 / 月份面板切换
+- [x] 邮件客户端
+  - [x] IMAP / SMTP 账户配置
+  - [x] 收件箱 / 已发送 / 草稿箱切换
+  - [x] 收件箱同步与邮件详情
+  - [x] 撰写并发送邮件
+  - [x] 本地草稿保存、继续编辑与已发送记录
+  - [x] 附件元数据展示与下载
+  - [x] AI 邮件摘要
+  - [x] AI 回复草稿
+- [x] 白板
+  - [x] 本地白板文件
+  - [x] 可拖拽节点画布
+  - [x] 节点文本编辑、删除与关系连线展示
+  - [x] AI 自然语言生成结构图
+  - [x] 画布缩放 / 适配视图 / Ctrl + 滚轮缩放
+  - [x] 白板列表内联重命名 / 删除
+- [x] 浏览器
   - [x] Browser App：地址栏 / 前进后退 / 刷新 / 真实浏览器实时视图
   - [x] 真实浏览器 session / tab 管理与切换
   - [x] AI 助手可直接拉起浏览器并打开目标网站
+  - [x] 浏览器窗口与真实 session 聚焦联动、切换不闪烁
   - [x] 网页正文抓取 + AI 摘要
   - [x] 当前网页加入知识库
   - [x] browser-runtime 独立容器化方案

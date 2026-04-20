@@ -6,6 +6,7 @@ interface WindowManagerState {
   windows: Record<string, WindowState>;
   focusOrder: string[];
   nextZIndex: number;
+  closeGuards: Record<string, () => boolean | Promise<boolean>>;
 
   openWindow: (
     appId: string,
@@ -14,6 +15,9 @@ interface WindowManagerState {
     options?: OpenWindowOptions,
   ) => string;
   closeWindow: (id: string) => void;
+  canCloseWindow: (id: string) => Promise<boolean>;
+  registerCloseGuard: (id: string, guard: () => boolean | Promise<boolean>) => void;
+  unregisterCloseGuard: (id: string) => void;
   focusWindow: (id: string) => void;
   minimizeWindow: (id: string) => void;
   requestMinimize: (id: string) => void;
@@ -58,6 +62,7 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
   windows: {},
   focusOrder: [],
   nextZIndex: 100,
+  closeGuards: {},
 
   openWindow: (appId, title, icon, options) => {
     const state = get();
@@ -135,6 +140,32 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
           : rest,
         focusOrder,
       };
+    });
+  },
+
+  canCloseWindow: async (id) => {
+    const guard = get().closeGuards[id];
+    if (!guard) return true;
+    try {
+      return await guard();
+    } catch {
+      return false;
+    }
+  },
+
+  registerCloseGuard: (id, guard) => {
+    set((s) => ({
+      closeGuards: {
+        ...s.closeGuards,
+        [id]: guard,
+      },
+    }));
+  },
+
+  unregisterCloseGuard: (id) => {
+    set((s) => {
+      const { [id]: _, ...rest } = s.closeGuards;
+      return { closeGuards: rest };
     });
   },
 

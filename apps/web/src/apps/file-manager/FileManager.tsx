@@ -12,6 +12,7 @@ import {
   FileCog,
   FileImage,
   FileJson,
+  FilePenLine,
   FileSpreadsheet,
   FileSymlink,
   FileText,
@@ -24,6 +25,7 @@ import {
   Loader2,
   MoveRight,
   Pencil,
+  PenTool,
   RefreshCw,
   Trash2,
   Upload,
@@ -101,6 +103,8 @@ export function FileManager() {
   const containerRef = useRef<HTMLDivElement>(null);
   const openWindow = useWindowStore((state) => state.openWindow);
   const textEditorApp = useDesktopStore((state) => state.apps["text-editor"]);
+  const documentEditorApp = useDesktopStore((state) => state.apps["document-editor"]);
+  const whiteboardApp = useDesktopStore((state) => state.apps["whiteboard"]);
 
   const MENU_W = 164;
   const MENU_H = 220; // 最大预估高度（5 项 × ~40px + padding）
@@ -191,6 +195,50 @@ export function FileManager() {
     });
   };
 
+  const openDocumentEditor = (entry: FileEntry) => {
+    if (!isDocumentEditorFile(entry)) return;
+    openWindow(
+      "document-editor",
+      entry.name.replace(/\.aosdoc\.html$/i, ""),
+      documentEditorApp?.manifest.icon ?? "FilePenLine",
+      {
+        size: documentEditorApp?.manifest.ui.defaultSize ?? {
+          width: 1180,
+          height: 760,
+        },
+        minSize: documentEditorApp?.manifest.ui.minSize ?? {
+          width: 760,
+          height: 520,
+        },
+        singleton: false,
+        instanceKey: entry.path,
+        appState: { filePath: entry.path, fileId: entry.id },
+      },
+    );
+  };
+
+  const openWhiteboardEditor = (entry: FileEntry) => {
+    if (!isWhiteboardFile(entry)) return;
+    openWindow(
+      "whiteboard",
+      entry.name.replace(/\.whiteboard\.json$/i, ""),
+      whiteboardApp?.manifest.icon ?? "PenTool",
+      {
+        size: whiteboardApp?.manifest.ui.defaultSize ?? {
+          width: 1220,
+          height: 760,
+        },
+        minSize: whiteboardApp?.manifest.ui.minSize ?? {
+          width: 900,
+          height: 560,
+        },
+        singleton: false,
+        instanceKey: entry.path,
+        appState: { filePath: entry.path, fileId: entry.id },
+      },
+    );
+  };
+
   const openExternalFile = (entry: FileEntry) => {
     if (!isExternallyOpenableFile(entry)) return;
     window.open(getDownloadUrl(entry), "_blank", "noopener,noreferrer");
@@ -216,8 +264,16 @@ export function FileManager() {
       openTextEditor(entry);
       return;
     }
+    if (isDocumentEditorFile(entry)) {
+      openDocumentEditor(entry);
+      return;
+    }
     if (isEditableSpreadsheetFile(entry)) {
       openSpreadsheetEditor(entry);
+      return;
+    }
+    if (isWhiteboardFile(entry)) {
+      openWhiteboardEditor(entry);
       return;
     }
     if (isExternallyOpenableFile(entry)) {
@@ -473,11 +529,25 @@ export function FileManager() {
                   onClick={() => openTextEditor(selected)}
                 />
               )}
+              {isDocumentEditorFile(selected) && (
+                <ActionButton
+                  icon={<FilePenLine size={13} />}
+                  label="打开文档编辑器"
+                  onClick={() => openDocumentEditor(selected)}
+                />
+              )}
               {selectedIsEditableSpreadsheet && (
                 <ActionButton
                   icon={<FileSpreadsheet size={13} />}
                   label="打开表格编辑器"
                   onClick={() => openSpreadsheetEditor(selected)}
+                />
+              )}
+              {isWhiteboardFile(selected) && (
+                <ActionButton
+                  icon={<PenTool size={13} />}
+                  label="打开白板"
+                  onClick={() => openWhiteboardEditor(selected)}
                 />
               )}
               {selectedCanOpenExternally && (
@@ -838,6 +908,32 @@ export function FileManager() {
                 </div>
               )}
 
+              {isDocumentEditorFile(selected) && (
+                <div className="space-y-3">
+                  <ActionButton
+                    icon={<FilePenLine size={13} />}
+                    label="打开文档编辑器"
+                    onClick={() => openDocumentEditor(selected)}
+                  />
+                  <div className="text-[12px]" style={{ color: "var(--t3)" }}>
+                    双击文件或点击这里，会在独立窗口中打开这份富文本文档进行编辑和导出。
+                  </div>
+                </div>
+              )}
+
+              {isWhiteboardFile(selected) && (
+                <div className="space-y-3">
+                  <ActionButton
+                    icon={<PenTool size={13} />}
+                    label="打开白板"
+                    onClick={() => openWhiteboardEditor(selected)}
+                  />
+                  <div className="text-[12px]" style={{ color: "var(--t3)" }}>
+                    双击文件或点击这里，会在独立窗口中打开白板进行拖拽编辑和结构梳理。
+                  </div>
+                </div>
+              )}
+
               {selectedPreviewKind === "text" && (
                 <MediaPreviewShell className="overflow-hidden p-0">
                   {isPreviewPending || textPreviewStatus === "loading" ? (
@@ -906,11 +1002,15 @@ export function FileManager() {
                         ? "打开目录"
                         : isEditableTextFile(entry)
                           ? "打开文本编辑器"
-                          : isEditableSpreadsheetFile(entry)
-                            ? "打开表格编辑器"
-                          : isExternallyOpenableFile(entry)
-                            ? "打开文件"
-                            : "下载文件"
+                          : isDocumentEditorFile(entry)
+                            ? "打开文档编辑器"
+                            : isEditableSpreadsheetFile(entry)
+                              ? "打开表格编辑器"
+                              : isWhiteboardFile(entry)
+                                ? "打开白板"
+                                : isExternallyOpenableFile(entry)
+                                  ? "打开文件"
+                                  : "下载文件"
                     }
                     onClick={() => {
                       setSelected(entry);
@@ -1326,9 +1426,19 @@ function isEditableTextFile(entry: FileEntry | null) {
   return entry.name.toLowerCase().endsWith(".txt");
 }
 
+function isDocumentEditorFile(entry: FileEntry | null) {
+  if (!entry || entry.kind !== "file") return false;
+  return entry.name.toLowerCase().endsWith(".aosdoc.html");
+}
+
 function isEditableSpreadsheetFile(entry: FileEntry | null) {
   if (!entry || entry.kind !== "file") return false;
   return isSpreadsheetFileName(entry.name);
+}
+
+function isWhiteboardFile(entry: FileEntry | null) {
+  if (!entry || entry.kind !== "file") return false;
+  return entry.name.toLowerCase().endsWith(".whiteboard.json");
 }
 
 function isHtmlFile(entry: FileEntry | null) {
@@ -1410,12 +1520,16 @@ function getEntryIcon(entry: FileEntry, size: number) {
   switch (meta.kind) {
     case "image":
       return <FileImage size={size} />;
+    case "document":
+      return <FilePenLine size={size} />;
     case "json":
       return <FileJson size={size} />;
     case "code":
       return <FileCode2 size={size} />;
     case "spreadsheet":
       return <FileSpreadsheet size={size} />;
+    case "whiteboard":
+      return <PenTool size={size} />;
     case "archive":
       return <FileArchive size={size} />;
     case "audio":
@@ -1434,6 +1548,13 @@ function getEntryIcon(entry: FileEntry, size: number) {
 function getFileVisualMeta(entry: FileEntry) {
   const ext = entry.name.toLowerCase().split(".").pop() ?? "";
   const mime = entry.mime_type?.toLowerCase() ?? "";
+
+  if (entry.name.toLowerCase().endsWith(".aosdoc.html")) {
+    return { kind: "document", color: "#e11d48", label: "富文档" } as const;
+  }
+  if (entry.name.toLowerCase().endsWith(".whiteboard.json")) {
+    return { kind: "whiteboard", color: "#7c3aed", label: "白板文件" } as const;
+  }
 
   if (["lnk", "url"].includes(ext)) {
     return { kind: "shortcut", color: "#8b5cf6", label: "快捷方式" } as const;

@@ -9,6 +9,10 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@tiptap/extension-placeholder": "^3.22.4",
+    "@tiptap/extension-underline": "^3.22.4",
+    "@tiptap/react": "^3.22.4",
+    "@tiptap/starter-kit": "^3.22.4",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@univerjs/preset-sheets-core": "^0.20.1",
     "@univerjs/presets": "^0.20.1",

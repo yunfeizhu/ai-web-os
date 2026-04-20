@@ -18,8 +18,11 @@ const ICON_BG: Record<string, string> = {
   "terminal":     "linear-gradient(180deg, #3A3A3C, #1C1C1E)",
   "browser":      "linear-gradient(180deg, #5AC8FA, #0A84FF)",
   "notes":        "linear-gradient(180deg, #FFD60A, #FF9F0A)",
+  "document-editor": "linear-gradient(180deg, #FB7185, #E11D48)",
   "text-editor":  "linear-gradient(180deg, #7BD4FF, #3B82F6)",
   "calendar":     "linear-gradient(180deg, #FF453A, #D70015)",
+  "mail":         "linear-gradient(180deg, #22C55E, #15803D)",
+  "whiteboard":   "linear-gradient(180deg, #A78BFA, #7C3AED)",
 };
 
 export function StartMenu({ onClose }: { onClose: () => void }) {

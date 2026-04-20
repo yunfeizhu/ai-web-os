@@ -21,6 +21,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 IS_WINDOWS = platform.system() == "Windows"
+WINDOWS_DOCUMENTS_ROOT = Path.home() / "Documents"
+APP_DOCUMENTS_ROOT = WINDOWS_DOCUMENTS_ROOT / "AI Native OS"
+APP_VIRTUAL_ROOTS = {
+    "/Notes": APP_DOCUMENTS_ROOT / "Notes",
+    "/Documents": APP_DOCUMENTS_ROOT / "Documents",
+    "/Whiteboards": APP_DOCUMENTS_ROOT / "Whiteboards",
+}
 
 # 非 Windows 系统的沙箱根目录（可通过环境变量覆盖）
 FS_ROOT = Path(os.getenv("FS_ROOT", str(Path.home()))).resolve()
@@ -64,6 +71,18 @@ def _get_windows_drives() -> list[str]:
         return ["C"]
 
 
+def _resolve_windows_app_path(virtual_path: str) -> tuple[str, Path] | None:
+    normalized = normalize_path(virtual_path)
+    for virtual_root, real_root in APP_VIRTUAL_ROOTS.items():
+        if normalized == virtual_root or normalized.startswith(f"{virtual_root}/"):
+            suffix = normalized[len(virtual_root):].lstrip("/")
+            target = (real_root / suffix).resolve() if suffix else real_root.resolve()
+            if not str(target).startswith(str(real_root)):
+                raise ValueError(f"路径穿越攻击被拦截: {virtual_path}")
+            return virtual_root, target
+    return None
+
+
 def _to_real(virtual_path: str) -> Path:
     """虚拟路径 → 真实磁盘路径。
 
@@ -75,6 +94,9 @@ def _to_real(virtual_path: str) -> Path:
     if IS_WINDOWS:
         if normalized == "/":
             raise ValueError("Windows 虚拟根无对应真实路径")
+        app_mapping = _resolve_windows_app_path(normalized)
+        if app_mapping is not None:
+            return app_mapping[1]
         parts = normalized.lstrip("/").split("/", 1)
         drive = parts[0]
         if len(drive) == 1 and drive.isalpha():
@@ -97,6 +119,14 @@ def _to_real(virtual_path: str) -> Path:
 def _to_virtual(real_path: Path) -> str:
     """真实磁盘路径 → 虚拟路径。"""
     if IS_WINDOWS:
+        resolved = real_path.resolve()
+        for virtual_root, real_root in APP_VIRTUAL_ROOTS.items():
+            try:
+                rel = resolved.relative_to(real_root)
+            except ValueError:
+                continue
+            rel_text = str(rel).replace("\\", "/").strip("/")
+            return f"{virtual_root}/{rel_text}" if rel_text else virtual_root
         drive = real_path.drive  # 形如 "C:"
         if drive:
             letter = drive[0].upper()
@@ -183,8 +213,12 @@ def serialize_entry(entry: FileNode) -> dict:
 
 
 def _sync_ensure_dirs() -> None:
-    if not IS_WINDOWS:
-        FS_ROOT.mkdir(parents=True, exist_ok=True)
+    if IS_WINDOWS:
+        APP_DOCUMENTS_ROOT.mkdir(parents=True, exist_ok=True)
+        for real_root in APP_VIRTUAL_ROOTS.values():
+            real_root.mkdir(parents=True, exist_ok=True)
+        return
+    FS_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def _sync_write_bytes(real: Path, data: bytes) -> None:

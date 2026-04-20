@@ -1,12 +1,11 @@
 import type { AppManifest } from "@/types/app";
 
-// 内置 App 清单
 export const BUILTIN_APPS: AppManifest[] = [
   {
     id: "ai-chat",
     name: "AI 助手",
     version: "1.0.0",
-    description: "智能 AI 对话助手，支持多模型和工具调用。",
+    description: "智能 AI 对话助手，支持多模型与工具调用。",
     icon: "MessageSquare",
     category: "productivity",
     agent: {
@@ -86,7 +85,7 @@ export const BUILTIN_APPS: AppManifest[] = [
     id: "browser",
     name: "浏览器",
     version: "1.0.0",
-    description: "内置网页浏览器，支持 AI 摘要。",
+    description: "内置网页浏览器，支持 AI 摘要与知识入库。",
     icon: "Globe",
     category: "utility",
     agent: {
@@ -106,7 +105,7 @@ export const BUILTIN_APPS: AppManifest[] = [
     id: "notes",
     name: "笔记",
     version: "1.0.0",
-    description: "Markdown 笔记，AI 辅助写作。",
+    description: "Markdown 笔记，带 AI 润色、扩写和总结。",
     icon: "FileText",
     category: "productivity",
     agent: {
@@ -123,10 +122,30 @@ export const BUILTIN_APPS: AppManifest[] = [
     },
   },
   {
+    id: "document-editor",
+    name: "文档",
+    version: "1.0.0",
+    description: "富文本文档编辑器，支持 AI 改写、翻译、扩写、导出。",
+    icon: "FilePenLine",
+    category: "productivity",
+    agent: {
+      systemPrompt: "你是文档写作助手。",
+      model: "auto",
+      temperature: 0.6,
+      maxTokens: 4096,
+    },
+    ui: {
+      component: "DocumentEditor",
+      defaultSize: { width: 1180, height: 760 },
+      minSize: { width: 760, height: 520 },
+      singleton: false,
+    },
+  },
+  {
     id: "calendar",
     name: "日历",
     version: "1.0.0",
-    description: "日程管理与 AI 日程助手。",
+    description: "月 / 周 / 日视图、事件管理与 AI 日程助手。",
     icon: "Calendar",
     category: "productivity",
     agent: {
@@ -137,9 +156,49 @@ export const BUILTIN_APPS: AppManifest[] = [
     },
     ui: {
       component: "Calendar",
-      defaultSize: { width: 1100, height: 720 },
-      minSize: { width: 600, height: 450 },
+      defaultSize: { width: 1160, height: 760 },
+      minSize: { width: 760, height: 520 },
       singleton: true,
+    },
+  },
+  {
+    id: "mail",
+    name: "邮件",
+    version: "1.0.0",
+    description: "IMAP / SMTP 邮件客户端，支持 AI 摘要与回复草稿。",
+    icon: "Mail",
+    category: "communication",
+    agent: {
+      systemPrompt: "你是邮件助手。",
+      model: "auto",
+      temperature: 0.4,
+      maxTokens: 4096,
+    },
+    ui: {
+      component: "MailApp",
+      defaultSize: { width: 1220, height: 760 },
+      minSize: { width: 860, height: 560 },
+      singleton: true,
+    },
+  },
+  {
+    id: "whiteboard",
+    name: "白板",
+    version: "1.0.0",
+    description: "自由画布与 AI 图解生成。",
+    icon: "PenTool",
+    category: "creative",
+    agent: {
+      systemPrompt: "你是白板助手。",
+      model: "auto",
+      temperature: 0.7,
+      maxTokens: 4096,
+    },
+    ui: {
+      component: "WhiteboardApp",
+      defaultSize: { width: 1220, height: 760 },
+      minSize: { width: 900, height: 560 },
+      singleton: false,
     },
   },
 ];

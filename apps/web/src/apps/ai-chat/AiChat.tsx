@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Trash2, Send, Square, PenSquare, Sparkles } from "lucide-react";
 import { streamChat } from "@/hooks/useStream";
 import { API_BASE } from "@/lib/backend";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { useWindowStore } from "@/stores/windowStore";
 import { decodeModel, PROVIDERS } from "@/apps/settings/providers";
 import { MessageBubble } from "./MessageBubble";
 import { ModelPicker } from "./ModelPicker";
@@ -28,13 +29,27 @@ const QUICK_PROMPTS = [
   { icon: "💻", label: "写代码", prompt: "帮我写一段代码，实现" },
 ];
 
+function extractBrowserSessionId(
+  toolName: string,
+  args: Record<string, unknown>,
+  result: string,
+) {
+  const directSessionId = String(args.session_id ?? "").trim();
+  if (directSessionId) return directSessionId;
+
+  if (toolName === "browser_create_session") {
+    const match = /已创建浏览器会话[:：]\s*([^\s，,。；;]+)/.exec(result);
+    if (match?.[1]) return match[1];
+  }
+
+  return "";
+}
+
 export function AiChat() {
-  const {
-    providers,
-    defaultModel,
-    setDefaultModel,
-    embeddingConfig,
-  } = useSettingsStore();
+  const { providers, defaultModel, setDefaultModel, embeddingConfig } =
+    useSettingsStore();
+  const openWindow = useWindowStore((state) => state.openWindow);
+  const updateAppState = useWindowStore((state) => state.updateAppState);
 
   const getInitialModel = () => {
     if (defaultModel) return defaultModel;
@@ -59,12 +74,78 @@ export function AiChat() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const liveToolArgsRef = useRef<Record<string, Record<string, unknown>>>({});
+  const pendingBrowserWindowTimersRef = useRef<Record<string, number>>({});
   const scrollBehaviorRef = useRef<"smooth" | "instant">("instant");
   const userScrolledUpRef = useRef(false);
 
+  const clearPendingBrowserWindowOpen = useCallback((sessionId: string) => {
+    const timerId = pendingBrowserWindowTimersRef.current[sessionId];
+    if (typeof timerId !== "number") return;
+    window.clearTimeout(timerId);
+    delete pendingBrowserWindowTimersRef.current[sessionId];
+  }, []);
+
+  const commitBrowserWindowOpen = useCallback(
+    (sessionId: string, url?: string) => {
+      const nextAppState: Record<string, unknown> = {
+        activeSessionId: sessionId,
+      };
+      if (url?.trim()) {
+        nextAppState.urlInput = url.trim();
+      }
+
+      const windowId = openWindow("browser", "浏览器", "Globe", {
+        singleton: false,
+        instanceKey: `browser-session:${sessionId}`,
+        appState: nextAppState,
+      });
+      updateAppState(windowId, nextAppState);
+    },
+    [openWindow, updateAppState],
+  );
+
+  const syncBrowserWindowFromTool = useCallback(
+    (
+      toolName: string,
+      args: Record<string, unknown>,
+      result: string,
+      error: boolean,
+    ) => {
+      if (error || !toolName.startsWith("browser_")) return;
+
+      const sessionId = extractBrowserSessionId(toolName, args, result);
+      if (!sessionId) return;
+
+      if (toolName === "browser_close_session") {
+        clearPendingBrowserWindowOpen(sessionId);
+        return;
+      }
+
+      const url = String(args.url ?? "").trim();
+      if (toolName === "browser_create_session" && !url) {
+        clearPendingBrowserWindowOpen(sessionId);
+        pendingBrowserWindowTimersRef.current[sessionId] = window.setTimeout(
+          () => {
+            delete pendingBrowserWindowTimersRef.current[sessionId];
+            commitBrowserWindowOpen(sessionId);
+          },
+          450,
+        );
+        return;
+      }
+
+      clearPendingBrowserWindowOpen(sessionId);
+      commitBrowserWindowOpen(sessionId, url);
+    },
+    [clearPendingBrowserWindowOpen, commitBrowserWindowOpen],
+  );
+
   const loadConversations = useCallback(async () => {
     try {
-      const data = await apiFetch<Conversation[]>("/conversations?app_id=ai-chat");
+      const data = await apiFetch<Conversation[]>(
+        "/conversations?app_id=ai-chat",
+      );
       setConversations(data);
     } catch {}
   }, []);
@@ -72,6 +153,15 @@ export function AiChat() {
   useEffect(() => {
     loadConversations();
   }, [loadConversations]);
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of Object.values(pendingBrowserWindowTimersRef.current)) {
+        window.clearTimeout(timerId);
+      }
+      pendingBrowserWindowTimersRef.current = {};
+    };
+  }, []);
 
   const loadMessages = useCallback(async (convId: string) => {
     try {
@@ -82,13 +172,19 @@ export function AiChat() {
           role: string;
           content: string | null;
           tool_calls:
-            | { id: string; name: string; displayName?: string | null; args: Record<string, unknown> }[]
+            | {
+                id: string;
+                name: string;
+                displayName?: string | null;
+                args: Record<string, unknown>;
+                result?: string | null;
+              }[]
             | null;
           tool_call_id: string | null;
         }[]
       >(`/conversations/${convId}/messages`);
 
-      // tool 消息结果 map：tool_call_id → content
+      // tool 娑堟伅缁撴灉 map锛歵ool_call_id 鈫?content
       const toolResultMap: Record<string, string> = {};
       data
         .filter((m) => m.role === "tool")
@@ -96,24 +192,29 @@ export function AiChat() {
           if (m.tool_call_id) toolResultMap[m.tool_call_id] = m.content ?? "";
         });
 
-      // 过滤掉 role=tool 的中间消息，只显示 user/assistant
+      // 杩囨护鎺?role=tool 鐨勪腑闂存秷鎭紝鍙樉绀?user/assistant
       const visible = data.filter(
         (m) => m.role === "user" || m.role === "assistant",
       );
       setMessages(
-        visible.map((m) => ({
-          id: m.id,
-          role: m.role as ChatMessage["role"],
-          content: m.content ?? "",
-          toolCalls: m.tool_calls?.map((tc) => ({
+        visible.map((m) => {
+          const rawCalls = m.tool_calls ?? [];
+          const normalizedCalls = rawCalls.map((tc) => ({
             id: tc.id,
             name: tc.name,
             displayName: tc.displayName ?? null,
             args: tc.args,
-            result: toolResultMap[tc.id],
+            result: toolResultMap[tc.id] ?? tc.result ?? undefined,
             status: "done" as const,
-          })),
-        })),
+          }));
+
+          return {
+            id: m.id,
+            role: m.role as ChatMessage["role"],
+            content: m.content ?? "",
+            toolCalls: normalizedCalls,
+          };
+        }),
       );
     } catch {}
   }, []);
@@ -157,7 +258,7 @@ export function AiChat() {
   const handleScroll = () => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    // 距离底部超过 80px 视为用户向上滚动
+    // 璺濈搴曢儴瓒呰繃 80px 瑙嗕负鐢ㄦ埛鍚戜笂婊氬姩
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     userScrolledUpRef.current = !atBottom;
   };
@@ -172,8 +273,7 @@ export function AiChat() {
     abortRef.current?.abort();
   };
 
-  // 后端重启后自动重新初始化记忆管理器
-
+  // 鍚庣閲嶅惎鍚庤嚜鍔ㄩ噸鏂板垵濮嬪寲璁板繂绠＄悊鍣?
   const sendMessage = useCallback(
     async (text?: string) => {
       const content = (text ?? input).trim();
@@ -187,7 +287,6 @@ export function AiChat() {
       const apiKey = providerCfg.apiKey;
       const apiBase = providerCfg.baseUrl || providerDef?.defaultBaseUrl;
 
-      // 若没有活跃会话则先创建
       let convId = activeId;
       if (!convId) {
         try {
@@ -225,10 +324,43 @@ export function AiChat() {
       };
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
-      const history = messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      // Build history with full tool_calls context so the LLM sees prior
+      // tool interactions across conversation turns (OpenAI/Anthropic format).
+      const history: Record<string, unknown>[] = [];
+      for (const m of messages) {
+        if (m.role === "assistant") {
+          const completedCalls = (m.toolCalls ?? []).filter(
+            (tc) => tc.status === "done" && tc.result != null,
+          );
+          if (completedCalls.length > 0) {
+            // assistant message with tool_calls
+            history.push({
+              role: "assistant",
+              content: m.content || null,
+              tool_calls: completedCalls.map((tc) => ({
+                id: tc.id,
+                type: "function",
+                function: {
+                  name: tc.name,
+                  arguments: JSON.stringify(tc.args ?? {}),
+                },
+              })),
+            });
+            // corresponding tool result messages
+            for (const tc of completedCalls) {
+              history.push({
+                role: "tool",
+                tool_call_id: tc.id,
+                content: tc.result ?? "",
+              });
+            }
+          } else {
+            history.push({ role: "assistant", content: m.content });
+          }
+        } else {
+          history.push({ role: m.role, content: m.content });
+        }
+      }
       const abort = new AbortController();
       abortRef.current = abort;
 
@@ -248,10 +380,10 @@ export function AiChat() {
             embeddingConfig: embeddingConfig ?? undefined,
             llmApiKey: apiKey,
             llmApiBase: apiBase,
-            onStatus: (s, event) => {
+            onStatus: (s) => {
               if (s === "recalled") {
                 // const count = (event?.count as number) ?? 0;
-                // setStatusText(`已召回 ${count} 条记忆`);
+                // setStatusText(`宸插彫鍥?${count} 鏉¤蹇哷);
                 // setTimeout(() => setStatusText(""), 2000);
               }
             },
@@ -266,6 +398,7 @@ export function AiChat() {
               );
             },
             onToolCall: (event) => {
+              liveToolArgsRef.current[event.id] = event.args;
               setMessages((prev) =>
                 prev.map((m) => {
                   if (m.id !== assistantId) return m;
@@ -287,6 +420,7 @@ export function AiChat() {
               );
             },
             onToolResult: (event) => {
+              const toolArgs = liveToolArgsRef.current[event.id] ?? {};
               setMessages((prev) =>
                 prev.map((m) => {
                   if (m.id !== assistantId) return m;
@@ -296,7 +430,8 @@ export function AiChat() {
                       tc.id === event.id
                         ? {
                             ...tc,
-                            displayName: event.displayName ?? tc.displayName ?? null,
+                            displayName:
+                              event.displayName ?? tc.displayName ?? null,
                             result: event.result,
                             error: event.error,
                             status: event.error
@@ -308,6 +443,13 @@ export function AiChat() {
                   };
                 }),
               );
+              syncBrowserWindowFromTool(
+                event.name,
+                toolArgs,
+                event.result,
+                event.error,
+              );
+              delete liveToolArgsRef.current[event.id];
             },
           },
           abort.signal,
@@ -316,7 +458,12 @@ export function AiChat() {
         setStatusText("");
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === assistantId ? { ...m, streaming: false } : m,
+            m.id === assistantId
+              ? {
+                  ...m,
+                  streaming: false,
+                }
+              : m,
           ),
         );
         if (title) {
@@ -329,7 +476,12 @@ export function AiChat() {
         if ((err as Error).name === "AbortError") {
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, streaming: false } : m,
+              m.id === assistantId
+                ? {
+                    ...m,
+                    streaming: false,
+                  }
+                : m,
             ),
           );
           return;
@@ -349,9 +501,21 @@ export function AiChat() {
       } finally {
         setLoading(false);
         abortRef.current = null;
+        liveToolArgsRef.current = {};
       }
     },
-    [input, loading, activeId, messages, selectedModel, providers, embeddingConfig],
+    [
+      input,
+      loading,
+      activeId,
+      messages,
+      selectedModel,
+      providers,
+      embeddingConfig,
+      openWindow,
+      syncBrowserWindowFromTool,
+      updateAppState,
+    ],
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

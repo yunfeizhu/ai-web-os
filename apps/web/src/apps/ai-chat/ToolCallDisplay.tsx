@@ -48,7 +48,8 @@ const TOOL_META: Record<string, { label: string; icon: React.ReactNode; color: s
   browser_close_session: { label: "关闭浏览器会话", icon: <XCircle size={13} />, color: "#EF4444" },
 };
 
-function getArgsSummary(name: string, args: Record<string, unknown>): string {
+function getArgsSummary(tc: ToolCall): string {
+  const { name, args, displayName } = tc;
   if (name === "fetch_url")   return String(args.url ?? "");
   if (name === "calculator")  return String(args.expression ?? "");
   if (name === "python_exec") {
@@ -91,8 +92,12 @@ interface ToolCallItemProps {
 
 function ToolCallItem({ tc }: ToolCallItemProps) {
   const [expanded, setExpanded] = useState(false);
-  const meta = TOOL_META[tc.name] ?? { label: tc.displayName || tc.name, icon: <Code2 size={13} />, color: "#888" };
-  const argsSummary = getArgsSummary(tc.name, tc.args);
+  const defaultMeta = TOOL_META[tc.name] ?? { label: tc.name, icon: <Code2 size={13} />, color: "#888" };
+  const meta = {
+    ...defaultMeta,
+    label: tc.displayName || defaultMeta.label,
+  };
+  const argsSummary = getArgsSummary(tc);
 
   return (
     <div

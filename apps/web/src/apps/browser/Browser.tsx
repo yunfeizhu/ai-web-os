@@ -466,6 +466,7 @@ function sleep(ms: number) {
 
 export function Browser({ appState, windowId }: BrowserProps) {
   const updateAppState = useWindowStore((state) => state.updateAppState);
+  const browserWindow = useWindowStore((state) => state.windows[windowId]);
   const embeddingConfig = useSettingsStore((state) => state.embeddingConfig);
 
   const [runtime, setRuntime] = useState<BrowserRuntime>({
@@ -527,6 +528,8 @@ export function Browser({ appState, windowId }: BrowserProps) {
   const [switchingHistoryId, setSwitchingHistoryId] = useState("");
   const [reopeningHistoryId, setReopeningHistoryId] = useState("");
   const [savingKnowledge, setSavingKnowledge] = useState(false);
+  const shouldPollSessions =
+    Boolean(browserWindow?.isFocused) && browserWindow?.state !== "minimized";
   const isEditingUrlRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
@@ -575,6 +578,8 @@ export function Browser({ appState, windowId }: BrowserProps) {
         : `${window.location.protocol}//${window.location.hostname}:18100`;
     return `${liveBase}/embedded_vnc.html?autoconnect=1&scale=${preciseControl ? 0 : 1}&precise=${preciseControl ? 1 : 0}&view_only=0&path=websockify&reconnect=1&session_id=${encodeURIComponent(activeSessionId)}&api_base=${encodeURIComponent(apiBase)}`;
   }, [activeSessionId, liveBase, preciseControl]);
+
+  const liveFrameKey = useMemo(() => activeSessionId, [activeSessionId]);
 
   const updateChatMessage = (
     messageId: string,
@@ -1125,6 +1130,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
       );
       setDetail(data);
       syncUrlInput(data.current_url || "");
+      setSummaryError("");
     } catch (error) {
       if (isNoActiveTabError(error)) {
         try {
@@ -1134,6 +1140,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
           );
           setDetail(retryData);
           syncUrlInput(retryData.current_url || "");
+          setSummaryError("");
           return;
         } catch (retryError) {
           if (isNoActiveTabError(retryError)) {
@@ -1149,6 +1156,19 @@ export function Browser({ appState, windowId }: BrowserProps) {
     }
   };
 
+  const focusSessionLive = async (sessionId: string) => {
+    const data = await apiFetch<BrowserSessionDetail>(
+      `/browser/sessions/${sessionId}/focus`,
+      {
+        method: "POST",
+      },
+    );
+    setDetail(data);
+    syncUrlInput(data.current_url || "", true);
+    setSummaryError("");
+    return data;
+  };
+
   useEffect(() => {
     void loadRuntime();
     void loadSessions();
@@ -1156,10 +1176,20 @@ export function Browser({ appState, windowId }: BrowserProps) {
 
   useEffect(() => {
     if (!activeSessionId) return;
-    void loadDetail(activeSessionId);
+    setSummaryError("");
+    void focusSessionLive(activeSessionId).catch(() => {
+      void loadDetail(activeSessionId);
+    });
   }, [activeSessionId]);
 
   useEffect(() => {
+    if (!shouldPollSessions) return;
+
+    void loadSessions();
+    if (activeSessionId) {
+      void loadDetail(activeSessionId);
+    }
+
     const timer = window.setInterval(() => {
       void loadSessions();
       if (activeSessionId) {
@@ -1167,7 +1197,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
       }
     }, 1500);
     return () => window.clearInterval(timer);
-  }, [activeSessionId]);
+  }, [activeSessionId, shouldPollSessions]);
 
   useEffect(() => {
     if (!profilesDialogOpen || libraryTab !== "history") return;
@@ -2079,7 +2109,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
                     >
                       {liveUrl ? (
                         <iframe
-                          key={activeSessionId}
+                          key={liveFrameKey}
                           src={liveUrl}
                           title="Live Browser Control"
                           className="h-full w-full border-0"

@@ -34,6 +34,9 @@ class ActiveMCPServer:
     server_info: dict | None = None
     capabilities: dict = field(default_factory=dict)
     tool_count: int = 0
+    health_status: str = "unknown"
+    last_health_check_at: datetime | None = None
+    last_health_error: str | None = None
 
 
 class _StdioMCPClientSession:
@@ -499,6 +502,8 @@ class MCPManager:
                 status="active",
                 started_at=datetime.now(timezone.utc),
                 initialized=True,
+                health_status="healthy",
+                last_health_check_at=datetime.now(timezone.utc),
             )
             self._servers[app_id] = active
             return active
@@ -536,6 +541,8 @@ class MCPManager:
         if active:
             active.status = "inactive"
             active.initialized = False
+            active.health_status = "unknown"
+            active.last_health_error = None
 
     async def stop_all(self) -> None:
         for app_id in list(self._servers.keys()):
@@ -560,12 +567,56 @@ class MCPManager:
             "protocol_version": active.protocol_version,
             "server_info": active.server_info,
             "tool_count": active.tool_count,
+            "health_status": active.health_status,
+            "last_health_check_at": (
+                active.last_health_check_at.isoformat() if active.last_health_check_at else None
+            ),
+            "last_health_error": active.last_health_error,
         }
 
-    async def list_tools(self, app_id: str) -> list[dict]:
+    async def check_server_health(self, app_id: str) -> dict:
+        active = self._servers.get(app_id)
+        if active is None:
+            return {"status": "inactive", "transport": None, "pid": None, "health_status": "inactive"}
+
+        checked_at = datetime.now(timezone.utc)
+
+        if active.transport == "builtin":
+            active.health_status = "healthy"
+            active.last_health_check_at = checked_at
+            active.last_health_error = None
+            return self.get_status(app_id)
+
+        process = self._processes.get(app_id)
+        if process is not None and process.poll() is not None:
+            active.status = "error"
+            active.initialized = False
+            active.health_status = "unhealthy"
+            active.last_health_check_at = checked_at
+            active.last_health_error = f"process exited with code {process.returncode}"
+            return self.get_status(app_id)
+
+        try:
+            tools = await self.list_tools(app_id, refresh=True)
+            active.status = "active"
+            active.initialized = True
+            active.tool_count = len(tools)
+            active.health_status = "healthy"
+            active.last_health_check_at = checked_at
+            active.last_health_error = None
+        except Exception as exc:
+            active.status = "error"
+            active.initialized = False
+            active.health_status = "unhealthy"
+            active.last_health_check_at = checked_at
+            active.last_health_error = str(exc)
+
+        return self.get_status(app_id)
+
+    async def list_tools(self, app_id: str, refresh: bool = False) -> list[dict]:
         stdio_session = self._stdio_sessions.get(app_id)
         if stdio_session is not None:
-            tools = await stdio_session.list_tools()
+            tools = await stdio_session.list_tools(refresh=refresh)
             active = self._servers.get(app_id)
             if active:
                 active.tool_count = len(tools)
@@ -573,7 +624,7 @@ class MCPManager:
 
         http_session = self._http_sessions.get(app_id)
         if http_session is not None:
-            tools = await http_session.list_tools()
+            tools = await http_session.list_tools(refresh=refresh)
             active = self._servers.get(app_id)
             if active:
                 active.tool_count = len(tools)
@@ -652,9 +703,14 @@ class MCPManager:
             active.server_info = session.server_info
             active.capabilities = session.capabilities
             active.tool_count = len(tools)
+            active.health_status = "healthy"
+            active.last_health_check_at = datetime.now(timezone.utc)
+            active.last_health_error = None
             return active
         except Exception:
             active.status = "error"
+            active.health_status = "unhealthy"
+            active.last_health_check_at = datetime.now(timezone.utc)
             self._stdio_sessions.pop(app_id, None)
             self._processes.pop(app_id, None)
             await session.close()
@@ -689,9 +745,14 @@ class MCPManager:
             active.server_info = session.server_info
             active.capabilities = session.capabilities
             active.tool_count = len(tools)
+            active.health_status = "healthy"
+            active.last_health_check_at = datetime.now(timezone.utc)
+            active.last_health_error = None
             return active
         except Exception:
             active.status = "error"
+            active.health_status = "unhealthy"
+            active.last_health_check_at = datetime.now(timezone.utc)
             self._http_sessions.pop(app_id, None)
             await session.close()
             raise

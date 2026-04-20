@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func
 from pydantic import BaseModel, Field
 
+from app.core.app_registry import get_app_registry
 from app.core.database import get_db
 from app.core.llm_provider import stream_chat, agent_loop
 from app.core.memory import get_memory_manager
@@ -261,16 +262,16 @@ async def chat(
         tool_calls: list[dict] = []
         tool_results: list[dict] = []
 
-        memory_mgr = get_memory_manager()
-        effective_system, skill_info = await build_skill_augmented_system_prompt(
-            db,
-            req.system_prompt,
-            req.message,
-            conversation_id=conv_id,
-            requested_app_id=req.app_id,
-        )
-        if skill_info:
-            yield f"data: {json.dumps({'x_skill_loaded': skill_info}, ensure_ascii=False)}\n\n"
+        registry = get_app_registry()
+        with registry.apply_user_skill_env():
+            memory_mgr = get_memory_manager()
+            effective_system, skill_info = await build_skill_augmented_system_prompt(
+                db,
+                req.system_prompt,
+                req.message,
+                conversation_id=conv_id,
+                requested_app_id=req.app_id,
+            )
 
         if req.enable_memory and memory_mgr:
             memories = await memory_mgr.search(query=req.message, user_id=req.user_id, limit=5)
@@ -287,25 +288,27 @@ async def chat(
                 yield f"data: {json.dumps({'x_recalled': len(relevant)}, ensure_ascii=False)}\n\n"
 
         try:
-            async for event_type, payload in agent_loop(
-                model=req.model,
-                messages=[*req.history, {"role": "user", "content": req.message}],
-                api_key=x_api_key,
-                provider_id=req.provider_id,
-                system_prompt=effective_system,
-                api_base=req.api_base,
-            ):
-                if event_type == "token":
-                    full_response += payload
-                    yield f"data: {json.dumps({'token': payload}, ensure_ascii=False)}\n\n"
+            with registry.apply_user_skill_env():
+                async for event_type, payload in agent_loop(
+                    model=req.model,
+                    messages=[*req.history, {"role": "user", "content": req.message}],
+                    api_key=x_api_key,
+                    provider_id=req.provider_id,
+                    system_prompt=effective_system,
+                    api_base=req.api_base,
+                    skill_context=skill_info,
+                ):
+                    if event_type == "token":
+                        full_response += payload
+                        yield f"data: {json.dumps({'token': payload}, ensure_ascii=False)}\n\n"
 
-                elif event_type == "tool_call":
-                    tool_calls.append(payload)
-                    yield f"data: {json.dumps({'x_tool_call': payload}, ensure_ascii=False)}\n\n"
+                    elif event_type == "tool_call":
+                        tool_calls.append(payload)
+                        yield f"data: {json.dumps({'x_tool_call': payload}, ensure_ascii=False)}\n\n"
 
-                elif event_type == "tool_result":
-                    tool_results.append(payload)
-                    yield f"data: {json.dumps({'x_tool_result': payload}, ensure_ascii=False)}\n\n"
+                    elif event_type == "tool_result":
+                        tool_results.append(payload)
+                        yield f"data: {json.dumps({'x_tool_result': payload}, ensure_ascii=False)}\n\n"
 
             async with db.begin_nested():
                 count_result = await db.execute(

@@ -1,4 +1,4 @@
-"""LiteLLM wrapper and agent loop."""
+"""LLM provider helpers and the tool-calling agent loop."""
 
 from __future__ import annotations
 
@@ -7,6 +7,8 @@ from typing import AsyncIterator, Literal
 
 import litellm
 from litellm import acompletion
+
+from app.core.context_manager import prepare_messages
 
 litellm.set_verbose = False
 
@@ -23,6 +25,8 @@ PROVIDER_PREFIX: dict[str, str] = {
 }
 
 AgentEvent = tuple[Literal["token", "tool_call", "tool_result"], str | dict]
+
+_MAX_TOOL_CALLS_WARNING = "\n\n\uff08\u5df2\u8fbe\u5230\u6700\u5927\u5de5\u5177\u8c03\u7528\u6b21\u6570\uff09"
 
 
 def build_litellm_model(provider_id: str, model_id: str, compat_type: str = "openai") -> str:
@@ -90,8 +94,19 @@ async def agent_loop(
     max_tokens: int = 4096,
     api_base: str | None = None,
     max_iterations: int = 8,
+    skill_context: dict | None = None,
 ) -> AsyncIterator[AgentEvent]:
-    from app.core.tools import execute_tool, get_tool_display_name, get_tools_for_model
+    """Standard tool-calling agent loop following the OpenAI/Anthropic paradigm.
+
+    The LLM autonomously decides which tools to call based on tool descriptions.
+    No skill routing, forced tool_choice, or skill-specific retry logic.
+    """
+    from app.core.tools import (
+        execute_tool,
+        get_python_exec_display_name,
+        get_tool_display_name,
+        get_tools_for_model,
+    )
 
     if provider_id:
         litellm_model = build_litellm_model(provider_id, model, compat_type)
@@ -104,10 +119,12 @@ async def agent_loop(
 
     tools = await get_tools_for_model(model)
 
-    full_messages: list[dict] = []
-    if system_prompt:
-        full_messages.append({"role": "system", "content": system_prompt})
-    full_messages.extend(messages)
+    full_messages = prepare_messages(
+        model=litellm_model,
+        system_prompt=system_prompt or "",
+        history=messages,
+        max_output_tokens=max_tokens,
+    )
 
     base_kwargs: dict = {
         "model": litellm_model,
@@ -166,13 +183,20 @@ async def agent_loop(
                 args = json.loads(tool_call["arguments"] or "{}")
             except json.JSONDecodeError:
                 args = {}
-            parsed = {
+
+            display_name = (
+                get_python_exec_display_name(str(args.get("code") or ""), skill_context)
+                if tool_call["name"] == "python_exec"
+                else await get_tool_display_name(tool_call["name"])
+            )
+            parsed_calls.append({
                 "id": tool_call["id"],
                 "name": tool_call["name"],
-                "displayName": await get_tool_display_name(tool_call["name"]),
+                "displayName": display_name,
                 "args": args,
-            }
-            parsed_calls.append(parsed)
+            })
+
+        for parsed in parsed_calls:
             yield ("tool_call", parsed)
 
         full_messages.append(
@@ -181,27 +205,25 @@ async def agent_loop(
                 "content": "".join(content_parts),
                 "tool_calls": [
                     {
-                        "id": tool_call["id"],
+                        "id": parsed_call["id"],
                         "type": "function",
                         "function": {
-                            "name": tool_call["name"],
-                            "arguments": tool_call["arguments"],
+                            "name": parsed_call["name"],
+                            "arguments": json.dumps(parsed_call["args"], ensure_ascii=False),
                         },
                     }
-                    for tool_call in tool_call_map.values()
+                    for parsed_call in parsed_calls
                 ],
             }
         )
 
         for parsed_call in parsed_calls:
             try:
-                result = await execute_tool(
-                    parsed_call["name"],
-                    parsed_call["args"],
-                )
+                result = await execute_tool(parsed_call["name"], parsed_call["args"])
                 error = False
             except Exception as exc:
-                result = f"工具执行异常: {exc}"
+                detail = str(exc).strip() or repr(exc) or type(exc).__name__
+                result = f"工具执行异常: {type(exc).__name__}: {detail}"
                 error = True
 
             yield (
@@ -223,4 +245,4 @@ async def agent_loop(
                 }
             )
 
-    yield ("token", "\n\n（已达到最大工具调用次数）")
+    yield ("token", _MAX_TOOL_CALLS_WARNING)

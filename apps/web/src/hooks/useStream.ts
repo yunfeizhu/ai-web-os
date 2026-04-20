@@ -6,7 +6,10 @@ const STREAM_IDLE_TIMEOUT_MS = 45_000;
 
 function resolveWebSocketUrl() {
   const httpBase = API_BASE.replace(/\/api\/v1\/?$/, "");
-  const fallbackWsBase = DEFAULT_API_BASE.replace(/\/api\/v1\/?$/, "").replace(/^http/i, "ws");
+  const fallbackWsBase = DEFAULT_API_BASE.replace(/\/api\/v1\/?$/, "").replace(
+    /^http/i,
+    "ws",
+  );
   if (/^https?:\/\//i.test(httpBase)) {
     return `${httpBase.replace(/^http/i, "ws")}/ws`;
   }
@@ -52,7 +55,7 @@ export interface ChatParams {
   message: string;
   model: string;
   providerId: string;
-  history: { role: string; content: string }[];
+  history: Record<string, unknown>[];
   systemPrompt?: string;
   apiKey: string;
   apiBase?: string;
@@ -113,7 +116,11 @@ class WsManager {
       };
       ws.onmessage = (event) => {
         let msg: Record<string, unknown>;
-        try { msg = JSON.parse(event.data); } catch { return; }
+        try {
+          msg = JSON.parse(event.data);
+        } catch {
+          return;
+        }
 
         const type = msg.type as string;
         const requestId = msg.requestId as string;
@@ -163,7 +170,11 @@ class WsManager {
     return this.connectPromise;
   }
 
-  async send(requestId: string, payload: Record<string, unknown>, handler: PendingHandler) {
+  async send(
+    requestId: string,
+    payload: Record<string, unknown>,
+    handler: PendingHandler,
+  ) {
     const ws = await this.connect();
     this.pending.set(requestId, handler);
     ws.send(JSON.stringify({ type: "agent_invoke", requestId, payload }));
@@ -222,7 +233,9 @@ export async function streamChat(
         model: params.model,
         providerId: params.providerId,
         history: params.history,
-        systemPrompt: params.systemPrompt ?? "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。",
+        systemPrompt:
+          params.systemPrompt ??
+          "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。",
         apiKey: params.apiKey,
         apiBase: params.apiBase ?? null,
         enableMemory: params.enableMemory ?? true,

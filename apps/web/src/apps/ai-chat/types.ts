@@ -8,6 +8,15 @@ export interface ToolCall {
   status: "running" | "done" | "error";
 }
 
+export interface SkillActivity {
+  app_id: string;
+  name: string;
+  description?: string;
+  entrypoint?: string | null;
+  source?: string;
+  role?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "error";

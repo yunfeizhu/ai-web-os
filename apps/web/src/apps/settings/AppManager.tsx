@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Activity,
   Boxes,
   Loader2,
   Pencil,
@@ -23,6 +24,7 @@ import {
 
 import { apiFetch } from "@/lib/backend";
 import { SectionTitle } from "./Settings";
+import { SkillManager } from "./SkillManager";
 
 interface ToolItem {
   name: string;
@@ -67,6 +69,9 @@ interface ManagedApp {
     initialized?: boolean;
     protocol_version?: string | null;
     tool_count?: number | null;
+    health_status?: string | null;
+    last_health_check_at?: string | null;
+    last_health_error?: string | null;
   };
   last_error?: string | null;
 }
@@ -112,6 +117,7 @@ export function AppManager() {
   const [actionErrorMap, setActionErrorMap] = useState<Record<string, string>>({});
   const [activeLoadingMap, setActiveLoadingMap] = useState<Record<string, boolean>>({});
   const [deleteLoadingMap, setDeleteLoadingMap] = useState<Record<string, boolean>>({});
+  const [healthLoadingMap, setHealthLoadingMap] = useState<Record<string, boolean>>({});
   const formRef = useRef<HTMLDivElement | null>(null);
 
   const loadApps = async () => {
@@ -254,6 +260,21 @@ export function AppManager() {
       await loadApps().catch(() => undefined);
     } finally {
       setDeleteLoadingMap((prev) => ({ ...prev, [app.id]: false }));
+    }
+  };
+
+  const checkHealth = async (appId: string) => {
+    setActionErrorMap((prev) => ({ ...prev, [appId]: "" }));
+    setHealthLoadingMap((prev) => ({ ...prev, [appId]: true }));
+    try {
+      await apiFetch(`/apps/${appId}/health`, { method: "POST" });
+      await loadApps();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "健康检查失败";
+      setActionErrorMap((prev) => ({ ...prev, [appId]: message }));
+      await loadApps().catch(() => undefined);
+    } finally {
+      setHealthLoadingMap((prev) => ({ ...prev, [appId]: false }));
     }
   };
 
@@ -570,7 +591,7 @@ export function AppManager() {
       </div>
 
       <div
-        className="rounded-2xl p-4"
+        className="hidden"
         style={{ background: "rgba(250,204,21,0.08)", border: "0.5px solid rgba(245,158,11,0.18)" }}
       >
         <div className="mb-2 flex items-center gap-2 text-[15px] font-semibold">
@@ -581,6 +602,8 @@ export function AppManager() {
           这里后续会补齐 Skills 的安装、启用和版本管理入口。当前先保留为统一的扩展能力中心。
         </div>
       </div>
+
+      <SkillManager />
 
       {externalApps.length > 0 ? (
         <div className="space-y-3">
@@ -594,10 +617,12 @@ export function AppManager() {
               onToggleEnabled={toggleEnabled}
               onToggleActive={toggleActive}
               onRefreshTools={refreshTools}
+              onCheckHealth={checkHealth}
               runtimeTools={toolMap[app.id]}
               toolLoading={toolLoadingMap[app.id]}
               activeLoading={activeLoadingMap[app.id]}
               deleteLoading={deleteLoadingMap[app.id]}
+              healthLoading={healthLoadingMap[app.id]}
               toolError={toolErrorMap[app.id]}
               actionError={actionErrorMap[app.id]}
             />
@@ -622,10 +647,12 @@ function ManagedAppCard({
   onToggleEnabled,
   onToggleActive,
   onRefreshTools,
+  onCheckHealth,
   runtimeTools,
   toolLoading,
   activeLoading,
   deleteLoading,
+  healthLoading,
   toolError,
   actionError,
 }: {
@@ -635,10 +662,12 @@ function ManagedAppCard({
   onToggleEnabled: (app: ManagedApp) => Promise<void>;
   onToggleActive: (app: ManagedApp) => Promise<void>;
   onRefreshTools: (appId: string) => Promise<void>;
+  onCheckHealth: (appId: string) => Promise<void>;
   runtimeTools?: ToolItem[];
   toolLoading?: boolean;
   activeLoading?: boolean;
   deleteLoading?: boolean;
+  healthLoading?: boolean;
   toolError?: string;
   actionError?: string;
 }) {
@@ -671,6 +700,7 @@ function ManagedAppCard({
           </div>
           <div className="mt-2 flex flex-wrap gap-2 text-[12px]">
             <Badge label={`状态: ${app.runtime?.status || app.status}`} />
+            {app.runtime?.health_status ? <Badge label={`健康: ${app.runtime.health_status}`} /> : null}
             <Badge label={`可用: ${app.enabled ? "是" : "否"}`} />
             {app.runtime?.transport ? <Badge label={`transport: ${app.runtime.transport}`} /> : null}
             {app.runtime?.initialized ? <Badge label="initialized" /> : null}
@@ -720,6 +750,22 @@ function ManagedAppCard({
           </button>
 
           <button
+            onClick={() => void onCheckHealth(app.id)}
+            disabled={healthLoading}
+            className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] leading-none"
+            style={{
+              background: "rgba(0,0,0,0.05)",
+              opacity: healthLoading ? 0.72 : 1,
+              cursor: healthLoading ? "wait" : "pointer",
+            }}
+          >
+            <span className="inline-flex items-center gap-1.5 leading-none">
+              {healthLoading ? <Loader2 size={13} className="animate-spin" /> : <Activity className="h-[13px] w-[13px]" />}
+              {healthLoading ? "检查中…" : "健康检查"}
+            </span>
+          </button>
+
+          <button
             onClick={() => void onRefreshTools(app.id)}
             className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] leading-none"
             style={{ background: "rgba(0,0,0,0.05)" }}
@@ -749,9 +795,9 @@ function ManagedAppCard({
         </div>
       </div>
 
-      {actionError || app.last_error ? (
+      {actionError || app.runtime?.last_health_error || app.last_error ? (
         <div className="mb-3 rounded-xl px-3 py-2 text-[12px]" style={errorBannerStyle}>
-          {actionError || app.last_error}
+          {actionError || app.runtime?.last_health_error || app.last_error}
         </div>
       ) : null}
 
@@ -866,6 +912,10 @@ function buildEmptyForm(): MCPFormState {
 }
 
 function buildManifest(form: MCPFormState, baseManifest?: MCPManifest): MCPManifest {
+  const permissions = new Set(splitCommaList(form.permissions));
+  if (form.transport === "stdio") permissions.add("subprocess");
+  if (form.transport === "streamable-http") permissions.add("network");
+
   const manifest: MCPManifest = {
     ...baseManifest,
     id: normalizeAppId(form.id || form.name),
@@ -877,7 +927,7 @@ function buildManifest(form: MCPFormState, baseManifest?: MCPManifest): MCPManif
         ? "通过前端接入的 stdio MCP 服务。"
         : "通过前端接入的远程 HTTP MCP 服务。"),
     category: form.category.trim() || "utility",
-    permissions: splitCommaList(form.permissions),
+    permissions: Array.from(permissions),
     tools: baseManifest?.tools ?? [],
     mcp:
       form.transport === "stdio"

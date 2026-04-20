@@ -169,6 +169,17 @@ async def get_app_skill(app_id: str, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post("/{app_id}/health")
+async def check_app_health(app_id: str, db: AsyncSession = Depends(get_db)):
+    registry = get_app_registry()
+    try:
+        return {"app_id": app_id, "runtime": await registry.check_app_health(db, app_id)}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @router.post("/{app_id}/tools/{tool_name}")
 async def invoke_app_tool(
     app_id: str,

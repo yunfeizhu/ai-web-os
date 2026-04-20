@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, Check, RotateCcw, Sparkles } from "lucide-react";
+import { Check, Copy, RotateCcw, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -23,11 +23,9 @@ const markdownComponents: Components = {
     if (isBlock) {
       const lang = match?.[1] ?? "text";
       const code = String(children).replace(/\n$/, "");
-      return (
-        <CodeBlock lang={lang} code={code} />
-      );
+      return <CodeBlock lang={lang} code={code} />;
     }
-    // 行内代码
+
     return (
       <code
         className={className}
@@ -56,23 +54,43 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   };
 
   return (
-    <div className="relative rounded-xl overflow-hidden my-2" style={{ border: "0.5px solid rgba(0,0,0,0.1)" }}>
-      {/* 顶栏：语言 + 复制 */}
+    <div
+      className="relative my-2 overflow-hidden rounded-xl"
+      style={{ border: "0.5px solid rgba(0,0,0,0.1)" }}
+    >
       <div
         className="flex items-center justify-between px-3 py-1.5"
-        style={{ background: "rgba(0,0,0,0.04)", borderBottom: "0.5px solid rgba(0,0,0,0.08)" }}
+        style={{
+          background: "rgba(0,0,0,0.04)",
+          borderBottom: "0.5px solid rgba(0,0,0,0.08)",
+        }}
       >
-        <span className="text-[12px] font-medium" style={{ color: "var(--t3)", fontFamily: "var(--font-mono)" }}>
+        <span
+          className="text-[12px] font-medium"
+          style={{ color: "var(--t3)", fontFamily: "var(--font-mono)" }}
+        >
           {lang}
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-[12px] px-2 py-0.5 rounded-md transition-colors"
+          className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] transition-colors"
           style={{ color: copied ? "#22C55E" : "var(--t3)" }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.06)")}
-          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          onMouseEnter={(event) => {
+            event.currentTarget.style.background = "rgba(0,0,0,0.06)";
+          }}
+          onMouseLeave={(event) => {
+            event.currentTarget.style.background = "transparent";
+          }}
         >
-          {copied ? <><Check size={11} /> 已复制</> : <><Copy size={11} /> 复制</>}
+          {copied ? (
+            <>
+              <Check size={11} /> 已复制
+            </>
+          ) : (
+            <>
+              <Copy size={11} /> 复制
+            </>
+          )}
         </button>
       </div>
       <SyntaxHighlighter
@@ -85,7 +103,9 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
           background: "rgba(0,0,0,0.02)",
           borderRadius: 0,
         }}
-        codeTagProps={{ style: { fontFamily: "var(--font-mono, ui-monospace, monospace)" } }}
+        codeTagProps={{
+          style: { fontFamily: "var(--font-mono, ui-monospace, monospace)" },
+        }}
       >
         {code}
       </SyntaxHighlighter>
@@ -105,12 +125,11 @@ export function MessageBubble({ message, onRetry }: Props) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // 用户消息：右对齐气泡
   if (isUser) {
     return (
       <div className="flex justify-end px-4 py-1.5">
         <div
-          className="max-w-[70%] rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap"
+          className="max-w-[70%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed"
           style={{
             background: "var(--accent)",
             color: "#fff",
@@ -124,25 +143,30 @@ export function MessageBubble({ message, onRetry }: Props) {
     );
   }
 
-  // 错误消息
   if (isError) {
     return (
       <div className="flex px-4 py-1.5">
         <div
-          className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mr-3 mt-0.5"
+          className="mr-3 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
           style={{ background: "rgba(255,59,48,0.1)", fontSize: 14 }}
         >
-          ⚠️
+          ⚠
         </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-[14px] leading-relaxed py-1" style={{ color: "var(--red)" }}>
+        <div className="min-w-0 flex-1">
+          <p
+            className="py-1 text-[14px] leading-relaxed"
+            style={{ color: "var(--red)" }}
+          >
             {message.content}
           </p>
           {onRetry && (
             <button
               onClick={onRetry}
-              className="flex items-center gap-1 mt-1 px-2 py-1 rounded-lg text-[12px] transition-colors"
-              style={{ color: "var(--accent)", background: "rgba(0,122,255,0.06)" }}
+              className="mt-1 flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] transition-colors"
+              style={{
+                color: "var(--accent)",
+                background: "rgba(0,122,255,0.06)",
+              }}
             >
               <RotateCcw size={11} /> 重试
             </button>
@@ -152,7 +176,6 @@ export function MessageBubble({ message, onRetry }: Props) {
     );
   }
 
-  // Assistant 消息
   return (
     <div
       className="flex px-4"
@@ -160,25 +183,28 @@ export function MessageBubble({ message, onRetry }: Props) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      {/* AI 头像 */}
       <div
-        className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mr-3 mt-0.5"
-        style={{ background: "linear-gradient(135deg,#a78bfa,#6366f1)", flexShrink: 0 }}
+        className="mr-3 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+        style={{
+          background: "linear-gradient(135deg,#a78bfa,#6366f1)",
+          flexShrink: 0,
+        }}
       >
         <Sparkles size={14} color="white" strokeWidth={1.8} />
       </div>
 
-      {/* 内容区 */}
-      <div className="flex-1 min-w-0 relative">
+      <div className="relative min-w-0 flex-1">
         <ToolCallDisplay toolCalls={message.toolCalls} />
-        <div className="markdown text-[14px] leading-relaxed" style={{ color: "var(--t1)", wordBreak: "break-word" }}>
+        <div
+          className="markdown text-[14px] leading-relaxed"
+          style={{ color: "var(--t1)", wordBreak: "break-word" }}
+        >
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
             {message.content}
           </ReactMarkdown>
           {message.streaming && <StreamingDots />}
         </div>
 
-        {/* 操作栏：absolute 定位，不占流空间 */}
         {!message.streaming && hovered && (
           <div
             className="absolute flex items-center gap-0.5"
@@ -201,17 +227,20 @@ export function MessageBubble({ message, onRetry }: Props) {
 
 function StreamingDots() {
   return (
-    <span className="inline-flex items-center gap-[3px] ml-1 align-middle" style={{ height: "1em" }}>
-      {[0, 1, 2].map((i) => (
+    <span
+      className="ml-1 inline-flex items-center gap-[3px] align-middle"
+      style={{ height: "1em" }}
+    >
+      {[0, 1, 2].map((index) => (
         <span
-          key={i}
+          key={index}
           className="inline-block rounded-full"
           style={{
             width: 4,
             height: 4,
             background: "var(--t3)",
-            animation: `dotBounce 1.2s ease-in-out infinite`,
-            animationDelay: `${i * 0.2}s`,
+            animation: "dotBounce 1.2s ease-in-out infinite",
+            animationDelay: `${index * 0.2}s`,
           }}
         />
       ))}
@@ -238,10 +267,14 @@ function ActionBtn({
     <button
       onClick={onClick}
       title={tooltip}
-      className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
+      className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
       style={{ color: "var(--t3)" }}
-      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.06)")}
-      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+      onMouseEnter={(event) => {
+        event.currentTarget.style.background = "rgba(0,0,0,0.06)";
+      }}
+      onMouseLeave={(event) => {
+        event.currentTarget.style.background = "transparent";
+      }}
     >
       {children}
     </button>

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     debug: bool = True
     browser_session_enabled: bool = True
     browser_runtime_url: str = "http://127.0.0.1:18100"
+    python_exec_mode: str = "local"
+    python_exec_docker_image: str = "python:3.11-slim"
+    python_exec_timeout_sec: int = 5
 
     # 安全
     secret_key: str = "change-me-in-production"

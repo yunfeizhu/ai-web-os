@@ -85,7 +85,7 @@
 
 ## 阶段四：文件系统与 App 框架
 
-状态：基本完成，收尾中（主线已落地，剩余增强项主要是更强语义理解的多 Skill 路由器）
+状态：已完成
 
 ### 后端
 
@@ -101,7 +101,7 @@
   - [x] 当前入口 App 的 `SKILL.md` 自动注入 Agent 上下文
   - [x] 多 Skill 规则匹配与组合加载
   - [x] 规则增强版语义路由：primary / secondary / conflict resolution
-  - [ ] 更强语义理解的多 Skill 路由器
+  - [x] 更强语义理解的多 Skill 路由器
 - [x] MCP Manager
   - [x] builtin transport tool 路由
   - [x] stdio MCP 进程管理
@@ -136,6 +136,7 @@
   - [x] 上下方向键命令历史
   - [x] 工具调用显示 MCP 配置名称
   - [x] Windows 风格终端配色
+  - [ ] 可选增强：xterm.js 渲染层升级（当前为自定义 AI 终端实现，后续按需评估）
 - [x] Notes App
   - [x] Markdown 编辑与预览
   - [x] AI 辅助写作
@@ -158,15 +159,27 @@
 
 ## 阶段五：办公套件
 
-状态：进行中（已启动 Browser App 首版实现）
+状态：进行中（浏览器子项已基本完成，文档/表格已有基础能力，日历/邮件/白板未开始）
 
-- [ ] 文档编辑器：Tiptap + AI 辅助 + 导出 PDF / DOCX
+- [~] 文档与笔记
+  - [x] Markdown Notes：本地笔记列表、打开、保存
+  - [x] AI 写作辅助：润色 / 扩写 / 总结
+  - [x] Text Editor：文本文件打开、编辑、保存
+  - [ ] Tiptap / ProseMirror 富文本编辑器
+  - [ ] 选中文本级 AI 操作与自动补全
+  - [ ] 导出 PDF / DOCX / MD
+- [~] 表格
+  - [x] 文件管理器表格预览
+  - [x] Spreadsheet Editor：基于 Univer Sheets 的表格打开、编辑、保存
+  - [x] 支持 xlsx / xls / xlsm / ods / csv
+  - [ ] AI 表格助手
 - [ ] 日历：月 / 周 / 日视图 + AI 日程助手
 - [ ] 邮件客户端：IMAP / SMTP + AI 智能回复
 - [ ] 白板：tldraw / Excalidraw + AI 生成图表
-- [~] 浏览器：页面容器 + AI 网页摘要
-  - [x] Browser App 首版：地址栏 / 前进后退 / 刷新 / 真实浏览器会话截图视图
-  - [x] 真实浏览器 session / tab 状态轮询
+- [x] 浏览器：页面容器 + AI 网页摘要
+  - [x] Browser App：地址栏 / 前进后退 / 刷新 / 真实浏览器实时视图
+  - [x] 真实浏览器 session / tab 管理与切换
+  - [x] AI 助手可直接拉起浏览器并打开目标网站
   - [x] 网页正文抓取 + AI 摘要
   - [x] 当前网页加入知识库
   - [x] browser-runtime 独立容器化方案

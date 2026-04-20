@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
+import re
+import shutil
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.app_manifest import APP_ID_PATTERN, normalize_manifest
 from app.core.database import AsyncSessionLocal
 from app.core.file_manager import get_entry_by_path, list_entries, read_entry_text, save_text_file
 from app.core.mcp_manager import MCPManager
@@ -18,11 +23,13 @@ from app.models.app import App
 APPS_ROOT = Path(__file__).resolve().parents[2] / "apps_registry"
 SKILL_ENTRYPOINTS = ("SKILL.md", "workflow.md")
 MCP_CONFIG_VERSION = 1
+SKILLS_CONFIG_VERSION = 1
 USER_CONFIG_DIR = Path(
     os.getenv("AI_NATIVE_OS_HOME", str(Path.home() / ".ai-native-os"))
 ).expanduser()
 MCP_CONFIG_PATH = USER_CONFIG_DIR / "mcp.json"
 SKILLS_ROOT = USER_CONFIG_DIR / "skills"
+SKILLS_CONFIG_PATH = USER_CONFIG_DIR / "skills.json"
 SKILL_NAMESPACES = (".system", "user")
 
 _registry: AppRegistry | None = None
@@ -43,7 +50,23 @@ class ManagedAppRecord:
     last_error: str | None = None
 
 
-def _parse_skill_frontmatter(content: str) -> tuple[dict[str, str], str]:
+def _parse_frontmatter_scalar(value: str) -> Any:
+    text = value.strip()
+    if not text:
+        return ""
+
+    if (text.startswith('"') and text.endswith('"')) or (text.startswith("'") and text.endswith("'")):
+        return text[1:-1]
+
+    lowered = text.lower()
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    return text
+
+
+def _parse_skill_frontmatter(content: str) -> tuple[dict[str, Any], str]:
     if not content.startswith("---"):
         return {}, content
 
@@ -60,16 +83,93 @@ def _parse_skill_frontmatter(content: str) -> tuple[dict[str, str], str]:
     if closing_index is None:
         return {}, content
 
-    metadata: dict[str, str] = {}
+    metadata: dict[str, Any] = {}
+    stack: list[tuple[int, dict[str, Any]]] = [(-1, metadata)]
+
     for raw_line in lines[1:closing_index]:
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+
+        indent = len(raw_line) - len(raw_line.lstrip(" "))
         line = raw_line.strip()
         if not line or line.startswith("#") or ":" not in line:
             continue
+
         key, value = line.split(":", 1)
-        metadata[key.strip()] = value.strip().strip("\"'")
+        key = key.strip()
+        value = value.strip()
+
+        while len(stack) > 1 and indent <= stack[-1][0]:
+            stack.pop()
+        current = stack[-1][1]
+
+        if value:
+            current[key] = _parse_frontmatter_scalar(value)
+            continue
+
+        child: dict[str, Any] = {}
+        current[key] = child
+        stack.append((indent, child))
 
     body = "\n".join(lines[closing_index + 1 :]).lstrip("\n")
     return metadata, body
+
+
+def _parse_bool_flag(value: Any, *, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    normalized = str(value).strip().lower()
+    if normalized in {"0", "false", "no", "off", "disabled"}:
+        return False
+    if normalized in {"1", "true", "yes", "on", "enabled"}:
+        return True
+    return default
+
+
+def _parse_skill_metadata_object(raw_metadata: Any) -> dict[str, Any]:
+    if isinstance(raw_metadata, dict):
+        return raw_metadata
+    if not raw_metadata:
+        return {}
+    try:
+        parsed = json.loads(raw_metadata)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _infer_skill_primary_env(raw_content: str) -> str | None:
+    candidates: list[str] = []
+    patterns = [
+        r'os\.environ\.get\(\s*["\']([A-Z][A-Z0-9_]{2,})["\']',
+        r'os\.getenv\(\s*["\']([A-Z][A-Z0-9_]{2,})["\']',
+        r'`([A-Z][A-Z0-9_]{2,})`',
+        r'\b([A-Z][A-Z0-9_]{2,})\b',
+    ]
+
+    for pattern in patterns:
+        for match in re.findall(pattern, raw_content):
+            candidate = str(match).strip()
+            if not candidate.endswith(("_URL", "_HOST", "_PORT", "_PATH", "_MODEL")) and (
+                candidate.endswith(("_KEY", "_TOKEN", "_SECRET"))
+                or candidate in {"OPENAI_API_KEY", "ANTHROPIC_API_KEY"}
+            ):
+                candidates.append(candidate)
+
+        if candidates:
+            break
+
+    if not candidates:
+        return None
+
+    counts: dict[str, int] = {}
+    for candidate in candidates:
+        counts[candidate] = counts.get(candidate, 0) + 1
+
+    ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
+    return ranked[0][0]
 
 
 def get_app_registry() -> "AppRegistry":
@@ -93,8 +193,10 @@ class AppRegistry:
         self.user_config_dir = USER_CONFIG_DIR.resolve()
         self.mcp_config_path = MCP_CONFIG_PATH.resolve()
         self.skills_root = SKILLS_ROOT.resolve()
+        self.skills_config_path = SKILLS_CONFIG_PATH.resolve()
         self.mcp_manager = MCPManager()
         self._mcp_config_lock = asyncio.Lock()
+        self._skills_config_lock = asyncio.Lock()
         self._external_last_error: dict[str, str | None] = {}
         self._register_builtin_handlers()
 
@@ -115,6 +217,9 @@ class AppRegistry:
 
     def _default_mcp_payload(self) -> dict[str, Any]:
         return {"version": MCP_CONFIG_VERSION, "servers": []}
+
+    def _default_skills_payload(self) -> dict[str, Any]:
+        return {"version": SKILLS_CONFIG_VERSION, "entries": {}}
 
     def _read_mcp_payload_unlocked(self) -> dict[str, Any]:
         self._ensure_user_config_structure()
@@ -148,29 +253,72 @@ class AppRegistry:
         )
         temp_path.replace(self.mcp_config_path)
 
+    def _read_skills_payload_unlocked(self) -> dict[str, Any]:
+        self._ensure_user_config_structure()
+        if not self.skills_config_path.exists():
+            payload = self._default_skills_payload()
+            self._write_skills_payload_unlocked(payload)
+            return payload
+
+        raw = json.loads(self.skills_config_path.read_text(encoding="utf-8"))
+        if not isinstance(raw, dict):
+            return self._default_skills_payload()
+
+        entries = raw.get("entries") or {}
+        if not isinstance(entries, dict):
+            entries = {}
+        return {"version": raw.get("version", SKILLS_CONFIG_VERSION), "entries": entries}
+
+    def _write_skills_payload_unlocked(self, payload: dict[str, Any]) -> None:
+        self._ensure_user_config_structure()
+        entries = payload.get("entries") or {}
+        if not isinstance(entries, dict):
+            entries = {}
+
+        normalized_entries: dict[str, dict[str, Any]] = {}
+        for raw_skill_key, raw_entry in entries.items():
+            if not isinstance(raw_entry, dict):
+                continue
+            skill_key = self._normalize_user_skill_id(str(raw_skill_key))
+            api_key = str(raw_entry.get("apiKey") or "").strip()
+            env = raw_entry.get("env") or {}
+            if not isinstance(env, dict):
+                env = {}
+            normalized_entries[skill_key] = {
+                "apiKey": api_key,
+                "env": {
+                    str(name).strip(): str(value)
+                    for name, value in env.items()
+                    if str(name).strip() and str(value).strip()
+                },
+            }
+
+        temp_path = self.skills_config_path.with_suffix(".json.tmp")
+        temp_path.write_text(
+            json.dumps(
+                {"version": SKILLS_CONFIG_VERSION, "entries": normalized_entries},
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        temp_path.replace(self.skills_config_path)
+
     def _normalize_external_record(self, raw: dict[str, Any]) -> dict[str, Any]:
         manifest = dict(raw.get("manifest") or {})
-        app_id = str(manifest.get("id") or raw.get("id") or "").strip()
-        if not app_id:
-            raise ValueError("MCP config entry is missing an id")
-
-        manifest["id"] = app_id
-        manifest["name"] = str(manifest.get("name") or raw.get("name") or app_id)
-        manifest["version"] = str(manifest.get("version") or "1.0.0")
-        manifest["description"] = str(manifest.get("description") or "")
-
-        permissions = manifest.get("permissions") or []
-        manifest["permissions"] = [str(item) for item in permissions if str(item).strip()]
-
-        tools = manifest.get("tools") or []
-        manifest["tools"] = [tool for tool in tools if isinstance(tool, dict)]
+        if "id" not in manifest and raw.get("id"):
+            manifest["id"] = raw.get("id")
+        if "name" not in manifest and raw.get("name"):
+            manifest["name"] = raw.get("name")
+        manifest = normalize_manifest(manifest, builtin=False)
 
         settings = raw.get("settings") or {}
         if not isinstance(settings, dict):
             settings = {}
 
         return {
-            "id": app_id,
+            "id": manifest["id"],
             "name": manifest["name"],
             "enabled": bool(raw.get("enabled", True)),
             "settings": settings,
@@ -265,8 +413,11 @@ class AppRegistry:
     async def sync_builtin_apps(self, db: AsyncSession) -> list[App]:
         manifests: list[dict[str, Any]] = []
         for manifest_path in sorted(self.root_dir.glob("*/manifest.json")):
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            manifest["source_path"] = str(manifest_path)
+            manifest = normalize_manifest(
+                json.loads(manifest_path.read_text(encoding="utf-8")),
+                source_path=str(manifest_path),
+                builtin=True,
+            )
             manifest["skill"] = self._build_skill_descriptor(manifest_path, manifest.get("skill"))
             manifests.append(manifest)
 
@@ -582,6 +733,12 @@ class AppRegistry:
             await self.activate_app(db, app_id)
         return await self.mcp_manager.list_tools(app_id)
 
+    async def check_app_health(self, db: AsyncSession, app_id: str) -> dict[str, Any]:
+        app = await self.get_app(db, app_id)
+        if app is None:
+            raise ValueError("App does not exist")
+        return await self.mcp_manager.check_server_health(app_id)
+
     async def get_skill(self, db: AsyncSession, app_id: str) -> dict:
         app = await self.get_app(db, app_id)
         if app is None:
@@ -603,6 +760,164 @@ class AppRegistry:
             "raw_content": raw_content,
             "skill": descriptor,
         }
+
+    def list_user_skills(self, *, enabled_only: bool = False) -> list[dict[str, Any]]:
+        self._ensure_user_config_structure()
+        user_root = self.skills_root / "user"
+        config_entries = (self._read_skills_payload_unlocked().get("entries") or {})
+        skills: list[dict[str, Any]] = []
+
+        for skill_dir in sorted(user_root.iterdir(), key=lambda item: item.name.lower()):
+            if not skill_dir.is_dir():
+                continue
+
+            skill_path = None
+            for entrypoint in SKILL_ENTRYPOINTS:
+                candidate = skill_dir / entrypoint
+                if candidate.exists():
+                    skill_path = candidate
+                    break
+            if skill_path is None:
+                continue
+
+            raw_content = skill_path.read_text(encoding="utf-8")
+            metadata, body = _parse_skill_frontmatter(raw_content)
+            metadata_object = _parse_skill_metadata_object(metadata.get("metadata"))
+            openclaw_metadata = metadata_object.get("openclaw") or {}
+            if not isinstance(openclaw_metadata, dict):
+                openclaw_metadata = {}
+            declared_primary_env = str(openclaw_metadata.get("primaryEnv") or "").strip() or None
+            inferred_primary_env = _infer_skill_primary_env(raw_content)
+            resolved_primary_env = declared_primary_env or inferred_primary_env
+            enabled = _parse_bool_flag(metadata.get("enabled"), default=True)
+            if enabled_only and not enabled:
+                continue
+            skill_key = self._normalize_user_skill_id(
+                str(openclaw_metadata.get("skillKey") or skill_dir.name)
+            )
+            entry_config = config_entries.get(skill_key) or {}
+
+            stat = skill_path.stat()
+            skills.append(
+                {
+                    "id": skill_dir.name,
+                    "skill_key": skill_key,
+                    "name": metadata.get("name") or skill_dir.name,
+                    "description": metadata.get("description", ""),
+                    "enabled": enabled,
+                    "entrypoint": skill_path.name,
+                    "path": str(skill_path),
+                    "updated_at": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                    "content": body,
+                    "raw_content": raw_content,
+                    "metadata": metadata,
+                    "metadata_object": metadata_object,
+                    "primary_env": resolved_primary_env,
+                    "primary_env_source": (
+                        "declared" if declared_primary_env else "inferred" if inferred_primary_env else "none"
+                    ),
+                    "has_api_key": bool(str(entry_config.get("apiKey") or "").strip()),
+                    "source": "user",
+                }
+            )
+
+        return sorted(skills, key=lambda item: str(item["name"]).lower())
+
+    def get_user_skill(self, skill_id: str) -> dict[str, Any]:
+        normalized_id = self._normalize_user_skill_id(skill_id)
+        for skill in self.list_user_skills():
+            if skill["id"] == normalized_id:
+                return skill
+        raise ValueError("Skill does not exist")
+
+    def update_user_skill_api_key(self, skill_id: str, api_key: str) -> dict[str, Any]:
+        skill = self.get_user_skill(skill_id)
+        skill_key = self._normalize_user_skill_id(str(skill.get("skill_key") or skill_id))
+
+        payload = self._read_skills_payload_unlocked()
+        entries = dict(payload.get("entries") or {})
+        entry = dict(entries.get(skill_key) or {})
+
+        value = str(api_key or "").strip()
+        if value:
+            entry["apiKey"] = value
+        else:
+            entry.pop("apiKey", None)
+
+        if entry:
+            entries[skill_key] = entry
+        else:
+            entries.pop(skill_key, None)
+
+        self._write_skills_payload_unlocked({"version": SKILLS_CONFIG_VERSION, "entries": entries})
+        return self.get_user_skill(skill_id)
+
+    def activate_user_skill_env(self) -> dict[str, str | None]:
+        config_entries = self._read_skills_payload_unlocked().get("entries") or {}
+        touched: dict[str, str | None] = {}
+
+        for skill in self.list_user_skills(enabled_only=True):
+            primary_env = str(skill.get("primary_env") or "").strip()
+            if not primary_env:
+                continue
+
+            entry = config_entries.get(skill.get("skill_key") or "") or {}
+            api_key = str(entry.get("apiKey") or "").strip()
+            if not api_key:
+                continue
+            if os.environ.get(primary_env):
+                continue
+
+            touched[primary_env] = os.environ.get(primary_env)
+            os.environ[primary_env] = api_key
+
+        return touched
+
+    def restore_user_skill_env(self, touched: dict[str, str | None]) -> None:
+        for env_name, old_value in touched.items():
+            if old_value is None:
+                os.environ.pop(env_name, None)
+            else:
+                os.environ[env_name] = old_value
+
+    @contextlib.contextmanager
+    def apply_user_skill_env(self):
+        touched = self.activate_user_skill_env()
+        try:
+            yield
+        finally:
+            self.restore_user_skill_env(touched)
+
+    def upsert_user_skill(
+        self,
+        skill_id: str,
+        *,
+        name: str,
+        description: str = "",
+        content: str = "",
+        enabled: bool = True,
+    ) -> dict[str, Any]:
+        normalized_id = self._normalize_user_skill_id(skill_id)
+        skill_dir = self.skills_root / "user" / normalized_id
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_path = skill_dir / "SKILL.md"
+        skill_path.write_text(
+            self._render_user_skill_markdown(
+                name=name or normalized_id,
+                description=description,
+                enabled=enabled,
+                content=content,
+            ),
+            encoding="utf-8",
+        )
+        return self.get_user_skill(normalized_id)
+
+    def delete_user_skill(self, skill_id: str) -> None:
+        normalized_id = self._normalize_user_skill_id(skill_id)
+        skill_dir = self.skills_root / "user" / normalized_id
+        if not skill_dir.exists():
+            raise ValueError("Skill does not exist")
+        shutil.rmtree(skill_dir)
 
     def runtime_status(self, app_id: str) -> dict:
         return self.mcp_manager.get_status(app_id)
@@ -702,3 +1017,31 @@ class AppRegistry:
             if candidate.exists():
                 return candidate
         return None
+
+    def _normalize_user_skill_id(self, skill_id: str) -> str:
+        normalized = str(skill_id or "").strip().lower()
+        if not APP_ID_PATTERN.fullmatch(normalized):
+            raise ValueError("skill.id is required and must match ^[a-z0-9][a-z0-9_-]{0,127}$")
+        return normalized
+
+    def _render_user_skill_markdown(
+        self,
+        *,
+        name: str,
+        description: str,
+        enabled: bool,
+        content: str,
+    ) -> str:
+        body = str(content or "").rstrip()
+        frontmatter = [
+            "---",
+            f"name: {str(name or '').strip() or 'Untitled Skill'}",
+            f"description: {str(description or '').strip()}",
+            f"enabled: {'true' if enabled else 'false'}",
+            "---",
+            "",
+        ]
+        if body:
+            frontmatter.append(body)
+            frontmatter.append("")
+        return "\n".join(frontmatter)

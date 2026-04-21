@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app.core.app_registry import get_app_registry
 from app.core.database import get_db
 from app.core.llm_provider import stream_chat, agent_loop
-from app.core.memory import get_memory_manager
+from app.core.memory import ensure_memory_manager, get_memory_manager
 from app.core.skill_context import build_skill_augmented_system_prompt
 from app.models.conversation import Conversation, Message
 
@@ -233,6 +233,7 @@ class ChatRequest(BaseModel):
     api_base: str | None = None
     user_id: str = DEFAULT_USER_ID
     enable_memory: bool = True
+    embedding_config: dict | None = Field(default=None, alias="embeddingConfig")
 
 
 class CompleteRequest(BaseModel):
@@ -264,7 +265,16 @@ async def chat(
 
         registry = get_app_registry()
         with registry.apply_user_skill_env():
-            memory_mgr = get_memory_manager()
+            memory_mgr = None
+            if req.enable_memory and req.embedding_config:
+                memory_mgr = await ensure_memory_manager(
+                    llm_model=req.model,
+                    llm_api_key=x_api_key,
+                    llm_api_base=req.api_base,
+                    embedding_config=req.embedding_config,
+                )
+            elif req.enable_memory:
+                memory_mgr = get_memory_manager()
             effective_system, skill_info = await build_skill_augmented_system_prompt(
                 db,
                 req.system_prompt,
@@ -297,6 +307,7 @@ async def chat(
                     system_prompt=effective_system,
                     api_base=req.api_base,
                     skill_context=skill_info,
+                    request_id=conv_id,
                 ):
                     if event_type == "token":
                         full_response += payload
@@ -309,6 +320,9 @@ async def chat(
                     elif event_type == "tool_result":
                         tool_results.append(payload)
                         yield f"data: {json.dumps({'x_tool_result': payload}, ensure_ascii=False)}\n\n"
+
+                    elif event_type == "status":
+                        yield f"data: {json.dumps({'x_status': payload}, ensure_ascii=False)}\n\n"
 
             async with db.begin_nested():
                 count_result = await db.execute(

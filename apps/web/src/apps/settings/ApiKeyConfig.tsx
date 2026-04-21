@@ -407,13 +407,19 @@ function EmbeddingSection() {
 
   const handleSave = async () => {
     if (!apiKey.trim() || !model.trim() || !baseUrl.trim() || !dims) return;
+    const parsedDims = Number.parseInt(dims, 10);
+    if (!Number.isFinite(parsedDims) || parsedDims <= 0) {
+      setSaveMsgType("error");
+      setSaveMsg("请填写正确的 Embedding 维度，例如 1024、1536、3072 或 4096");
+      return;
+    }
     const cfg: EmbeddingConfig = {
       name: name.trim() || model.trim(),
       provider: "openai",
       model: model.trim(),
       apiKey: apiKey.trim(),
       baseUrl: baseUrl.trim(),
-      dims: parseInt(dims) || 1024,
+      dims: parsedDims,
     };
     setEmbeddingConfig(cfg);
     setSaving(true);

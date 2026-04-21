@@ -203,10 +203,58 @@
 
 ## 阶段六：多 Agent 协作与完善
 
-状态：未开始
+状态：进行中
 
-- [ ] Meta-Agent：LangGraph 意图路由与工作流编排
-- [ ] Agent 状态可视化
-- [ ] App Marketplace
-- [ ] 系统级 AI 助手
-- [ ] 性能优化：窗口虚拟化 / WebSocket 重连 / 代码分割
+- [x] AI 助手统一入口增强
+  - [x] 跨 App 操作入口统一迁移到 AI 助手
+  - [x] 系统 App 本地优先路由：邮件 / 日历 / 文件 / 文档 / 笔记 / 白板
+  - [x] 输入区系统 App 候选入口
+  - [ ] 独立系统级助手入口（可选，暂缓）
+- [x] Skills 渐进加载 / 工具描述路由
+  - [x] 首轮只注入 Skill 名称 / 描述 / 路径等发现元信息
+  - [x] 脚本型 Skill 作为 `skill_*` function calling 工具直接暴露，靠工具描述与模型语义选择调用
+  - [x] 脚本型 Skill 首次调用返回精简 `SKILL.md` 使用说明，模型按说明重写 query 后再次调用
+  - [x] 知识型 Skill 通过 `load_skill_context` 按需加载完整 `SKILL.md`
+  - [x] 移除正则 `ToolScope` 路由，避免关键词误分类和跨轮语义断裂
+- [x] Agent Harness 1.0
+  - [x] 采用 OpenAI function calling / LangGraph / smolagents 风格的工具描述引导，不再用正则 scope 接管工具路由
+  - [x] 引入 `ToolPolicyGuard`，拦截 Skill 本地路径被误传给文件工具、非虚拟文件路径访问、calculator 非数学表达式、重复工具调用等问题
+  - [x] 引入 `ToolResultValidation`，校验空结果、策略拦截、工具异常、缺少 Key、Skill 脚本失败等结果状态
+  - [x] 引入时间参数归一化，按当前日期修正实时查询里模型生成的过期年份
+  - [x] 工具执行前增加策略审计事件，前端可展示“已拦截不合规工具调用，正在修正”
+  - [x] 工具执行后增加 validation 状态事件，模型可基于校验提示继续 ReAct 修正
+  - [x] 抑制工具调用前的表格 / 数据类臆测输出，只允许短前置说明，避免先编造再调用工具
+  - [x] Skill 路径改为展示信息，禁止作为文件管理器虚拟路径读取
+  - [ ] 确定性 `FallbackPolicy` 状态机（如 Skill 失败后强制切换实时研究工具）
+- [ ] Human-in-the-loop 与执行确认
+  - [ ] 复杂任务先展示计划
+  - [x] 危险操作二次确认（删除 / 发送 / 批量改写）
+  - [x] 执行中断 / 取消
+- [x] Agent 状态可视化 1.0
+  - [x] 基于现有 token / tool_call / tool_result 的执行时间线
+  - [x] 步骤状态、耗时、失败点展示
+  - [ ] Token / 成本展示
+- [x] 轻量 Orchestrator / Graph Checkpoint Runtime
+  - [x] 基于现有 App / Skill 路由的串行工作流编排
+  - [x] ReAct 链路状态：LLM 决策 / 策略守卫 / 执行工具 / 校验结果
+  - [x] 引入真实 LangGraph `StateGraph` 作为 checkpoint facade，Harness 状态已接入 `InMemorySaver` checkpoint
+  - [x] 预留 interrupt / resume 运行时接口，当前先服务于单 Agent 调试和后续人工确认节点
+  - [ ] 多 App 任务计划与结果汇总
+- [ ] 可观测性与评测
+  - [x] 基础 Trace / 调用链状态事件
+  - [x] 固定 Harness eval case：核心工具可见性、Skill 路径、calculator 非数学拦截、空结果校验、重复工具去重、时间参数归一化、工具前置输出抑制、LangGraph checkpoint
+  - [ ] 持久化 Trace / 调用链记录
+  - [ ] 工具调用成功率 / 路由准确率 / 端到端任务完成率
+  - [ ] Token / 成本统计
+- [ ] 扩展中心 2.0
+  - [ ] 基于现有 MCP / Skill / App 管理页演进
+  - [ ] 本地安装、来源、版本、更新与权限说明
+- [ ] 多 Agent 并行架构
+  - [ ] Lead Agent + Sub-Agent
+  - [ ] 任务拆解、并行执行、结果汇总
+  - [x] 基础检查点：Harness 节点状态已进入 LangGraph checkpoint
+  - [ ] 持久化检查点与状态回放
+- [ ] 性能与产品打磨
+  - [ ] 窗口虚拟化 / WebSocket 重连 / 代码分割
+  - [ ] 主题系统与动效收尾
+  - [ ] 本地优先配置与数据归属统一化

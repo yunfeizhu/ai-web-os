@@ -3,7 +3,11 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel
 
-from app.core.memory import get_memory_manager, init_memory_manager
+from app.core.memory import (
+    collection_name_for_embedding,
+    get_memory_manager,
+    init_memory_manager,
+)
 
 router = APIRouter()
 
@@ -29,21 +33,13 @@ class InitMemoryRequest(BaseModel):
     qdrant_port: int = 16333
 
 
-def _collection_name(model: str, dims: int | None) -> str:
-    """根据 embedder model 和维度生成唯一 collection 名。
-    e.g. "BAAI/bge-large-zh-v1.5" + 1024 → "ai_os_mem_bge_large_zh_v1_5_1024"
-    """
-    slug = model.lower().split("/")[-1]          # 取 / 后半段
-    slug = "".join(c if c.isalnum() else "_" for c in slug)  # 非字母数字转 _
-    slug = slug.strip("_")
-    suffix = f"_{dims}" if dims else ""
-    return f"ai_os_mem_{slug}{suffix}"
-
-
 @router.post("/memory/init")
 async def init_memory(req: InitMemoryRequest):
     """初始化记忆管理器，每个 Embedding 模型使用独立的 Qdrant collection。"""
-    collection = _collection_name(req.embedder_model, req.embedder_dims)
+    if not req.embedder_dims or req.embedder_dims <= 0:
+        raise HTTPException(status_code=400, detail="Embedding 维度不能为空，请在设置中填写模型维度。")
+
+    collection = collection_name_for_embedding(req.embedder_model, req.embedder_dims)
     mgr = init_memory_manager(
         llm_provider=req.llm_provider,
         llm_model=req.llm_model,
@@ -59,7 +55,7 @@ async def init_memory(req: InitMemoryRequest):
         collection_name=collection,
     )
     mgr.start()
-    return {"status": "ok", "collection": collection}
+    return {"status": "ok", **mgr.metadata()}
 
 
 # ── 调试：直接写入测试 ────────────────────────────────────
@@ -89,18 +85,18 @@ async def test_write_memory():
 async def list_memories(user_id: str = DEFAULT_USER_ID):
     mgr = get_memory_manager()
     if not mgr:
-        return {"memories": [], "initialized": False}
+        return {"memories": [], "initialized": False, "collection": None}
     memories = await mgr.get_all(user_id=user_id)
-    return {"memories": memories, "initialized": True}
+    return {"memories": memories, "initialized": True, **mgr.metadata()}
 
 
 @router.get("/memory/search")
 async def search_memories(q: str, user_id: str = DEFAULT_USER_ID):
     mgr = get_memory_manager()
     if not mgr:
-        return {"memories": []}
+        return {"memories": [], "initialized": False, "collection": None}
     memories = await mgr.search(query=q, user_id=user_id, limit=10)
-    return {"memories": memories}
+    return {"memories": memories, "initialized": True, **mgr.metadata()}
 
 
 # ── 删除记忆 ─────────────────────────────────────────────

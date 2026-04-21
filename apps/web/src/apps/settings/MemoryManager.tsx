@@ -15,6 +15,15 @@ interface Memory {
   score?: number;
 }
 
+interface MemoryListResponse {
+  memories?: Memory[];
+  initialized?: boolean;
+  collection?: string | null;
+  embedder_model?: string | null;
+  embedder_base_url?: string | null;
+  embedder_dims?: number | null;
+}
+
 // 与后端 _collection_name() 逻辑对齐
 function collectionName(model: string, dims?: number): string {
   const slug = model.toLowerCase().split("/").pop() ?? model.toLowerCase();
@@ -28,6 +37,7 @@ export function MemoryManager() {
   const [memories, setMemories] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
   const [initialized, setInitialized] = useState<boolean | null>(null);
+  const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<Memory[] | null>(null);
 
@@ -47,7 +57,7 @@ export function MemoryManager() {
       }
     }
     if (!llmModel) return;
-    await fetch(`${API}/memory/init`, {
+    const res = await fetch(`${API}/memory/init`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -62,6 +72,21 @@ export function MemoryManager() {
         embedder_dims: cfg.dims,
       }),
     });
+    if (!res.ok) {
+      throw new Error(`初始化记忆失败：HTTP ${res.status}`);
+    }
+    return await res.json() as MemoryListResponse;
+  };
+
+  const isExpectedMemoryBackend = (data: MemoryListResponse) => {
+    if (!activeProvider) return true;
+    const expectedCollection = collectionName(activeProvider.model, activeProvider.dims);
+    return (
+      data.collection === expectedCollection &&
+      data.embedder_model === activeProvider.model &&
+      data.embedder_base_url === activeProvider.baseUrl &&
+      Number(data.embedder_dims ?? 0) === Number(activeProvider.dims ?? 0)
+    );
   };
 
   const load = async () => {
@@ -69,18 +94,16 @@ export function MemoryManager() {
     try {
       const res = await fetch(`${API}/memory`);
       if (res.ok) {
-        const data = await res.json();
-        if (!data.initialized && activeProvider) {
+        let data = await res.json() as MemoryListResponse;
+        if (activeProvider && (!data.initialized || !isExpectedMemoryBackend(data))) {
           await reinit(activeProvider);
           const res2 = await fetch(`${API}/memory`);
           if (res2.ok) {
-            const data2 = await res2.json();
-            setInitialized(data2.initialized);
-            setMemories(data2.memories ?? []);
-            return;
+            data = await res2.json() as MemoryListResponse;
           }
         }
-        setInitialized(data.initialized);
+        setInitialized(Boolean(data.initialized));
+        setActiveCollection(data.collection ?? null);
         setMemories(data.memories ?? []);
       }
     } finally {
@@ -88,7 +111,7 @@ export function MemoryManager() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [activeProvider?.model, activeProvider?.baseUrl, activeProvider?.dims]);
 
   const deleteOne = async (id: string) => {
     await fetch(`${API}/memory/${id}`, { method: "DELETE" });
@@ -135,7 +158,7 @@ export function MemoryManager() {
             </span>
           </div>
           <span className="text-[12px] shrink-0" style={{ color: "var(--t3)" }}>
-            collection: {collectionName(activeProvider.model, activeProvider.dims)}
+            collection: {activeCollection ?? collectionName(activeProvider.model, activeProvider.dims)}
           </span>
         </div>
       )}

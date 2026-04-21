@@ -11,23 +11,40 @@ import os
 from pathlib import Path
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
+import time
 from typing import Any
 
 import httpx
 
 from app.config import get_settings
+from app.core.agent_harness import (
+    FILE_TOOL_NAMES,
+    is_browser_tool,
+)
 from app.core.app_registry import get_app_registry
 from app.core.browser_tools import BROWSER_TOOL_SCHEMAS, dispatch_browser_tool
 from app.core.database import AsyncSessionLocal
+
+# ── MCP route cache ───────────────────────────────────────────────────────────
+_MCP_ROUTES_CACHE: list[dict] | None = None
+_MCP_ROUTES_CACHE_EXPIRES: float = 0.0
+_MCP_ROUTES_CACHE_TTL = 30.0  # seconds
+
+
+def invalidate_mcp_routes_cache() -> None:
+    """Force the next call to _list_external_mcp_tool_routes to re-scan."""
+    global _MCP_ROUTES_CACHE
+    _MCP_ROUTES_CACHE = None
 
 BUILTIN_TOOL_SCHEMAS: list[dict] = [
     {
         "type": "function",
         "function": {
             "name": "calculator",
-            "description": "Calculate a math expression safely.",
+            "description": "Calculate a pure math expression safely (e.g. 2+3*4, sqrt(16)). Use ONLY for arithmetic; do not use for time, date, or text queries.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -44,7 +61,7 @@ BUILTIN_TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "fetch_url",
-            "description": "Fetch a URL and return plain text content.",
+            "description": "Fetch a URL and return its plain-text content. Use for retrieving specific web pages when you already know the URL.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -66,7 +83,7 @@ BUILTIN_TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "list_files",
-            "description": "List files and directories in the virtual file system.",
+            "description": "List files and directories in the virtual file system (paths starting with /). Do NOT use for Skill directories or local OS paths.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -83,7 +100,7 @@ BUILTIN_TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "read_file",
-            "description": "Read a text file from the virtual file system.",
+            "description": "Read a text file from the virtual file system (paths starting with /). Do NOT use for Skill directories or local OS paths.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -121,7 +138,7 @@ BUILTIN_TOOL_SCHEMAS: list[dict] = [
         "type": "function",
         "function": {
             "name": "python_exec",
-            "description": "Execute Python code in a sandboxed subprocess.",
+            "description": "Execute arbitrary Python code in a sandboxed subprocess. Use ONLY when the user explicitly requests code execution or computation that cannot be done with calculator. For Skill scripts, use the dedicated skill_* tool instead.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -155,6 +172,13 @@ RETRIEVE_KNOWLEDGE_SCHEMA: dict = {
         },
     },
 }
+
+LOAD_SKILL_CONTEXT_TOOL_NAME = "load_skill_context"
+
+
+def _tool_schema_name(schema: dict[str, Any]) -> str:
+    return str(((schema.get("function") or {}).get("name")) or "")
+
 
 _SAFE_NAMES: dict[str, Any] = {
     "abs": abs,
@@ -192,19 +216,19 @@ def _safe_eval(expression: str) -> str:
     try:
         tree = ast.parse(expression.strip(), mode="eval")
     except SyntaxError as exc:
-        return f"璇硶閿欒: {exc}"
+        return f"语法错误: {exc}"
 
     for node in ast.walk(tree):
         if not isinstance(node, _ALLOWED_NODE_TYPES):
-            return f"涓嶅厑璁哥殑鎿嶄綔: {type(node).__name__}"
+            return f"不允许的操作: {type(node).__name__}"
         if isinstance(node, ast.Name) and node.id not in _SAFE_NAMES:
-            return f"鏈煡鍙橀噺: {node.id}"
+            return f"未知变量: {node.id}"
 
     try:
         result = eval(compile(tree, "<calc>", "eval"), {"__builtins__": {}}, _SAFE_NAMES)  # noqa: S307
         return str(result)
     except Exception as exc:
-        return f"璁＄畻閿欒: {exc}"
+        return f"计算错误: {exc}"
 
 
 def _strip_html(html: str) -> str:
@@ -225,12 +249,12 @@ async def _fetch_url(url: str, max_chars: int = 3000) -> str:
             response.raise_for_status()
             content_type = response.headers.get("content-type", "")
             text = _strip_html(response.text) if "html" in content_type else response.text
-            suffix = "鈥︼紙鍐呭宸叉埅鏂級" if len(text) > max_chars else ""
+            suffix = "…（内容已截断）" if len(text) > max_chars else ""
             return text[:max_chars] + suffix
     except httpx.HTTPStatusError as exc:
-        return f"HTTP 閿欒 {exc.response.status_code}: {url}"
+        return f"HTTP 错误 {exc.response.status_code}: {url}"
     except Exception as exc:
-        return f"鎶撳彇澶辫触: {exc}"
+        return f"抓取失败: {exc}"
 
 
 
@@ -391,9 +415,9 @@ def _run_python_sync(code: str) -> str:
             cwd=str(Path.cwd()),
         )
         output = result.stdout + (result.stderr if result.returncode != 0 else "")
-        return output[:3000] if output.strip() else "锛堜唬鐮佹墽琛屽畬姣曪紝鏃犺緭鍑猴級"
+        return output[:3000] if output.strip() else "（代码执行完毕，无输出）"
     except subprocess.TimeoutExpired:
-        return f"鎵ц瓒呮椂锛堣秴杩?{timeout_seconds} 绉掞級"
+        return f"执行超时（超过 {timeout_seconds} 秒）"
     except OSError as exc:
         return f"Python 执行失败: {type(exc).__name__}: {exc}"
 
@@ -437,7 +461,7 @@ def _run_python_in_docker(script_path, temp_dir: str, timeout_seconds: int) -> s
         output = result.stdout + (result.stderr if result.returncode != 0 else "")
         if result.returncode != 0 and not output.strip():
             output = f"Docker python_exec 失败，退出码 {result.returncode}"
-        return output[:3000] if output.strip() else "锛堜唬鐮佹墽琛屽畬姣曪紝鏃犺緭鍑猴級"
+        return output[:3000] if output.strip() else "（代码执行完毕，无输出）"
     except subprocess.TimeoutExpired:
         return f"Docker 模式执行超时（超过 {timeout_seconds + 3} 秒）"
 
@@ -570,6 +594,160 @@ def _score_python_code_skill_match(code: str, corpus: str) -> int:
     return score
 
 
+def _score_user_message_skill_match(message: str, skill: dict[str, Any]) -> int:
+    message = str(message or "").strip()
+    if not message:
+        return 0
+
+    score = 0
+    message_lower = message.lower()
+    identity_parts = [
+        str(skill.get("id") or ""),
+        str(skill.get("skill_key") or ""),
+        str(skill.get("name") or ""),
+    ]
+    for value in identity_parts:
+        normalized = value.strip().lower()
+        if normalized and normalized in message_lower:
+            score += 16
+
+    skill_summary = "\n".join([
+        str(skill.get("name") or ""),
+        str(skill.get("skill_key") or ""),
+        str(skill.get("description") or ""),
+    ])
+    message_terms = _extract_skill_match_terms(message)
+    summary_terms = _extract_skill_match_terms(skill_summary)
+
+    for term in message_terms & summary_terms:
+        score += 8 if len(term) >= 3 else 5
+
+    return score
+
+
+def _is_user_skill_enabled(skill: dict[str, Any]) -> bool:
+    return bool(skill.get("enabled", True))
+
+
+def _matches_skill_id(skill: dict[str, Any], skill_ids: set[str]) -> bool:
+    values = {
+        str(skill.get("id") or "").strip().lower(),
+        str(skill.get("skill_key") or "").strip().lower(),
+        f"user-skill:{skill.get('id')}".strip().lower(),
+        f"skill_{_slug_tool_segment(str(skill.get('id') or ''))}",
+        f"skill_{_slug_tool_segment(str(skill.get('skill_key') or ''))}",
+    }
+    return any(value and value in skill_ids for value in values)
+
+
+def _list_candidate_user_skills(user_message: str | None = None) -> list[dict[str, Any]]:
+    registry = get_app_registry()
+    skills = [
+        skill
+        for skill in registry.list_user_skills(enabled_only=True)
+        if _is_user_skill_enabled(skill)
+    ]
+    if not user_message:
+        return skills
+
+    scored: list[tuple[int, dict[str, Any]]] = []
+    for skill in skills:
+        score = _score_user_message_skill_match(user_message, skill)
+        if score >= 6:
+            scored.append((score, skill))
+
+    scored.sort(key=lambda item: (-item[0], str(item[1].get("name") or "").lower()))
+    return [skill for _, skill in scored[:6]]
+
+
+def _build_load_skill_context_schema(candidate_skills: list[dict[str, Any]]) -> dict | None:
+    if not candidate_skills:
+        return None
+
+    enum_values = [str(skill["id"]) for skill in candidate_skills if skill.get("id")]
+    if not enum_values:
+        return None
+
+    lines = []
+    for skill in candidate_skills:
+        skill_name = skill.get("name") or skill.get("id")
+        skill_desc = str(skill.get("description") or "暂无描述").strip()
+        lines.append(f"- {skill['id']}: {skill_name} — {skill_desc}")
+
+    return {
+        "type": "function",
+        "function": {
+            "name": LOAD_SKILL_CONTEXT_TOOL_NAME,
+            "description": (
+                "Load the full SKILL.md body for a relevant local user Skill. "
+                "Call this before relying on a Skill's workflow or before using its executable script. "
+                "Candidate Skills:\n" + "\n".join(lines)
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_id": {
+                        "type": "string",
+                        "enum": enum_values,
+                        "description": "The id of the Skill to load.",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "The user task or question that made this Skill relevant.",
+                    },
+                },
+                "required": ["skill_id"],
+            },
+        },
+    }
+
+
+def _load_user_skill_context(skill_id: str, query: str | None = None) -> str:
+    registry = get_app_registry()
+    normalized = str(skill_id or "").strip().lower()
+    if not normalized:
+        return "缺少 skill_id 参数。"
+
+    skill: dict[str, Any] | None = None
+    for item in registry.list_user_skills(enabled_only=True):
+        if _matches_skill_id(item, {normalized}):
+            skill = item
+            break
+    if skill is None:
+        return f"未找到可用 Skill: {skill_id}"
+
+    skill_path = Path(str(skill.get("path") or ""))
+    skill_dir = skill_path.parent if skill_path.is_file() else skill_path
+    resource_lines: list[str] = []
+    if skill_dir.exists():
+        for child in sorted(skill_dir.rglob("*")):
+            if not child.is_file() or child == skill_path:
+                continue
+            try:
+                rel_path = child.relative_to(skill_dir)
+            except ValueError:
+                rel_path = child
+            if child.suffix.lower() in {".md", ".txt", ".json", ".py", ".js", ".ts", ".sh"}:
+                resource_lines.append(f"- {rel_path}")
+
+    return "\n".join([
+        f"Skill 名称: {skill.get('name') or skill.get('id')}",
+        f"Skill ID: {skill.get('id')}",
+        f"Skill Key: {skill.get('skill_key') or skill.get('id')}",
+        f"描述: {skill.get('description') or '暂无描述'}",
+        f"入口: {skill.get('entrypoint') or skill_path.name}",
+        f"本地路径: {skill.get('path')}（仅供用户查看；不是文件管理器虚拟路径）",
+        "路径访问规则: 不要把上述本地路径传给 read_file/list_files；Skill 内容只能通过 load_skill_context 与已暴露的 Skill 工具使用。",
+        f"用户任务: {query or ''}",
+        "",
+        "完整 SKILL.md:",
+        str(skill.get("content") or "").strip() or "（SKILL.md 正文为空）",
+        "",
+        "Skill 目录中的相关资源清单（仅供判断；不要用文件工具直接读取这些路径）:",
+        "\n".join(resource_lines[:40]) if resource_lines else "（无额外资源）",
+    ])
+
+
 def _skill_context_priority(skill_context: dict[str, Any] | None) -> dict[str, int]:
     priority: dict[str, int] = {}
     if not isinstance(skill_context, dict):
@@ -621,6 +799,13 @@ def get_python_exec_display_name(code: str, skill_context: dict[str, Any] | None
 
 
 async def _list_external_mcp_tool_routes() -> list[dict]:
+    """List MCP tool routes with a short TTL cache to avoid repeated DB scans."""
+    global _MCP_ROUTES_CACHE, _MCP_ROUTES_CACHE_EXPIRES
+
+    now = time.monotonic()
+    if _MCP_ROUTES_CACHE is not None and now < _MCP_ROUTES_CACHE_EXPIRES:
+        return _MCP_ROUTES_CACHE
+
     registry = get_app_registry()
     routes: list[dict] = []
 
@@ -657,10 +842,14 @@ async def _list_external_mcp_tool_routes() -> list[dict]:
                     }
                 )
 
+    _MCP_ROUTES_CACHE = routes
+    _MCP_ROUTES_CACHE_EXPIRES = time.monotonic() + _MCP_ROUTES_CACHE_TTL
     return routes
 
 
 async def get_tool_display_name(name: str) -> str | None:
+    if name == LOAD_SKILL_CONTEXT_TOOL_NAME:
+        return "加载 Skill 上下文"
     for route in await _list_external_mcp_tool_routes():
         if route["alias"] == name:
             return route["app_name"]
@@ -680,7 +869,14 @@ def _format_tool_result(result: Any) -> str:
 async def execute_tool(
     name: str,
     args: dict,
+    loaded_skill_guides: set[str] | None = None,
 ) -> str:
+    if name == LOAD_SKILL_CONTEXT_TOOL_NAME:
+        return _load_user_skill_context(
+            str(args.get("skill_id") or ""),
+            str(args.get("query") or ""),
+        )
+
     if name == "calculator":
         return _safe_eval(args.get("expression", ""))
 
@@ -748,7 +944,7 @@ async def execute_tool(
         return _format_tool_result(result)
 
     # ── User-skill dedicated tools ─────────────────────────────
-    user_skill_result = await _execute_user_skill_tool(name, args)
+    user_skill_result = await _execute_user_skill_tool(name, args, loaded_skill_guides=loaded_skill_guides)
     if user_skill_result is not None:
         return user_skill_result
 
@@ -780,28 +976,65 @@ def _find_skill_script(skill_dir: Path) -> Path | None:
     return None
 
 
-def _list_user_skill_tools() -> list[dict]:
-    """Build tool schemas for user skills that own executable scripts."""
+
+def _load_skill_md(skill_dir: Path) -> str:
+    """Read SKILL.md body (front-matter stripped, capped at 2000 chars)."""
+    skill_md_path = skill_dir / "SKILL.md"
+    if not skill_md_path.is_file():
+        return ""
+    try:
+        raw = skill_md_path.read_text(encoding="utf-8", errors="replace")
+        if raw.startswith("---"):
+            end = raw.find("---", 3)
+            raw = raw[end + 3:].lstrip() if end > 0 else raw
+        return raw[:2000]
+    except OSError:
+        return ""
+
+
+def _has_executable_script(skill: dict) -> bool:
+    """Return True if the skill directory contains an executable script."""
+    try:
+        skill_path = Path(str(skill.get("path") or ""))
+        skill_dir = skill_path.parent if skill_path.is_file() else skill_path
+        return _find_skill_script(skill_dir) is not None
+    except (OSError, ValueError):
+        return False
+
+
+def _list_user_skill_tools(user_message: str | None = None) -> list[dict]:
+    """Build tool schemas for user skills that own executable scripts.
+
+    Script-backed skills are exposed directly (no regex scope gating).
+    The execution path may still return a compact SKILL.md guide on first use
+    before running the script, so the model can format the query correctly.
+    If user_message is provided, skills with a very low relevance score are
+    deprioritised but still included unless there are too many (>8).
+    """
     registry = get_app_registry()
-    tools: list[dict] = []
+    all_tools: list[dict] = []
     for skill in registry.list_user_skills(enabled_only=True):
         skill_path = Path(str(skill.get("path") or ""))
         skill_dir = skill_path.parent if skill_path.is_file() else skill_path
 
         script = _find_skill_script(skill_dir)
         if script is None:
-            continue  # knowledge-only skill – not a tool
+            continue  # knowledge-only skill – not a direct tool
 
         skill_name = skill.get("name") or skill["id"]
         description = str(skill.get("description") or "").strip()
         tool_name = _build_user_skill_tool_name(skill["id"])
 
-        tools.append({
+        score = _score_user_message_skill_match(user_message or "", skill) if user_message else 0
+
+        all_tools.append({
             "tool_name": tool_name,
             "skill_id": skill["id"],
             "skill_name": skill_name,
             "script_path": str(script),
+            "skill_dir": str(skill_dir),
             "description": description,
+            "relevance_score": score,
             "schema": {
                 "type": "function",
                 "function": {
@@ -812,7 +1045,7 @@ def _list_user_skill_tools() -> list[dict]:
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "用户的查询内容",
+                                "description": "用户的查询内容或任务描述",
                             },
                         },
                         "required": ["query"],
@@ -820,48 +1053,111 @@ def _list_user_skill_tools() -> list[dict]:
                 },
             },
         })
-    return tools
+
+    # Sort by relevance score descending, cap at 8 to avoid context overflow
+    all_tools.sort(key=lambda t: -t["relevance_score"])
+    return all_tools[:8]
 
 
-async def _execute_user_skill_tool(name: str, args: dict) -> str | None:
-    """If *name* matches a user-skill tool, run it and return the output."""
+def _run_skill_script_sync(script_path: str, query: str) -> str:
+    """Run a skill script directly via subprocess (no python_exec wrapper)."""
+    try:
+        result = subprocess.run(
+            [sys.executable, script_path, "--query", query],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+        )
+        output = (result.stdout + (result.stderr if result.returncode != 0 else "")).strip()
+        return output[:4000] if output else "（执行完毕，无输出）"
+    except subprocess.TimeoutExpired:
+        return "执行超时（超过 60 秒）"
+    except OSError as exc:
+        return f"Skill 执行失败: {type(exc).__name__}: {exc}"
+
+
+async def _run_skill_script(script_path: str, query: str) -> str:
+    """Run a skill script in the thread pool executor."""
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, _run_skill_script_sync, script_path, query)
+
+
+async def _execute_user_skill_tool(
+    name: str,
+    args: dict,
+    loaded_skill_guides: set[str] | None = None,
+) -> str | None:
+    """If *name* matches a user-skill tool, run its script and return output.
+
+    Two-stage loading: on the first call for a given skill (not in
+    *loaded_skill_guides*), returns the SKILL.md instructions and asks the LLM
+    to re-call with a correctly-formatted query.  On the second call the script
+    is executed normally.
+    """
     for tool_info in _list_user_skill_tools():
         if tool_info["tool_name"] != name:
             continue
 
-        script_path = tool_info["script_path"]
+        skill_id = tool_info["skill_id"]
+        skill_dir = Path(tool_info["skill_dir"])
+
+        # Stage 1: return SKILL.md guide if not yet loaded this session
+        if loaded_skill_guides is not None and skill_id not in loaded_skill_guides:
+            guide = _load_skill_md(skill_dir)
+            if guide:
+                loaded_skill_guides.add(skill_id)
+                return (
+                    f"[Skill 使用说明 — 请仔细阅读后按要求改写 query，然后重新调用此工具]\n\n{guide}"
+                )
+
+        # Stage 2: execute the script
         query = str(args.get("query", ""))
         if not query:
             return "缺少 query 参数"
-
-        code = (
-            "import subprocess, sys, os\n"
-            f"result = subprocess.run(\n"
-            f"    [sys.executable, {script_path!r}, '--query', {query!r}],\n"
-            f"    capture_output=True, text=True, timeout=60,\n"
-            f"    env={{**os.environ, 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'}},\n"
-            f")\n"
-            f"output = result.stdout + (result.stderr if result.returncode != 0 else '')\n"
-            f"print(output[:4000] if output.strip() else '（执行完毕，无输出）')\n"
-        )
-        return await _python_exec(code)
-
+        return await _run_skill_script(tool_info["script_path"], query)
     return None  # not a user-skill tool
 
 
-async def get_tools_for_model(model: str) -> list[dict]:
+async def get_tools_for_model(
+    model: str,
+    user_message: str | None = None,
+    skill_context: dict | None = None,
+) -> list[dict]:
+    """Return all tools applicable for this model and context.
+
+    Design principles (from smolagents / LangGraph ReAct patterns):
+    - No regex scope-based gating. Tool descriptions guide the LLM.
+    - Script-backed user skills are direct tools; first use may hydrate guidance.
+    - Browser tools are included only when the active app is the browser.
+    - Knowledge-only skills still use load_skill_context.
+    - MCP tools are cached to avoid repeated DB scans.
+    """
     unsupported_prefixes = ("deepseek-r1", "o1-mini", "o1-preview")
-    model_lower = model.lower()
-    if any(model_lower.startswith(prefix) for prefix in unsupported_prefixes):
+    if any(model.lower().startswith(p) for p in unsupported_prefixes):
         return []
 
-    tools = list(BUILTIN_TOOL_SCHEMAS)
+    entry_app_id = str((skill_context or {}).get("entry_app_id") or "").lower()
+    tools: list[dict] = []
 
+    # ── Core builtin tools (always available) ─────────────────
+    for schema in BUILTIN_TOOL_SCHEMAS:
+        name = _tool_schema_name(schema)
+        if is_browser_tool(name):
+            # Browser tools only for browser app
+            if entry_app_id == "browser":
+                tools.append(schema)
+        else:
+            tools.append(schema)
+
+    # ── Knowledge base ─────────────────────────────────────────
     from app.core.knowledge import get_knowledge_manager
-
     if get_knowledge_manager() is not None:
         tools.append(RETRIEVE_KNOWLEDGE_SCHEMA)
 
+    # ── MCP tools (cached) ─────────────────────────────────────
     for route in await _list_external_mcp_tool_routes():
         tools.append(
             {
@@ -878,9 +1174,25 @@ async def get_tools_for_model(model: str) -> list[dict]:
             }
         )
 
-    # ── Register user-skill dedicated tools ────────────────────
-    for tool_info in _list_user_skill_tools():
+    # ── User skill tools ───────────────────────────────────────
+    # Script-backed skills: direct tools; first call may return guide text.
+    for tool_info in _list_user_skill_tools(user_message=user_message):
         tools.append(tool_info["schema"])
 
-    return tools
+    # Knowledge-only skills: load_skill_context for optional hydration
+    registry = get_app_registry()
+    knowledge_only = [
+        s for s in registry.list_user_skills(enabled_only=True)
+        if not _has_executable_script(s)
+    ]
+    candidate_knowledge = []
+    for skill in knowledge_only:
+        score = _score_user_message_skill_match(user_message or "", skill)
+        if score >= 4 or not user_message:
+            candidate_knowledge.append(skill)
+    if candidate_knowledge:
+        load_schema = _build_load_skill_context_schema(candidate_knowledge[:6])
+        if load_schema:
+            tools.append(load_schema)
 
+    return tools

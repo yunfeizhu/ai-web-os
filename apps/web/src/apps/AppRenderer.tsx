@@ -42,7 +42,7 @@ export function AppRenderer({ appId, appState, windowId }: AppRendererProps) {
     case "calendar":
       return <CalendarApp />;
     case "mail":
-      return <MailApp />;
+      return <MailApp appState={appState} />;
     case "whiteboard":
       return <WhiteboardApp appState={appState} windowId={windowId} />;
     default:

@@ -1,23 +1,51 @@
-"""Build skill-augmented system prompts for the agent loop.
+"""Build skill discovery context for the agent loop.
 
-Follows the OpenAI / Anthropic function-calling paradigm:
-- Tools are self-describing via their JSON schemas (registered in tools.py).
-- The system prompt provides operational context (which App the user is in,
-  what each App does) but does NOT route or score skills.
-- The LLM autonomously decides which tools to call based on tool descriptions.
+Skills follow the current function-calling-first design:
+- Script-backed skills are exposed as direct function-calling tools.
+- Their first call may return a compact SKILL.md guide before execution.
+- Knowledge-only skills use load_skill_context as a lightweight hint tool.
 """
 
 from __future__ import annotations
 
-import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.core.app_registry import get_app_registry
 from app.models.conversation import Conversation
+
+
+_WEEKDAYS_ZH = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+
+
+def _current_time_context() -> str:
+    timezone_name = get_settings().app_timezone or "Asia/Shanghai"
+    try:
+        tz = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        timezone_name = "Asia/Shanghai"
+        tz = timezone(timedelta(hours=8), name=timezone_name)
+
+    now = datetime.now(tz)
+    weekday = _WEEKDAYS_ZH[now.weekday()]
+    return "\n".join([
+        "## 当前时间",
+        f"- 当前日期时间：{now.strftime('%Y-%m-%d %H:%M:%S')}（{weekday}，{timezone_name}）",
+        f"- 当前年份：{now.year}",
+        "",
+        "## 时间与实时数据规则",
+        "- 用户提到“今天、明天、后天、本周、周末、下周、五一、春节、黄金周、最近、实时、最新”等相对时间时，必须先按当前日期和时区解析成明确日期或日期范围。",
+        "- 调用天气、搜索、行情、新闻、邮件、日历等依赖时间的工具时，工具参数或搜索 query 中必须包含解析后的绝对日期；不要只传“今天/明天/五一”等相对词。",
+        "- 节假日或月份日期默认按当前年份解析；如果该日期已过去且用户明显是在做未来计划，则按下一次即将到来的年份解析。",
+        "- 如果用户指定了年份、月份、时区或日期范围，优先使用用户指定的信息。",
+        "- 如果时间范围仍有歧义，应先澄清，或在回答中明确说明采用的日期假设。",
+    ])
 
 
 async def resolve_app_id(
@@ -60,34 +88,27 @@ async def build_skill_augmented_system_prompt(
     conversation_id: str | None = None,
     requested_app_id: str | None = None,
 ) -> tuple[str, dict | None]:
-    """Build an augmented system prompt with app context and user skills.
+    """Build an augmented prompt with App context and Skill discovery metadata."""
+    sections = [base_system_prompt.rstrip(), _current_time_context()]
 
-    Instead of routing/scoring skills, this function:
-    1. Identifies which App the user is currently in (entry app).
-    2. Loads the entry app's SKILL.md as operational guidelines.
-    3. Builds a brief catalog of all available apps so the LLM knows
-       the conceptual model of the system.
-    4. Appends any user-defined skills (for python_exec workflows).
-    5. Lets the LLM's native function calling decide which tools to use.
-    """
     entry_app_id = await resolve_app_id(
         db,
         conversation_id=conversation_id,
         requested_app_id=requested_app_id,
     )
     if not entry_app_id:
-        return base_system_prompt, None
+        return "\n\n".join(section for section in sections if section), None
 
     registry = get_app_registry()
 
-    # ── 1. Load entry app's SKILL.md ──────────────────────────
-    entry_skill_content = ""
+    # ── 1. Load only entry app Skill metadata ─────────────────
     entry_app_name = entry_app_id
+    entry_skill_desc = ""
     try:
         skill_payload = await registry.get_skill(db, entry_app_id)
-        entry_skill_content = str(skill_payload.get("content") or "").strip()
         metadata = skill_payload.get("metadata") or {}
         entry_app_name = metadata.get("name") or entry_app_id
+        entry_skill_desc = str(metadata.get("description") or "").strip()
     except ValueError:
         pass
 
@@ -107,32 +128,19 @@ async def build_skill_augmented_system_prompt(
         tool_info = f"（工具: {', '.join(tools_list)}）" if tools_list else ""
         catalog_lines.append(f"- **{app.name}** ({app.id}): {desc}{tool_info}")
 
-    # ── 3. Load user skills ───────────────────────────────────
+    # ── 3. Load user Skill discovery metadata only ────────────
     user_skill_catalog: list[str] = []
-    knowledge_only_skills: list[tuple[str, str]] = []  # (name, content)
     user_skill_infos: list[dict[str, Any]] = []
-    user_skill_contents: dict[str, str] = {}
     for user_skill in registry.list_user_skills(enabled_only=True):
-        skill_content = str(user_skill.get("content") or "").strip()
-        if not skill_content:
-            continue
         tool_backed = _has_executable_script(user_skill)
         skill_name = user_skill.get("name") or user_skill["id"]
         skill_desc = user_skill.get("description") or ""
         skill_id = user_skill["id"]
-
-        if tool_backed:
-            # Tool-backed skills have dedicated function calling tools
-            # registered in tools.py — just list them briefly here.
-            slug = re.sub(r"[^a-zA-Z0-9]+", "_", skill_id.strip()).strip("_").lower()
-            tool_name = f"skill_{slug}"
-            user_skill_catalog.append(
-                f"- **{skill_name}** → 工具 `{tool_name}(query)`: {skill_desc}"
-            )
-        else:
-            # Knowledge-only skills: inject their SKILL.md as guidelines
-            user_skill_catalog.append(f"- **{skill_name}**: {skill_desc}")
-            knowledge_only_skills.append((skill_name, skill_content))
+        skill_type = "脚本型" if tool_backed else "知识型"
+        env_text = f"，环境变量: {user_skill['primary_env']}" if user_skill.get("primary_env") else ""
+        user_skill_catalog.append(
+            f"- **{skill_name}** (`{skill_id}`，{skill_type}{env_text}): {skill_desc or '暂无描述'}"
+        )
 
         user_skill_infos.append({
             "app_id": f"user-skill:{skill_id}",
@@ -142,15 +150,15 @@ async def build_skill_augmented_system_prompt(
             "skill_key": user_skill.get("skill_key"),
             "primary_env": user_skill.get("primary_env"),
             "tool_backed": tool_backed,
+            "path": user_skill.get("path"),
+            "entrypoint": user_skill.get("entrypoint"),
         })
-        user_skill_contents[skill_id] = skill_content
 
     # ── 4. Assemble augmented system prompt ───────────────────
-    sections = [base_system_prompt.rstrip()]
-
     lines: list[str] = [
         "## 当前上下文",
         f"用户当前所在 App: **{entry_app_name}** ({entry_app_id})",
+        f"当前 App 描述: {entry_skill_desc or '暂无描述'}",
         "",
         "## 可用 App 一览",
         *catalog_lines,
@@ -160,41 +168,26 @@ async def build_skill_augmented_system_prompt(
             "请根据用户的实际需求自主选择最合适的工具来完成任务。"
         ),
         "",
-        "## 重要：工具调用规则",
+        "## 工具调用规则",
         (
-            "- 每次用户请求涉及查询数据、执行操作时，你 **必须** 通过 function calling 实际调用工具。\n"
+            "- 只有当用户请求与某个工具的名称、描述和参数明显匹配时，才通过 function calling 调用工具。\n"
+            "- 如果没有合适工具，不要为了调用工具而调用无关工具；请直接回答、说明无法执行，或向用户澄清。\n"
+            "- 文件工具只能用于文件管理器虚拟路径，不能读取 Skill、本地运行时或系统内部路径。\n"
             "- **严禁** 根据之前对话中的工具返回结果来仿写或编造新的结果。\n"
-            "- 即使用户的新请求与之前的请求相似，也必须重新调用工具获取最新数据。\n"
-            "- 不同的查询参数会返回不同的结果，绝不能复用旧结果。"
+            "- 如果用户明确要求查询最新数据，并且存在匹配工具，必须重新调用工具获取最新数据。\n"
+            "- 不同的查询参数会返回不同的结果，不能复用旧结果。"
         ),
     ]
-
-    if entry_skill_content:
-        lines.extend([
-            "",
-            f"## 当前 App 操作指南（{entry_app_id}）",
-            entry_skill_content,
-        ])
 
     if user_skill_catalog:
         lines.extend([
             "",
-            "## 用户自定义技能",
-            "以下是用户安装的额外技能：",
-            *user_skill_catalog,
-            "",
+            "## 用户自定义 Skills",
             (
-                "标有 → 工具的技能已注册为 function calling 工具，"
-                "直接调用对应工具即可。其余技能为知识型指南，参考其内容回答即可。"
+                "以下脚本型 Skill 已作为独立工具暴露，可直接调用（无需先调用 load_skill_context）。\n"
+                "知识型 Skill 可通过 load_skill_context 加载详细说明。"
             ),
-        ])
-
-    # Inject knowledge-only skill content as guidelines
-    for skill_name, skill_content in knowledge_only_skills:
-        lines.extend([
-            "",
-            f"### 知识技能: {skill_name}",
-            skill_content,
+            *user_skill_catalog,
         ])
 
     sections.append("\n".join(lines))
@@ -202,7 +195,6 @@ async def build_skill_augmented_system_prompt(
     skill_context: dict[str, Any] = {
         "entry_app_id": entry_app_id,
         "user_skills": user_skill_infos,
-        "user_skill_contents": user_skill_contents,
     }
 
     return "\n\n".join(sections), skill_context

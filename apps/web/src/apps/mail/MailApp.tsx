@@ -89,6 +89,10 @@ interface ComposeDraft {
   body: string;
 }
 
+interface MailAppProps {
+  appState?: Record<string, unknown>;
+}
+
 const MAIL_FOLDERS: Array<{ id: MailFolderId; label: string; emptyText: string }> = [
   { id: "inbox", label: "收件箱", emptyText: "当前收件箱还没有缓存邮件，点击上方“同步”即可拉取最新内容。" },
   { id: "sent", label: "已发送", emptyText: "这里会显示本地已发送记录，以及同步到的远端已发送邮件。" },
@@ -116,6 +120,10 @@ function emptyComposeDraft(): ComposeDraft {
   return { to: "", cc: "", bcc: "", subject: "", body: "" };
 }
 
+function isMailFolderId(value: unknown): value is MailFolderId {
+  return value === "inbox" || value === "sent" || value === "drafts";
+}
+
 function pickDownloadFileName(contentDisposition: string | null, fallback: string) {
   if (!contentDisposition) return fallback;
   const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
@@ -130,7 +138,7 @@ function pickDownloadFileName(contentDisposition: string | null, fallback: strin
   return plainMatch?.[1] || fallback;
 }
 
-export function MailApp() {
+export function MailApp({ appState }: MailAppProps) {
   const [accounts, setAccounts] = useState<MailAccount[]>([]);
   const [activeAccountId, setActiveAccountId] = useState("");
   const [activeFolder, setActiveFolder] = useState<MailFolderId>("inbox");
@@ -159,6 +167,16 @@ export function MailApp() {
     [messages, selectedMessageId],
   );
   const selectedAttachments = selectedMessage?.attachments || [];
+
+  useEffect(() => {
+    if (!appState) return;
+    if (isMailFolderId(appState.activeFolder)) {
+      setActiveFolder(appState.activeFolder);
+    }
+    if (appState.source === "ai-chat") {
+      setStatusText("已从 AI 助手打开邮件。点击同步可刷新收件箱、已发送和草稿箱。");
+    }
+  }, [appState]);
 
   const loadAccounts = async (preferId?: string) => {
     const data = await apiFetch<MailAccount[]>("/mail/accounts");

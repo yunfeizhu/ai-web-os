@@ -29,6 +29,148 @@ const QUICK_PROMPTS = [
   { icon: "💻", label: "写代码", prompt: "帮我写一段代码，实现" },
 ];
 
+type AppIntent = {
+  appId: string;
+  title: string;
+  icon: string;
+  keywords: string[];
+  appState?: Record<string, unknown>;
+  reply: string;
+};
+
+const APP_INTENTS: AppIntent[] = [
+  {
+    appId: "mail",
+    title: "邮件",
+    icon: "Mail",
+    keywords: ["邮件", "邮箱", "收件箱", "发件箱", "草稿箱", "未读", "附件"],
+    appState: { activeFolder: "inbox", source: "ai-chat" },
+    reply: "已为你打开系统邮件。你可以在邮件 App 中同步收件箱、查看未读邮件和处理附件。",
+  },
+  {
+    appId: "calendar",
+    title: "日历",
+    icon: "Calendar",
+    keywords: ["日历", "日程", "会议", "行程", "待办"],
+    reply: "已为你打开日历。你可以查看今天日程或继续新建事件。",
+  },
+  {
+    appId: "browser",
+    title: "浏览器",
+    icon: "Globe",
+    keywords: ["浏览器", "网页"],
+    reply: "已为你打开浏览器。",
+  },
+  {
+    appId: "file-manager",
+    title: "文件管理器",
+    icon: "FolderOpen",
+    keywords: ["文件", "文件管理器", "目录"],
+    reply: "已为你打开文件管理器。",
+  },
+  {
+    appId: "notes",
+    title: "笔记",
+    icon: "FileText",
+    keywords: ["笔记", "备忘录"],
+    reply: "已为你打开笔记。",
+  },
+  {
+    appId: "document-editor",
+    title: "文档",
+    icon: "FilePenLine",
+    keywords: ["文档", "富文本"],
+    reply: "已为你打开文档。",
+  },
+  {
+    appId: "whiteboard",
+    title: "白板",
+    icon: "PenTool",
+    keywords: ["白板", "画布"],
+    reply: "已为你打开白板。",
+  },
+  {
+    appId: "terminal",
+    title: "终端",
+    icon: "Terminal",
+    keywords: ["终端", "命令行"],
+    reply: "已为你打开终端。",
+  },
+  {
+    appId: "settings",
+    title: "设置",
+    icon: "Settings",
+    keywords: ["设置", "系统设置"],
+    reply: "已为你打开设置。",
+  },
+];
+
+const RISKY_ACTION_PATTERNS = [
+  /删除/,
+  /清空/,
+  /覆盖/,
+  /重置/,
+  /永久/,
+  /批量.*(改写|删除|发送|移动)/,
+  /发送.*邮件/,
+  /发.*邮件/,
+  /发出.*回复/,
+];
+
+function findAppIntent(input: string) {
+  const text = input.trim();
+  const isLaunchCommand = /^(打开|启动|进入|切到|切换到)/.test(text);
+  return APP_INTENTS.find((item) => {
+    const exactMatch = item.title === text || item.keywords.some((keyword) => keyword === text);
+    const launchMatch = isLaunchCommand && item.keywords.some((keyword) => text.includes(keyword));
+    const appTaskMatch =
+      item.appId !== "browser" &&
+      item.keywords.some((keyword) => text.includes(keyword));
+    return exactMatch || launchMatch || appTaskMatch;
+  }) ?? null;
+}
+
+function findAppSearchResults(input: string) {
+  const text = input.trim();
+  if (!text) return [];
+  return APP_INTENTS.filter((item) =>
+    [item.title, ...item.keywords].some((value) => value.includes(text) || text.includes(value)),
+  ).slice(0, 4);
+}
+
+function needsExecutionConfirmation(input: string) {
+  return RISKY_ACTION_PATTERNS.some((pattern) => pattern.test(input));
+}
+
+function isCurrentTimeIntent(input: string) {
+  const text = input.trim();
+  if (!text) return false;
+  return [
+    /^(现在|当前)?几[点时]了?$/,
+    /^(现在|当前)?时间$/,
+    /^(现在|当前)是什么时间$/,
+    /^今天(几号|日期|星期几|周几)$/,
+    /^今天是什么(日期|日子|星期|周几)$/,
+  ].some((pattern) => pattern.test(text));
+}
+
+function buildCurrentTimeReply() {
+  const now = new Date();
+  const date = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(now);
+  const time = new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(now);
+  return `现在是 ${date} ${time}。`;
+}
+
 function extractBrowserSessionId(
   toolName: string,
   args: Record<string, unknown>,
@@ -69,6 +211,7 @@ export function AiChat() {
   const [selectedModel, setSelectedModel] = useState(getInitialModel);
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState<string>("");
+  const [pendingConfirmation, setPendingConfirmation] = useState("");
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -141,6 +284,19 @@ export function AiChat() {
     [clearPendingBrowserWindowOpen, commitBrowserWindowOpen],
   );
 
+  const openAppIntent = useCallback(
+    (intent: AppIntent) => {
+      const windowId = openWindow(intent.appId, intent.title, intent.icon, {
+        singleton: true,
+        appState: intent.appState,
+      });
+      if (intent.appState) {
+        updateAppState(windowId, intent.appState);
+      }
+    },
+    [openWindow, updateAppState],
+  );
+
   const loadConversations = useCallback(async () => {
     try {
       const data = await apiFetch<Conversation[]>(
@@ -184,7 +340,7 @@ export function AiChat() {
         }[]
       >(`/conversations/${convId}/messages`);
 
-      // tool 娑堟伅缁撴灉 map锛歵ool_call_id 鈫?content
+      // tool 消息结果 map：tool_call_id -> content
       const toolResultMap: Record<string, string> = {};
       data
         .filter((m) => m.role === "tool")
@@ -192,7 +348,7 @@ export function AiChat() {
           if (m.tool_call_id) toolResultMap[m.tool_call_id] = m.content ?? "";
         });
 
-      // 杩囨护鎺?role=tool 鐨勪腑闂存秷鎭紝鍙樉绀?user/assistant
+      // 过滤 role=tool 的中间消息，只展示 user/assistant
       const visible = data.filter(
         (m) => m.role === "user" || m.role === "assistant",
       );
@@ -258,13 +414,16 @@ export function AiChat() {
   const handleScroll = () => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    // 璺濈搴曢儴瓒呰繃 80px 瑙嗕负鐢ㄦ埛鍚戜笂婊氬姩
+    // 距离底部超过 80px 视为用户正在向上滚动
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
     userScrolledUpRef.current = !atBottom;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
+    if (pendingConfirmation && e.target.value.trim() !== pendingConfirmation) {
+      setPendingConfirmation("");
+    }
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 200) + "px";
   };
@@ -275,9 +434,74 @@ export function AiChat() {
 
   // 鍚庣閲嶅惎鍚庤嚜鍔ㄩ噸鏂板垵濮嬪寲璁板繂绠＄悊鍣?
   const sendMessage = useCallback(
-    async (text?: string) => {
+    async (text?: string, historyOverride?: ChatMessage[]) => {
       const content = (text ?? input).trim();
-      if (!content || loading || !selectedModel) return;
+      if (!content || loading) return;
+
+      if (isCurrentTimeIntent(content)) {
+        setInput("");
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto";
+        }
+        scrollBehaviorRef.current = "smooth";
+        userScrolledUpRef.current = false;
+        setStatusText("");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "user",
+            content,
+          },
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: buildCurrentTimeReply(),
+            streaming: false,
+          },
+        ]);
+        return;
+      }
+
+      if (needsExecutionConfirmation(content) && pendingConfirmation !== content) {
+        setPendingConfirmation(content);
+        setStatusText("检测到高风险操作，请确认后继续。");
+        return;
+      }
+
+      setPendingConfirmation("");
+
+      const appIntent = findAppIntent(content);
+      if (appIntent) {
+        openAppIntent(appIntent);
+        setInput("");
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto";
+        }
+        scrollBehaviorRef.current = "smooth";
+        userScrolledUpRef.current = false;
+        setStatusText("");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: crypto.randomUUID(),
+            role: "user",
+            content,
+          },
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: appIntent.reply,
+            streaming: false,
+          },
+        ]);
+        return;
+      }
+
+      if (!selectedModel) {
+        setStatusText("请先选择模型。");
+        return;
+      }
 
       const { providerId, modelId } = decodeModel(selectedModel);
       const providerCfg = providers[providerId];
@@ -327,7 +551,14 @@ export function AiChat() {
       // Build history with full tool_calls context so the LLM sees prior
       // tool interactions across conversation turns (OpenAI/Anthropic format).
       const history: Record<string, unknown>[] = [];
-      for (const m of messages) {
+      const historySource = historyOverride ?? messages;
+      for (const m of historySource) {
+        if (m.role !== "user" && m.role !== "assistant") {
+          continue;
+        }
+        if (m.role === "assistant" && m.streaming) {
+          continue;
+        }
         if (m.role === "assistant") {
           const completedCalls = (m.toolCalls ?? []).filter(
             (tc) => tc.status === "done" && tc.result != null,
@@ -355,7 +586,9 @@ export function AiChat() {
               });
             }
           } else {
-            history.push({ role: "assistant", content: m.content });
+            if (m.content.trim()) {
+              history.push({ role: "assistant", content: m.content });
+            }
           }
         } else {
           history.push({ role: m.role, content: m.content });
@@ -373,6 +606,8 @@ export function AiChat() {
             model: modelId,
             providerId,
             history,
+            systemPrompt:
+              "你是 AI-Native OS 的 AI 助手。你可以理解用户意图，必要时使用工具操作浏览器、文件、知识库或其他系统能力。邮件、日历、文件、文档、笔记、白板等属于系统内置 App 的能力，不能用浏览器或第三方网页服务替代；如果用户要处理这些系统能力，应引导用户使用对应 App。回答要简洁，涉及危险操作前应先说明计划并等待用户确认。",
             apiKey,
             apiBase,
             enableMemory: true,
@@ -380,11 +615,19 @@ export function AiChat() {
             embeddingConfig: embeddingConfig ?? undefined,
             llmApiKey: apiKey,
             llmApiBase: apiBase,
-            onStatus: (s) => {
+            onStatus: (s, event) => {
               if (s === "recalled") {
-                // const count = (event?.count as number) ?? 0;
-                // setStatusText(`宸插彫鍥?${count} 鏉¤蹇哷);
-                // setTimeout(() => setStatusText(""), 2000);
+                setStatusText("已召回相关记忆，正在组织回答…");
+              } else if (s === "graph_node") {
+                if (event?.node === "validate_result" && event?.error) {
+                  setStatusText("工具结果未通过校验，正在让模型修正…");
+                } else if (event?.node === "respond") {
+                  setStatusText("");
+                } else {
+                  setStatusText("正在按执行链路推进任务…");
+                }
+              } else if (s === "tool_policy") {
+                setStatusText("已拦截一次不合规工具调用，正在修正…");
               }
             },
             onToken: (token) => {
@@ -398,6 +641,7 @@ export function AiChat() {
               );
             },
             onToolCall: (event) => {
+              setStatusText("");
               liveToolArgsRef.current[event.id] = event.args;
               setMessages((prev) =>
                 prev.map((m) => {
@@ -512,9 +756,9 @@ export function AiChat() {
       selectedModel,
       providers,
       embeddingConfig,
-      openWindow,
+      openAppIntent,
+      pendingConfirmation,
       syncBrowserWindowFromTool,
-      updateAppState,
     ],
   );
 
@@ -526,6 +770,7 @@ export function AiChat() {
   };
 
   const activeTitle = conversations.find((c) => c.id === activeId)?.title;
+  const appSearchResults = findAppSearchResults(input);
 
   return (
     <div
@@ -768,8 +1013,9 @@ export function AiChat() {
                         if (userIdx < 0) return;
                         const userContent = messages[userIdx].content;
                         // 移除 user 消息 + 这条 assistant/error 消息（及之后所有内容）
-                        setMessages((prev) => prev.slice(0, userIdx));
-                        sendMessage(userContent);
+                        const retryHistory = messages.slice(0, userIdx);
+                        setMessages(retryHistory);
+                        sendMessage(userContent, retryHistory);
                       }
                     : undefined;
                 return (
@@ -786,6 +1032,77 @@ export function AiChat() {
           className="shrink-0 px-4 pb-4 pt-2"
           style={{ background: "rgba(250,250,252,0.8)" }}
         >
+          {pendingConfirmation && (
+            <div
+              className="mx-auto mb-2 flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 text-[12px]"
+              style={{
+                maxWidth: 720,
+                borderColor: "rgba(245,158,11,0.24)",
+                background: "rgba(255,251,235,0.92)",
+                color: "#92400e",
+              }}
+            >
+              <span className="min-w-0 flex-1">
+                检测到删除、发送、覆盖或批量修改等高风险动作，请确认后继续。
+              </span>
+              <button
+                className="rounded-full px-3 py-1 font-medium text-white"
+                style={{ background: "#d97706" }}
+                onClick={() => sendMessage(pendingConfirmation)}
+              >
+                确认执行
+              </button>
+              <button
+                className="rounded-full px-3 py-1 font-medium"
+                style={{ background: "rgba(255,255,255,0.82)", color: "#92400e" }}
+                onClick={() => {
+                  setPendingConfirmation("");
+                  setStatusText("已取消高风险操作。");
+                }}
+              >
+                取消
+              </button>
+            </div>
+          )}
+          {appSearchResults.length > 0 && (
+            <div
+              className="mx-auto mb-2 flex flex-wrap gap-2"
+              style={{ maxWidth: 720 }}
+            >
+              {appSearchResults.map((app) => (
+                <button
+                  key={app.appId}
+                  className="rounded-full border px-3 py-1.5 text-[12px] transition-colors"
+                  style={{
+                    borderColor: "rgba(0,0,0,0.08)",
+                    background: "rgba(255,255,255,0.78)",
+                    color: "var(--t2)",
+                  }}
+                  onClick={() => {
+                    openAppIntent(app);
+                    setInput("");
+                    setStatusText("");
+                    setMessages((prev) => [
+                      ...prev,
+                      {
+                        id: crypto.randomUUID(),
+                        role: "user",
+                        content: `打开${app.title}`,
+                      },
+                      {
+                        id: crypto.randomUUID(),
+                        role: "assistant",
+                        content: app.reply,
+                        streaming: false,
+                      },
+                    ]);
+                  }}
+                >
+                  打开{app.title}
+                </button>
+              ))}
+            </div>
+          )}
           <div
             className="mx-auto rounded-2xl overflow-hidden transition-shadow"
             style={{

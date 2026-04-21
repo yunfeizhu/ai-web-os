@@ -17,8 +17,116 @@ logger = logging.getLogger(__name__)
 _manager: MemoryManager | None = None
 
 
+def collection_name_for_embedding(model: str, dims: int | None) -> str:
+    """Generate a dimension-specific Qdrant collection name for memories."""
+    slug = str(model or "").lower().split("/")[-1]
+    slug = "".join(c if c.isalnum() else "_" for c in slug).strip("_")
+    suffix = f"_{dims}" if dims else ""
+    return f"ai_os_mem_{slug or 'default'}{suffix}"
+
+
+def _normalize_dims(value: Any) -> int | None:
+    try:
+        dims = int(value)
+    except (TypeError, ValueError):
+        return None
+    return dims if dims > 0 else None
+
+
 def get_memory_manager() -> MemoryManager | None:
     return _manager
+
+
+def _memory_manager_matches(
+    manager: MemoryManager,
+    *,
+    embedder_provider: str,
+    embedder_model: str,
+    embedder_base_url: str | None,
+    embedder_dims: int,
+    collection_name: str,
+) -> bool:
+    metadata = manager.metadata()
+    return (
+        metadata.get("collection") == collection_name
+        and metadata.get("embedder_provider") == embedder_provider
+        and metadata.get("embedder_model") == embedder_model
+        and metadata.get("embedder_base_url") == embedder_base_url
+        and int(metadata.get("embedder_dims") or 0) == embedder_dims
+    )
+
+
+async def ensure_memory_manager(
+    *,
+    llm_model: str,
+    llm_api_key: str | None,
+    llm_api_base: str | None,
+    embedding_config: dict[str, Any] | None,
+    qdrant_host: str = "127.0.0.1",
+    qdrant_port: int = 16333,
+) -> MemoryManager | None:
+    """Return a memory manager matching the active embedding config.
+
+    Qdrant collection dimensions are immutable. If the user switches from a
+    1024-dimensional embedder to a 4096-dimensional embedder, reusing the old
+    in-process MemoryManager will query the wrong collection and trigger
+    `expected dim: 1024, got 4096`. This helper makes the active embedding
+    config the source of truth for every chat request.
+    """
+    if not embedding_config or not llm_api_key:
+        return None
+
+    embedder_model = str(embedding_config.get("model") or "").strip()
+    embedder_api_key = str(embedding_config.get("apiKey") or "").strip()
+    embedder_base_url = str(embedding_config.get("baseUrl") or "").strip() or None
+    embedder_dims = _normalize_dims(embedding_config.get("dims"))
+    if not embedder_model or not embedder_api_key or not embedder_base_url or not embedder_dims:
+        logger.warning("memory disabled: incomplete embedding config or missing dimensions")
+        return None
+
+    embedder_provider = "openai"
+    collection_name = collection_name_for_embedding(embedder_model, embedder_dims)
+    current = get_memory_manager()
+    if current and _memory_manager_matches(
+        current,
+        embedder_provider=embedder_provider,
+        embedder_model=embedder_model,
+        embedder_base_url=embedder_base_url,
+        embedder_dims=embedder_dims,
+        collection_name=collection_name,
+    ):
+        return current
+
+    loop = asyncio.get_event_loop()
+    try:
+        manager = await loop.run_in_executor(
+            None,
+            lambda: init_memory_manager(
+                llm_provider="litellm",
+                llm_model=llm_model,
+                llm_api_key=llm_api_key,
+                llm_api_base=llm_api_base,
+                embedder_provider=embedder_provider,
+                embedder_model=embedder_model,
+                embedder_api_key=embedder_api_key,
+                embedder_base_url=embedder_base_url,
+                embedder_dims=embedder_dims,
+                qdrant_host=qdrant_host,
+                qdrant_port=qdrant_port,
+                collection_name=collection_name,
+            ),
+        )
+        manager.start()
+        logger.info(
+            "memory manager activated: collection=%s model=%s dims=%s",
+            collection_name,
+            embedder_model,
+            embedder_dims,
+        )
+        return manager
+    except Exception as exc:
+        logger.error("memory init error: %s", exc)
+        return None
 
 
 def init_memory_manager(
@@ -40,6 +148,8 @@ def init_memory_manager(
     collection_name: str = "ai_os_memories",
 ) -> MemoryManager:
     global _manager
+    if _manager is not None:
+        _manager.stop()
     _manager = MemoryManager(
         llm_provider=llm_provider,
         llm_model=llm_model,
@@ -77,6 +187,17 @@ class MemoryManager:
         collection_name: str,
     ):
         from mem0 import Memory
+
+        self.llm_provider = llm_provider
+        self.llm_model = llm_model
+        self.llm_api_base = llm_api_base
+        self.embedder_provider = embedder_provider
+        self.embedder_model = embedder_model
+        self.embedder_base_url = embedder_base_url
+        self.embedder_dims = embedder_dims
+        self.qdrant_host = qdrant_host
+        self.qdrant_port = qdrant_port
+        self.collection_name = collection_name
 
         # LLM 配置：用 openai provider（支持所有 OpenAI 兼容接口）
         llm_config: dict[str, Any] = {
@@ -144,10 +265,29 @@ class MemoryManager:
         self._write_queue: asyncio.Queue = asyncio.Queue()
         self._debounce_tasks: dict[str, asyncio.Task] = {}
         self._worker_task: asyncio.Task | None = None
+        self._started = False
 
     def start(self):
         """在事件循环启动后调用。"""
+        if self._started and self._worker_task and not self._worker_task.done():
+            return
         self._worker_task = asyncio.create_task(self._write_worker())
+        self._started = True
+
+    def metadata(self) -> dict[str, Any]:
+        """Expose the active memory backend so clients can detect stale managers."""
+        return {
+            "collection": self.collection_name,
+            "llm_provider": self.llm_provider,
+            "llm_model": self.llm_model,
+            "llm_api_base": self.llm_api_base,
+            "embedder_provider": self.embedder_provider,
+            "embedder_model": self.embedder_model,
+            "embedder_base_url": self.embedder_base_url,
+            "embedder_dims": self.embedder_dims,
+            "qdrant_host": self.qdrant_host,
+            "qdrant_port": self.qdrant_port,
+        }
 
     async def _write_worker(self):
         while True:
@@ -249,5 +389,9 @@ class MemoryManager:
         )
 
     def stop(self):
+        for task in self._debounce_tasks.values():
+            task.cancel()
+        self._debounce_tasks.clear()
         if self._worker_task:
             self._worker_task.cancel()
+        self._started = False

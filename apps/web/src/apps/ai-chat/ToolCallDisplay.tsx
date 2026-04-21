@@ -24,6 +24,7 @@ const TOOL_META: Record<string, { label: string; icon: React.ReactNode; color: s
   calculator:         { label: "计算器",    icon: <Calculator size={13} />, color: "#34C759" },
   python_exec:        { label: "执行代码",  icon: <Code2 size={13} />,      color: "#FF9F0A" },
   retrieve_knowledge: { label: "知识库检索", icon: <BookOpen size={13} />,  color: "#5AC8FA" },
+  load_skill_context: { label: "加载 Skill 上下文", icon: <BookOpen size={13} />, color: "#8B5CF6" },
   browser_create_session: { label: "创建浏览器会话", icon: <Globe size={13} />, color: "#0A84FF" },
   browser_open: { label: "打开网页", icon: <Globe size={13} />, color: "#0A84FF" },
   browser_reload: { label: "刷新网页", icon: <Globe size={13} />, color: "#0A84FF" },
@@ -58,6 +59,7 @@ function getArgsSummary(tc: ToolCall): string {
     return firstLine.length > 50 ? firstLine.slice(0, 50) + "…" : firstLine;
   }
   if (name === "retrieve_knowledge") return String(args.query ?? "");
+  if (name === "load_skill_context") return String(args.skill_id ?? "");
   if (name === "browser_open") return String(args.url ?? "");
   if (name === "browser_switch_tab" || name === "browser_close_tab") return String(args.tab_id ?? "");
   if (name === "browser_click" || name === "browser_type" || name === "browser_wait_for") {
@@ -84,6 +86,20 @@ function getArgsSummary(tc: ToolCall): string {
     return String(args.session_id ?? "");
   }
   return JSON.stringify(args).slice(0, 60);
+}
+
+function normalizeToolResult(result: string) {
+  return result
+    .replaceAll("璇硶閿欒", "语法错误")
+    .replaceAll("涓嶅厑璁哥殑鎿嶄綔", "不允许的操作")
+    .replaceAll("鏈煡鍙橀噺", "未知变量")
+    .replaceAll("璁＄畻閿欒", "计算错误")
+    .replaceAll("鈥︼紙鍐呭宸叉埅鏂級", "…（内容已截断）")
+    .replaceAll("HTTP 閿欒", "HTTP 错误")
+    .replaceAll("鎶撳彇澶辫触", "抓取失败")
+    .replaceAll("锛堜唬鐮佹墽琛屽畬姣曪紝鏃犺緭鍑猴級", "（代码执行完毕，无输出）")
+    .replaceAll("鎵ц瓒呮椂锛堣秴杩?", "执行超时（超过 ")
+    .replaceAll(" 绉掞級", " 秒）");
 }
 
 interface ToolCallItemProps {
@@ -174,7 +190,7 @@ function ToolCallItem({ tc }: ToolCallItemProps) {
               wordBreak: "break-word",
             }}
           >
-            {tc.result}
+            {normalizeToolResult(tc.result)}
           </pre>
         </div>
       )}

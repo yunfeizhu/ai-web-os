@@ -2,7 +2,7 @@
 
 import { API_BASE, DEFAULT_API_BASE } from "@/lib/backend";
 
-const STREAM_IDLE_TIMEOUT_MS = 45_000;
+const STREAM_IDLE_TIMEOUT_MS = 120_000;
 
 function resolveWebSocketUrl() {
   const httpBase = API_BASE.replace(/\/api\/v1\/?$/, "");
@@ -211,7 +211,7 @@ export async function streamChat(
       timeoutHandle = setTimeout(() => {
         aborted = true;
         wsManager.abort(requestId);
-        reject(new Error("聊天连接等待超时，工具调用可能卡住了。请重试一次。"));
+        reject(new Error("聊天连接等待超时，模型或工具响应时间过长。请稍后重试。"));
       }, STREAM_IDLE_TIMEOUT_MS);
     };
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
-from typing import AsyncIterator, Literal
+from typing import AsyncIterator, Awaitable, Callable, Literal
 
 import litellm
 from litellm import acompletion
@@ -15,6 +15,7 @@ from app.core.agent_harness import (
     normalize_temporal_tool_args,
     policy_trace_payload,
     tool_call_signature,
+    tool_requires_confirmation,
     validate_tool_result,
     validation_trace_payload,
 )
@@ -224,6 +225,8 @@ async def agent_loop(
     max_iterations: int = 8,
     skill_context: dict | None = None,
     request_id: str | None = None,
+    confirm_callback: "Callable[[str, dict], Awaitable[bool]] | None" = None,
+    confirm_tools: "frozenset[str] | None" = None,
 ) -> AsyncIterator[AgentEvent]:
     """Clean ReAct agent loop — no regex ToolScope routing.
 
@@ -451,6 +454,54 @@ async def agent_loop(
                     f"{decision.replacement_hint}"
                 )
                 error = True
+            elif (
+                confirm_callback is not None
+                and tool_requires_confirmation(
+                    parsed_call["name"], parsed_call["args"], extra_tools=confirm_tools
+                )
+            ):
+                # Human-in-the-loop: pause and ask for user confirmation
+                yield (
+                    "status",
+                    graph.status(
+                        "policy_guard",
+                        status="confirm_required",
+                        tool=parsed_call["name"],
+                        args=parsed_call["args"],
+                    ),
+                )
+                try:
+                    approved = await confirm_callback(parsed_call["name"], parsed_call["args"])
+                except Exception:
+                    approved = False
+                if not approved:
+                    result = "用户已拒绝该操作，跳过执行。"
+                    error = False
+                    yield (
+                        "status",
+                        graph.status(
+                            "policy_guard",
+                            status="confirm_rejected",
+                            tool=parsed_call["name"],
+                        ),
+                    )
+                else:
+                    yield (
+                        "status",
+                        graph.status("execute_tool", tool=parsed_call["name"]),
+                    )
+                    try:
+                        signature = tool_call_signature(parsed_call["name"], parsed_call["args"])
+                        if signature:
+                            executed_tool_signatures.add(signature)
+                        result = await execute_tool(
+                            parsed_call["name"], parsed_call["args"], loaded_skill_guides
+                        )
+                        error = False
+                    except Exception as exc:
+                        detail = str(exc).strip() or repr(exc) or type(exc).__name__
+                        result = f"工具执行异常: {type(exc).__name__}: {detail}"
+                        error = True
             else:
                 yield (
                     "status",

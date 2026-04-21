@@ -48,6 +48,7 @@ class AgentGraphState(TypedDict, total=False):
 
 _CHECKPOINTER = InMemorySaver() if InMemorySaver is not None else None
 _COMPILED_GRAPH: Any | None = None
+_POSTGRES_POOL: Any | None = None
 
 
 def _node_runner(node_name: str):
@@ -80,6 +81,55 @@ def _compiled_graph():
     if _COMPILED_GRAPH is None:
         _COMPILED_GRAPH = _build_graph()
     return _COMPILED_GRAPH
+
+
+async def init_checkpointer() -> None:
+    """Upgrade to PostgresSaver if available; fall back to InMemorySaver.
+
+    Called once during app startup (before serving requests). On success the
+    LangGraph compiled graph is rebuilt with the persistent checkpointer so
+    every subsequent call to ``AgentGraphRuntime.status()`` writes to Postgres.
+    """
+    global _CHECKPOINTER, _COMPILED_GRAPH, _POSTGRES_POOL
+
+    try:
+        from app.config import get_settings
+        settings = get_settings()
+        # Convert SQLAlchemy asyncpg URL → psycopg3 URL
+        conn_str = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+
+        from psycopg_pool import AsyncConnectionPool  # type: ignore[import]
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver  # type: ignore[import]
+
+        _POSTGRES_POOL = AsyncConnectionPool(conninfo=conn_str, max_size=5, open=False)
+        await _POSTGRES_POOL.open()
+
+        saver = AsyncPostgresSaver(_POSTGRES_POOL)
+        await saver.setup()  # idempotent — creates tables if they don't exist
+
+        _CHECKPOINTER = saver
+        print("[AgentGraph] ✓ PostgresSaver checkpoint active")
+    except Exception as exc:
+        print(
+            f"[AgentGraph] PostgresSaver unavailable "
+            f"({type(exc).__name__}: {exc}), using InMemorySaver"
+        )
+        if _CHECKPOINTER is None and InMemorySaver is not None:
+            _CHECKPOINTER = InMemorySaver()
+
+    # Rebuild the compiled graph so it uses the new checkpointer
+    _COMPILED_GRAPH = _build_graph()
+
+
+async def shutdown_checkpointer() -> None:
+    """Close the PostgreSQL connection pool gracefully."""
+    global _POSTGRES_POOL
+    if _POSTGRES_POOL is not None:
+        try:
+            await _POSTGRES_POOL.close()
+        except Exception:
+            pass
+        _POSTGRES_POOL = None
 
 
 @dataclass

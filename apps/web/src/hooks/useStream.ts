@@ -3,6 +3,8 @@
 import { API_BASE, DEFAULT_API_BASE } from "@/lib/backend";
 
 const STREAM_IDLE_TIMEOUT_MS = 120_000;
+const WS_RECONNECT_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
+const WS_HEARTBEAT_INTERVAL_MS = 30_000;
 
 function resolveWebSocketUrl() {
   const httpBase = API_BASE.replace(/\/api\/v1\/?$/, "");
@@ -87,86 +89,147 @@ class WsManager {
   private ws: WebSocket | null = null;
   private pending = new Map<string, PendingHandler>();
   private connectPromise: Promise<WebSocket> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
-  private connect(): Promise<WebSocket> {
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      return Promise.resolve(this.ws);
+  private _startHeartbeat(ws: WebSocket): void {
+    this._stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        try {
+          ws.send(JSON.stringify({ type: "ping" }));
+        } catch {
+          /* ignore */
+        }
+      }
+    }, WS_HEARTBEAT_INTERVAL_MS);
+  }
+
+  private _stopHeartbeat(): void {
+    if (this.heartbeatTimer !== null) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
-    if (this.connectPromise) return this.connectPromise;
+  }
 
-    this.connectPromise = new Promise((resolve, reject) => {
-      const ws = new WebSocket(WS_URL);
-      ws.onopen = () => {
-        this.ws = ws;
-        this.connectPromise = null;
-        resolve(ws);
-      };
-      ws.onerror = () => {
-        this.connectPromise = null;
-        reject(new Error("WebSocket 连接失败，请检查后端是否启动"));
-      };
-      ws.onclose = () => {
+  private _handleMessage(event: MessageEvent): void {
+    let msg: Record<string, unknown>;
+    try {
+      msg = JSON.parse(event.data as string);
+    } catch {
+      return;
+    }
+
+    const type = msg.type as string;
+    const requestId = msg.requestId as string;
+    const payload = (msg.payload ?? {}) as Record<string, unknown>;
+
+    if (type === "pong") return;
+
+    const handler = this.pending.get(requestId);
+    if (!handler) return;
+
+    if (handler.aborted()) {
+      this.pending.delete(requestId);
+      return;
+    }
+
+    switch (type) {
+      case "status":
+        handler.touch();
+        handler.onStatus?.(payload.status as string, payload);
+        break;
+      case "token":
+        handler.touch();
+        handler.onToken(payload.token as string);
+        break;
+      case "tool_call":
+        handler.touch();
+        handler.onToolCall?.(payload as unknown as ToolCallEvent);
+        break;
+      case "tool_result":
+        handler.touch();
+        handler.onToolResult?.(payload as unknown as ToolResultEvent);
+        break;
+      case "agent_done":
+        handler.touch();
+        this.pending.delete(requestId);
+        handler.resolve({ title: (payload.title as string) ?? "" });
+        break;
+      case "agent_error":
+        handler.touch();
+        this.pending.delete(requestId);
+        handler.reject(new Error((payload.error as string) ?? "未知错误"));
+        break;
+    }
+  }
+
+  /** 递归尝试连接，初始连接失败时按指数退避重试。 */
+  private _attemptConnect(
+    retriesLeft: number,
+    delayIdx: number,
+    resolve: (ws: WebSocket) => void,
+    reject: (err: Error) => void,
+  ): void {
+    const ws = new WebSocket(WS_URL);
+    let opened = false;
+
+    ws.onopen = () => {
+      opened = true;
+      this.ws = ws;
+      this.connectPromise = null;
+      this._startHeartbeat(ws);
+      resolve(ws);
+    };
+
+    ws.onerror = () => {
+      // onclose fires after onerror; handled there
+    };
+
+    ws.onclose = () => {
+      if (!opened) {
+        // 初始连接失败 — 指数退避重试
+        if (retriesLeft > 0) {
+          const delay = WS_RECONNECT_DELAYS_MS[delayIdx] ?? 16_000;
+          setTimeout(
+            () =>
+              this._attemptConnect(
+                retriesLeft - 1,
+                delayIdx + 1,
+                resolve,
+                reject,
+              ),
+            delay,
+          );
+        } else {
+          this.connectPromise = null;
+          reject(
+            new Error(
+              "WebSocket 连接失败，已重试多次。请检查后端是否启动后刷新页面。",
+            ),
+          );
+        }
+      } else {
+        // 会话中途断开 — 清空状态，等下次 send() 自动重连
+        this._stopHeartbeat();
         this.ws = null;
         this.connectPromise = null;
-        // 拒绝所有等待中的请求
         for (const [, h] of this.pending) {
-          h.reject(new Error("WebSocket 连接断开"));
+          h.reject(new Error("WebSocket 连接已断开，请重新发送消息。"));
         }
         this.pending.clear();
-      };
-      ws.onmessage = (event) => {
-        let msg: Record<string, unknown>;
-        try {
-          msg = JSON.parse(event.data);
-        } catch {
-          return;
-        }
+      }
+    };
 
-        const type = msg.type as string;
-        const requestId = msg.requestId as string;
-        const payload = (msg.payload ?? {}) as Record<string, unknown>;
+    ws.onmessage = this._handleMessage.bind(this);
+  }
 
-        if (type === "pong") return;
+  private connect(): Promise<WebSocket> {
+    if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve(this.ws);
+    if (this.connectPromise) return this.connectPromise;
 
-        const handler = this.pending.get(requestId);
-        if (!handler) return;
-
-        if (handler.aborted()) {
-          this.pending.delete(requestId);
-          return;
-        }
-
-        switch (type) {
-          case "status":
-            handler.touch();
-            handler.onStatus?.(payload.status as string, payload);
-            break;
-          case "token":
-            handler.touch();
-            handler.onToken(payload.token as string);
-            break;
-          case "tool_call":
-            handler.touch();
-            handler.onToolCall?.(payload as unknown as ToolCallEvent);
-            break;
-          case "tool_result":
-            handler.touch();
-            handler.onToolResult?.(payload as unknown as ToolResultEvent);
-            break;
-          case "agent_done":
-            handler.touch();
-            this.pending.delete(requestId);
-            handler.resolve({ title: (payload.title as string) ?? "" });
-            break;
-          case "agent_error":
-            handler.touch();
-            this.pending.delete(requestId);
-            handler.reject(new Error((payload.error as string) ?? "未知错误"));
-            break;
-        }
-      };
+    this.connectPromise = new Promise<WebSocket>((resolve, reject) => {
+      this._attemptConnect(WS_RECONNECT_DELAYS_MS.length, 0, resolve, reject);
     });
-
     return this.connectPromise;
   }
 
@@ -174,13 +237,13 @@ class WsManager {
     requestId: string,
     payload: Record<string, unknown>,
     handler: PendingHandler,
-  ) {
+  ): Promise<void> {
     const ws = await this.connect();
     this.pending.set(requestId, handler);
     ws.send(JSON.stringify({ type: "agent_invoke", requestId, payload }));
   }
 
-  abort(requestId: string) {
+  abort(requestId: string): void {
     this.pending.delete(requestId);
   }
 }
@@ -211,7 +274,9 @@ export async function streamChat(
       timeoutHandle = setTimeout(() => {
         aborted = true;
         wsManager.abort(requestId);
-        reject(new Error("聊天连接等待超时，模型或工具响应时间过长。请稍后重试。"));
+        reject(
+          new Error("聊天连接等待超时，模型或工具响应时间过长。请稍后重试。"),
+        );
       }, STREAM_IDLE_TIMEOUT_MS);
     };
 

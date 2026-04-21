@@ -16,18 +16,62 @@ from app.api.v1 import office as office_router
 from app.api.v1 import skills as skills_router
 from app.core.database import init_db
 from app.core.app_registry import get_app_registry, shutdown_app_registry
+from app.core.agent_graph import init_checkpointer, shutdown_checkpointer
 from app.core.browser_session import get_browser_session_manager
 from app.core.knowledge import shutdown_knowledge_manager
 from app.core.file_manager import ensure_default_directories, FS_ROOT
 from app.api.websocket import websocket_endpoint
 
 
+def _setup_trace_instrumentation() -> None:
+    """Configure optional LLM trace backends based on environment settings.
+
+    Supported backends (activated only when the corresponding env var is set):
+    - Arize Phoenix (OpenTelemetry): TRACE_PHOENIX_ENDPOINT
+    - LangSmith: TRACE_LANGSMITH_API_KEY
+    """
+    import os
+    cfg = get_settings()
+
+    # ── Arize Phoenix ──────────────────────────────────────────────────────────
+    if cfg.trace_phoenix_endpoint:
+        try:
+            from openinference.instrumentation.litellm import LiteLLMInstrumentor  # type: ignore[import]
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter  # type: ignore[import]
+            from opentelemetry.sdk import trace as trace_sdk  # type: ignore[import]
+            from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # type: ignore[import]
+
+            tracer_provider = trace_sdk.TracerProvider()
+            tracer_provider.add_span_processor(
+                SimpleSpanProcessor(
+                    OTLPSpanExporter(endpoint=cfg.trace_phoenix_endpoint)
+                )
+            )
+            LiteLLMInstrumentor().instrument(tracer_provider=tracer_provider)
+            print(f"[Trace] ✓ Arize Phoenix instrumentation active → {cfg.trace_phoenix_endpoint}")
+        except ImportError:
+            print(
+                "[Trace] Phoenix endpoint set but openinference-instrumentation-litellm "
+                "not installed. Run: pip install openinference-instrumentation-litellm "
+                "opentelemetry-exporter-otlp-proto-http"
+            )
+
+    # ── LangSmith ─────────────────────────────────────────────────────────────
+    if cfg.trace_langsmith_api_key:
+        os.environ.setdefault("LANGCHAIN_API_KEY", cfg.trace_langsmith_api_key)
+        os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+        os.environ.setdefault("LANGCHAIN_PROJECT", cfg.trace_langsmith_project)
+        print(f"[Trace] ✓ LangSmith tracing active (project: {cfg.trace_langsmith_project})")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _setup_trace_instrumentation()
     await init_db()
     await ensure_default_directories()
     print(f"[FileSystem] 沙箱根目录: {FS_ROOT}")
     get_app_registry()
+    await init_checkpointer()
     if get_settings().browser_session_enabled:
         await get_browser_session_manager().startup()
     try:
@@ -36,6 +80,7 @@ async def lifespan(app: FastAPI):
         await get_browser_session_manager().shutdown()
         await shutdown_app_registry()
         await shutdown_knowledge_manager()
+        await shutdown_checkpointer()
 
 
 def create_app() -> FastAPI:

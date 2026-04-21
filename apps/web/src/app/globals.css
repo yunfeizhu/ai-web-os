@@ -1,6 +1,10 @@
 @import "tailwindcss";
 
-button, [role="button"], a, label[for], select {
+button,
+[role="button"],
+a,
+label[for],
+select {
   cursor: pointer;
 }
 
@@ -9,42 +13,69 @@ button:disabled {
 }
 
 /* ── Markdown 渲染 ───────────────────────────── */
-.markdown { line-height: 1.7; }
-.markdown p { margin: 0 0 0.6em; }
-.markdown p:last-child { margin-bottom: 0; }
-.markdown strong { font-weight: 600; }
-.markdown em { font-style: italic; }
-.markdown h1, .markdown h2, .markdown h3,
-.markdown h4, .markdown h5, .markdown h6 {
+.markdown {
+  line-height: 1.7;
+}
+.markdown p {
+  margin: 0 0 0.6em;
+}
+.markdown p:last-child {
+  margin-bottom: 0;
+}
+.markdown strong {
+  font-weight: 600;
+}
+.markdown em {
+  font-style: italic;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4,
+.markdown h5,
+.markdown h6 {
   font-weight: 600;
   margin: 1em 0 0.4em;
   line-height: 1.3;
 }
-.markdown h1 { font-size: 1.25em; }
-.markdown h2 { font-size: 1.1em; }
-.markdown h3 { font-size: 1em; }
-.markdown ul, .markdown ol {
+.markdown h1 {
+  font-size: 1.25em;
+}
+.markdown h2 {
+  font-size: 1.1em;
+}
+.markdown h3 {
+  font-size: 1em;
+}
+.markdown ul,
+.markdown ol {
   padding-left: 1.4em;
   margin: 0.4em 0 0.6em;
 }
-.markdown ul { list-style: disc; }
-.markdown ol { list-style: decimal; }
-.markdown li { margin: 0.2em 0; }
+.markdown ul {
+  list-style: disc;
+}
+.markdown ol {
+  list-style: decimal;
+}
+.markdown li {
+  margin: 0.2em 0;
+}
 .markdown blockquote {
-  border-left: 3px solid rgba(0,0,0,0.15);
+  border-left: 3px solid rgba(0, 0, 0, 0.15);
   padding-left: 0.8em;
   margin: 0.6em 0;
-  color: rgba(0,0,0,0.5);
+  color: rgba(0, 0, 0, 0.5);
 }
 .markdown code {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.95em;
-  background: rgba(0,0,0,0.06);
+  background: rgba(0, 0, 0, 0.06);
   padding: 0.15em 0.4em;
   border-radius: 4px;
 }
 .markdown pre {
-  background: rgba(0,0,0,0.05);
+  background: rgba(0, 0, 0, 0.05);
   border-radius: 8px;
   padding: 0.8em 1em;
   overflow-x: auto;
@@ -56,13 +87,13 @@ button:disabled {
   font-size: 0.92em;
 }
 .markdown a {
-  color: var(--accent, #007AFF);
+  color: var(--accent, #007aff);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 .markdown hr {
   border: none;
-  border-top: 0.5px solid rgba(0,0,0,0.12);
+  border-top: 0.5px solid rgba(0, 0, 0, 0.12);
   margin: 0.8em 0;
 }
 .markdown table {
@@ -71,13 +102,14 @@ button:disabled {
   font-size: 0.9em;
   margin: 0.6em 0;
 }
-.markdown th, .markdown td {
+.markdown th,
+.markdown td {
   padding: 0.4em 0.8em;
-  border: 0.5px solid rgba(0,0,0,0.12);
+  border: 0.5px solid rgba(0, 0, 0, 0.12);
   text-align: left;
 }
 .markdown th {
-  background: rgba(0,0,0,0.04);
+  background: rgba(0, 0, 0, 0.04);
   font-weight: 600;
 }
 
@@ -87,38 +119,40 @@ button:disabled {
 
 :root {
   /* ── Backgrounds ─────────────────────── */
-  --bg-desktop:    #e8e4df;
-  --surface:       rgba(255,255,255,0.72);
+  --bg-desktop: #e8e4df;
+  --surface: rgba(255, 255, 255, 0.72);
   --surface-solid: #ffffff;
-  --surface-raise: rgba(255,255,255,0.82);
-  --surface-dock:  rgba(243,243,248,0.65);
+  --surface-raise: rgba(255, 255, 255, 0.82);
+  --surface-dock: rgba(243, 243, 248, 0.65);
 
   /* ── Borders ─────────────────────────── */
-  --border-faint:  rgba(0,0,0,0.04);
-  --border:        rgba(0,0,0,0.10);
-  --border-strong: rgba(0,0,0,0.18);
-  --border-focus:  rgba(0,122,255,0.55);
+  --border-faint: rgba(0, 0, 0, 0.04);
+  --border: rgba(0, 0, 0, 0.1);
+  --border-strong: rgba(0, 0, 0, 0.18);
+  --border-focus: rgba(0, 122, 255, 0.55);
 
   /* ── Accent (macOS Blue) ─────────────── */
-  --accent:        #007aff;
-  --accent-light:  #409cff;
-  --accent-bg:     rgba(0,122,255,0.08);
-  --accent-bg-h:   rgba(0,122,255,0.14);
+  --accent: #007aff;
+  --accent-light: #409cff;
+  --accent-bg: rgba(0, 122, 255, 0.08);
+  --accent-bg-h: rgba(0, 122, 255, 0.14);
 
   /* ── Semantic ────────────────────────── */
-  --red:    #ff3b30;
+  --red: #ff3b30;
   --yellow: #ffcc00;
-  --green:  #28cd41;
+  --green: #28cd41;
   --orange: #ff9f0a;
 
   /* ── Text ────────────────────────────── */
-  --t1: rgba(0,0,0,0.88);
-  --t2: rgba(0,0,0,0.52);
-  --t3: rgba(0,0,0,0.30);
+  --t1: rgba(0, 0, 0, 0.88);
+  --t2: rgba(0, 0, 0, 0.52);
+  --t3: rgba(0, 0, 0, 0.3);
 
   /* ── Typography ──────────────────────── */
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', monospace;
+  --font-sans:
+    "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text",
+    system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Menlo", monospace;
 
   /* ── Layout ──────────────────────────── */
   --taskbar-h: 68px;
@@ -126,27 +160,100 @@ button:disabled {
 
   /* ── Shadows (macOS-style) ───────────── */
   --shadow-window:
-    0 22px 70px rgba(0,0,0,0.12),
-    0 8px 22px rgba(0,0,0,0.08),
-    0 0 0 0.5px rgba(0,0,0,0.12);
+    0 22px 70px rgba(0, 0, 0, 0.12), 0 8px 22px rgba(0, 0, 0, 0.08),
+    0 0 0 0.5px rgba(0, 0, 0, 0.12);
   --shadow-window-focus:
-    0 22px 70px rgba(0,0,0,0.18),
-    0 8px 22px rgba(0,0,0,0.12),
-    0 0 0 0.5px rgba(0,0,0,0.18);
-  --shadow-dock:
-    0 8px 32px rgba(0,0,0,0.10),
-    0 2px 8px rgba(0,0,0,0.06);
+    0 22px 70px rgba(0, 0, 0, 0.18), 0 8px 22px rgba(0, 0, 0, 0.12),
+    0 0 0 0.5px rgba(0, 0, 0, 0.18);
+  --shadow-dock: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.06);
   --shadow-menu:
-    0 12px 40px rgba(0,0,0,0.14),
-    0 4px 12px rgba(0,0,0,0.08);
+    0 12px 40px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* ═══════════════════════════════════════════
+   AI-Native OS — Dark Theme
+   ═══════════════════════════════════════════ */
+
+[data-theme="dark"] {
+  /* ── Backgrounds ─────────────────────── */
+  --bg-desktop: #13131a;
+  --surface: rgba(26, 26, 34, 0.88);
+  --surface-solid: #1c1c26;
+  --surface-raise: rgba(34, 34, 46, 0.94);
+  --surface-dock: rgba(16, 16, 22, 0.75);
+
+  /* ── Borders ─────────────────────────── */
+  --border-faint: rgba(255, 255, 255, 0.04);
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --border-focus: rgba(10, 132, 255, 0.65);
+
+  /* ── Accent (macOS Blue, slightly lighter in dark) ── */
+  --accent: #0a84ff;
+  --accent-light: #409cff;
+  --accent-bg: rgba(10, 132, 255, 0.12);
+  --accent-bg-h: rgba(10, 132, 255, 0.2);
+
+  /* ── Text ────────────────────────────── */
+  --t1: rgba(255, 255, 255, 0.92);
+  --t2: rgba(255, 255, 255, 0.5);
+  --t3: rgba(255, 255, 255, 0.28);
+
+  /* ── Shadows (deeper in dark) ────────── */
+  --shadow-window:
+    0 22px 70px rgba(0, 0, 0, 0.6), 0 8px 22px rgba(0, 0, 0, 0.4),
+    0 0 0 0.5px rgba(255, 255, 255, 0.06);
+  --shadow-window-focus:
+    0 22px 70px rgba(0, 0, 0, 0.7), 0 8px 22px rgba(0, 0, 0, 0.5),
+    0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  --shadow-dock: 0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-menu:
+    0 12px 40px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Dark theme Markdown overrides ────── */
+[data-theme="dark"] .markdown blockquote {
+  border-left-color: rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.45);
+}
+[data-theme="dark"] .markdown code {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-theme="dark"] .markdown pre {
+  background: rgba(255, 255, 255, 0.06);
+}
+[data-theme="dark"] .markdown hr {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+[data-theme="dark"] .markdown th,
+[data-theme="dark"] .markdown td {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+[data-theme="dark"] .markdown th {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* ── Dark scrollbar ─────────────────────── */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 /* ── Reset ─────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-html, body {
-  margin: 0; padding: 0;
-  width: 100%; height: 100%;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   font-family: var(--font-sans);
   background: var(--bg-desktop);
@@ -156,60 +263,94 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-.window-content { user-select: text; }
+.window-content {
+  user-select: text;
+}
 
 /* ── Scrollbar ──────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 ::-webkit-scrollbar-thumb {
-  background: rgba(0,0,0,0.15);
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 3px;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+}
 
 /* ── Desktop ────────────────────────────── */
 .desktop-bg {
-  position: fixed; inset: 0;
+  position: fixed;
+  inset: 0;
   overflow: hidden;
   background: var(--bg-desktop);
 }
 
 /* ── Window animations ──────────────── */
 @keyframes windowOpen {
-  from { opacity: 0; transform: scale(0.94); }
-  to   { opacity: 1; transform: scale(1);    }
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .win-open {
-  animation: windowOpen 0.22s cubic-bezier(0.16,1,0.3,1) forwards;
+  animation: windowOpen 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: center center;
 }
 
 @keyframes windowClose {
-  from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(0.88); }
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.88);
+  }
 }
 .win-close {
-  animation: windowClose 0.18s cubic-bezier(0.4,0,1,1) forwards;
+  animation: windowClose 0.18s cubic-bezier(0.4, 0, 1, 1) forwards;
   transform-origin: center center;
   pointer-events: none;
 }
 
 @keyframes windowMinimize {
-  from { opacity: 1; transform: scale(1) translateY(0); }
-  to   { opacity: 0; transform: scale(0.5) translateY(60px); }
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.5) translateY(60px);
+  }
 }
 .win-minimize {
-  animation: windowMinimize 0.22s cubic-bezier(0.4,0,1,1) forwards;
+  animation: windowMinimize 0.22s cubic-bezier(0.4, 0, 1, 1) forwards;
   transform-origin: center bottom;
   pointer-events: none;
 }
 
 @keyframes windowRestore {
-  from { opacity: 0; transform: scale(0.5) translateY(60px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
+  from {
+    opacity: 0;
+    transform: scale(0.5) translateY(60px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 .win-restore {
-  animation: windowRestore 0.25s cubic-bezier(0.16,1,0.3,1) forwards;
+  animation: windowRestore 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: center bottom;
 }
 

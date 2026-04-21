@@ -63,6 +63,29 @@ def is_load_skill_tool(tool_name: str) -> bool:
     return str(tool_name or "") == "load_skill_context"
 
 
+# ── Human-in-the-loop confirmation predicates ─────────────────────────────────
+
+# Base set is intentionally empty; extend via Settings.confirm_required_tools or
+# by passing extra_tools= to tool_requires_confirmation().
+# Typical candidates: "python_exec", "write_file", "delete_file", "send_email"
+CONFIRM_REQUIRED_TOOLS: frozenset[str] = frozenset()
+
+
+def tool_requires_confirmation(
+    tool_name: str,
+    args: dict | None = None,
+    *,
+    extra_tools: frozenset[str] | None = None,
+) -> bool:
+    """Return True when this tool call must be confirmed by the user before execution.
+
+    The base CONFIRM_REQUIRED_TOOLS set is empty; callers extend it via
+    ``extra_tools`` (e.g. loaded from Settings.confirm_required_tools).
+    """
+    confirm_set = CONFIRM_REQUIRED_TOOLS | (extra_tools or frozenset())
+    return str(tool_name or "") in confirm_set
+
+
 # ── Path inspection helpers ───────────────────────────────────────────────────
 
 

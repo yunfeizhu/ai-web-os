@@ -226,10 +226,11 @@
   - [x] 抑制工具调用前的表格 / 数据类臆测输出，只允许短前置说明，避免先编造再调用工具
   - [x] Skill 路径改为展示信息，禁止作为文件管理器虚拟路径读取
   - [ ] 确定性 `FallbackPolicy` 状态机（如 Skill 失败后强制切换实时研究工具）
-- [ ] Human-in-the-loop 与执行确认
+- [x] Human-in-the-loop 与执行确认
   - [ ] 复杂任务先展示计划
-  - [x] 危险操作二次确认（删除 / 发送 / 批量改写）
-  - [x] 执行中断 / 取消
+  - [x] 危险操作二次确认（`CONFIRM_REQUIRED_TOOLS` 配置，`confirmation_store` asyncio.Future 暂停 Agent 循环）
+  - [x] 前端 `agent_confirm_required` WebSocket 事件 + `POST /api/v1/agents/confirm` REST 解决 Future
+  - [x] 执行中断 / 取消（用户拒绝 → 注入 "用户已拒绝该操作"，Agent 可继续）
 - [x] Agent 状态可视化 1.0
   - [x] 基于现有 token / tool_call / tool_result 的执行时间线
   - [x] 步骤状态、耗时、失败点展示
@@ -237,24 +238,26 @@
 - [x] 轻量 Orchestrator / Graph Checkpoint Runtime
   - [x] 基于现有 App / Skill 路由的串行工作流编排
   - [x] ReAct 链路状态：LLM 决策 / 策略守卫 / 执行工具 / 校验结果
-  - [x] 引入真实 LangGraph `StateGraph` 作为 checkpoint facade，Harness 状态已接入 `InMemorySaver` checkpoint
-  - [x] 预留 interrupt / resume 运行时接口，当前先服务于单 Agent 调试和后续人工确认节点
+  - [x] 引入真实 LangGraph `StateGraph` 作为 checkpoint facade
+  - [x] `InMemorySaver` → `AsyncPostgresSaver` 自动升级（`langgraph-checkpoint-postgres`），fallback 到 InMemorySaver
+  - [x] interrupt / resume 运行时接口落地（Human-in-the-loop 实际使用）
   - [ ] 多 App 任务计划与结果汇总
-- [ ] 可观测性与评测
+- [x] 可观测性与评测
   - [x] 基础 Trace / 调用链状态事件
-  - [x] 固定 Harness eval case：核心工具可见性、Skill 路径、calculator 非数学拦截、空结果校验、重复工具去重、时间参数归一化、工具前置输出抑制、LangGraph checkpoint
-  - [ ] 持久化 Trace / 调用链记录
-  - [ ] 工具调用成功率 / 路由准确率 / 端到端任务完成率
+  - [x] Harness eval 扩展至 12 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程）
+  - [x] Trace 后端集成：Arize Phoenix（`TRACE_PHOENIX_ENDPOINT`）+ LangSmith（`TRACE_LANGSMITH_API_KEY`），零配置零开销
+  - [ ] 工具调用成功率 / 路由准确率 / 端到端任务完成率（需真实流量积累）
   - [ ] Token / 成本统计
 - [ ] 扩展中心 2.0
   - [ ] 基于现有 MCP / Skill / App 管理页演进
   - [ ] 本地安装、来源、版本、更新与权限说明
-- [ ] 多 Agent 并行架构
+- [ ] 多 Agent 并行架构（暂缓，等单 Agent 稳定后评估）
   - [ ] Lead Agent + Sub-Agent
   - [ ] 任务拆解、并行执行、结果汇总
   - [x] 基础检查点：Harness 节点状态已进入 LangGraph checkpoint
-  - [ ] 持久化检查点与状态回放
-- [ ] 性能与产品打磨
-  - [ ] 窗口虚拟化 / WebSocket 重连 / 代码分割
-  - [ ] 主题系统与动效收尾
+  - [x] PostgresSaver 持久化检查点（`langgraph-checkpoint-postgres` + `psycopg[binary,pool]`）
+- [x] 性能与产品打磨（部分）
+  - [x] WebSocket 重连：指数退避重试（1s→2s→4s→8s→16s）+ 30 秒心跳 ping
+  - [x] Light / Dark 主题系统：`[data-theme]` CSS 变量集、`ThemeProvider` 同步到 `<html>`、desktopStore 持久化、Settings 外观页可视化切换
+  - [ ] 窗口虚拟化 / 代码分割
   - [ ] 本地优先配置与数据归属统一化

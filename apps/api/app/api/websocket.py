@@ -9,7 +9,9 @@ import uuid
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
 
+from app.config import get_settings
 from app.core.app_registry import get_app_registry
+from app.core.confirmation_store import create_confirmation, discard_confirmation
 from app.core.database import AsyncSessionLocal
 from app.core.llm_provider import agent_loop
 from app.core.skill_context import build_skill_augmented_system_prompt
@@ -100,6 +102,33 @@ async def _save_messages(
             )
         await db.commit()
         return conv.title
+
+
+def _make_confirm_callback(websocket: WebSocket, request_id: str):
+    """Return an async callback that pauses the agent loop awaiting user confirmation.
+
+    The callback sends an ``agent_confirm_required`` event to the client, then
+    waits up to 120 seconds for a ``POST /api/v1/agents/confirm`` call that
+    resolves the Future via ``confirmation_store.resolve_confirmation()``.
+    """
+
+    async def _callback(tool_name: str, args: dict) -> bool:
+        future = create_confirmation(request_id)
+        await websocket.send_json(
+            {
+                "type": "agent_confirm_required",
+                "requestId": request_id,
+                "payload": {"toolName": tool_name, "args": args},
+            }
+        )
+        try:
+            return await asyncio.wait_for(asyncio.shield(future), timeout=120.0)
+        except asyncio.TimeoutError:
+            return False
+        finally:
+            discard_confirmation(request_id)
+
+    return _callback
 
 
 async def websocket_endpoint(websocket: WebSocket):
@@ -199,6 +228,18 @@ async def websocket_endpoint(websocket: WebSocket):
                     tool_calls: list[dict] = []
                     tool_results: list[dict] = []
 
+                    _settings = get_settings()
+                    _confirm_tools = (
+                        frozenset(_settings.confirm_required_tools)
+                        if _settings.confirm_required_tools
+                        else None
+                    )
+                    _confirm_cb = (
+                        _make_confirm_callback(websocket, request_id)
+                        if _confirm_tools
+                        else None
+                    )
+
                     async for event_type, event_payload in agent_loop(
                         model=model,
                         messages=[*history, {"role": "user", "content": user_message}],
@@ -209,6 +250,8 @@ async def websocket_endpoint(websocket: WebSocket):
                         api_base=api_base,
                         skill_context=skill_info,
                         request_id=request_id,
+                        confirm_callback=_confirm_cb,
+                        confirm_tools=_confirm_tools,
                     ):
                         if event_type == "token":
                             full_response += event_payload

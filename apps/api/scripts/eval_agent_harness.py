@@ -25,6 +25,7 @@ from app.core.agent_harness import (  # noqa: E402
     guard_tool_call,
     normalize_temporal_tool_args,
     tool_call_signature,
+    tool_requires_confirmation,
     validate_tool_result,
 )
 from app.core.agent_graph import AgentGraphRuntime  # noqa: E402
@@ -114,6 +115,61 @@ async def main() -> None:
             "empty Tavily result should fail validation")
 
     print("Agent Harness eval passed: 9 cases")
+
+
+    # 10. tool_requires_confirmation: default set is empty, extra_tools override works
+    _assert(
+        not tool_requires_confirmation("calculator"),
+        "calculator must NOT require confirmation by default",
+    )
+    _assert(
+        not tool_requires_confirmation("python_exec"),
+        "python_exec must NOT require confirmation when extra_tools is None",
+    )
+    _assert(
+        tool_requires_confirmation("python_exec", extra_tools=frozenset({"python_exec"})),
+        "python_exec MUST require confirmation when it is in extra_tools",
+    )
+    _assert(
+        not tool_requires_confirmation("write_file", extra_tools=frozenset({"python_exec"})),
+        "write_file must NOT require confirmation when only python_exec is in extra_tools",
+    )
+
+    # 11. Skill tool schema descriptions are brief — no embedded SKILL.md body
+    for tool in tools:
+        name = (tool.get("function") or {}).get("name") or ""
+        if not name.startswith("skill_"):
+            continue  # Only enforce brief descriptions for script-backed skill tools
+        desc = (tool.get("function") or {}).get("description") or ""
+        _assert(
+            len(desc) <= 300,
+            f"Skill tool description too long ({len(desc)} chars): "
+            f"{name} — SKILL.md body may be embedded in the tool schema",
+        )
+
+    # 12. Confirmation store: create → resolve → re-resolve idempotency
+    from app.core.confirmation_store import (  # noqa: E402
+        create_confirmation,
+        discard_confirmation,
+        pending_count,
+        resolve_confirmation,
+    )
+
+    before = pending_count()
+    fut = create_confirmation("eval-test-req")
+    _assert(pending_count() == before + 1, "create_confirmation should add to pending count")
+
+    resolved = resolve_confirmation("eval-test-req", approved=True)
+    _assert(resolved, "resolve_confirmation should return True for an existing future")
+    _assert(fut.done() and fut.result() is True, "Future should be resolved with True")
+
+    re_resolved = resolve_confirmation("eval-test-req", approved=False)
+    _assert(not re_resolved, "resolve_confirmation should return False for an already-resolved future")
+
+    discard_confirmation("eval-test-req")
+    _assert(pending_count() == before, "discard_confirmation should remove entry")
+
+    print("Agent Harness eval passed: 12 cases")
 
 
 if __name__ == "__main__":

@@ -105,6 +105,27 @@ async def fetch_models(req: FetchModelsRequest):
 DEFAULT_USER_ID = "default"
 
 
+# ── Human-in-the-loop: tool execution confirmation ───────────────────────────
+
+@router.post("/confirm")
+async def confirm_tool_execution(request_id: str, approved: bool = True):
+    """Resolve a pending Human-in-the-loop confirmation.
+
+    The frontend calls this endpoint after showing the user a confirmation
+    dialog for a dangerous tool. ``request_id`` must match the one received in
+    the ``agent_confirm_required`` WebSocket event.
+    """
+    from app.core.confirmation_store import resolve_confirmation
+
+    resolved = resolve_confirmation(request_id, approved)
+    if not resolved:
+        raise HTTPException(
+            status_code=404,
+            detail="No pending confirmation found for this request_id. It may have expired.",
+        )
+    return {"ok": True, "approved": approved}
+
+
 # ── Schemas ──────────────────────────────────────────
 
 class ConversationCreate(BaseModel):

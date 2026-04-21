@@ -11,6 +11,7 @@ interface WindowProps {
   window: WindowState;
   children: React.ReactNode;
   onSnapZoneChange?: (zone: SnapZone) => void;
+  contentVirtualized?: boolean;
 }
 
 type ExitAnim = "close" | "minimize" | null;
@@ -19,6 +20,7 @@ export function Window({
   window: win,
   children,
   onSnapZoneChange,
+  contentVirtualized = false,
 }: WindowProps) {
   const {
     focusWindow,
@@ -224,11 +226,48 @@ export function Window({
         />
         <div
           className="flex-1 overflow-auto window-content"
+          data-virtualized={contentVirtualized ? "true" : "false"}
           style={{ background: "rgba(255,255,255,0.55)" }}
         >
-          {children}
+          {contentVirtualized ? (
+            <VirtualizedWindowContent title={win.title} icon={win.icon} />
+          ) : (
+            children
+          )}
         </div>
       </div>
     </Rnd>
+  );
+}
+
+function VirtualizedWindowContent({
+  title,
+  icon,
+}: {
+  title: string;
+  icon: string;
+}) {
+  return (
+    <div
+      className="flex h-full items-center justify-center"
+      style={{
+        background:
+          "linear-gradient(135deg, rgba(255,255,255,0.34), rgba(238,242,247,0.52))",
+      }}
+    >
+      <div
+        className="flex items-center gap-3 rounded-lg px-4 py-3"
+        style={{
+          color: "var(--t3)",
+          background: "rgba(255,255,255,0.38)",
+          border: "0.5px solid rgba(0,0,0,0.08)",
+        }}
+      >
+        <span style={{ fontSize: 18, lineHeight: 1 }}>{icon}</span>
+        <span className="max-w-[220px] truncate text-[13px] font-medium">
+          {title}
+        </span>
+      </div>
+    </div>
   );
 }

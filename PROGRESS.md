@@ -259,5 +259,6 @@
 - [x] 性能与产品打磨（部分）
   - [x] WebSocket 重连：指数退避重试（1s→2s→4s→8s→16s）+ 30 秒心跳 ping
   - [x] Light / Dark 主题系统：`[data-theme]` CSS 变量集、`ThemeProvider` 同步到 `<html>`、desktopStore 持久化、Settings 外观页可视化切换
-  - [ ] 窗口虚拟化 / 代码分割
+  - [x] 窗口虚拟化 1.0：窗口层计算可见性，被完全遮挡或屏幕外的可安全重建 App 只保留窗口壳与占位内容
+  - [ ] 代码分割
   - [ ] 本地优先配置与数据归属统一化

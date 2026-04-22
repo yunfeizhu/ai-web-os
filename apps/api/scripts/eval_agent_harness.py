@@ -31,10 +31,28 @@ from app.core.agent_harness import (  # noqa: E402
     validate_tool_result,
 )
 from app.core.agent_graph import AgentGraphRuntime  # noqa: E402
+from app.core import evidence_bundle as evidence_bundle_module  # noqa: E402
 from app.core import subagent as subagent_module  # noqa: E402
 from app.core.context_manager import compact_tool_result_for_context  # noqa: E402
-from app.core.llm_provider import _is_safe_tool_preamble  # noqa: E402
-from app.core.subagent import normalize_subagent_specs  # noqa: E402
+from app.core.evidence_bundle import (  # noqa: E402
+    build_tool_evidence,
+    distill_evidence_bundle,
+    fallback_evidence_bundle,
+    normalize_evidence_bundle,
+)
+from app.core.llm_provider import (  # noqa: E402
+    _delegate_result_has_sufficient_search,
+    _is_safe_tool_preamble,
+)
+from app.core.subagent import DELEGATE_TOOL_CONTEXT_CHARS, normalize_subagent_specs  # noqa: E402
+from app.core.tool_capabilities import (  # noqa: E402
+    CAPABILITY_SEARCH_DISCOVERY,
+    augment_tool_schema_with_capability,
+    infer_tool_capability,
+    normalize_extract_args,
+    result_has_sufficient_discovery,
+    should_skip_content_fetch_after_search,
+)
 from app.core.tools import get_tools_for_model  # noqa: E402
 
 
@@ -249,6 +267,8 @@ async def main() -> None:
     _assert(len(result_events) == 1, f"subagent should emit one result event: {events}")
     _assert(not result_events[0].get("failed"), f"subagent should succeed: {result_events[0]}")
     _assert(result_events[0].get("answer") == "ok", f"subagent answer should collect tokens: {result_events[0]}")
+    _assert(isinstance(result_events[0].get("evidence"), dict),
+            f"subagent result should include an evidence bundle: {result_events[0]}")
     _assert(
         captured_kwargs.get("max_iterations") == 5,
         f"writer role should cap delegated max_iterations at 5: {captured_kwargs}",
@@ -265,7 +285,140 @@ async def main() -> None:
             f"subagent tool event ids must be namespaced: {payload}",
         )
 
-    # 17. Current-turn search results are compacted before re-entering the LLM.
+    # 16. Search/extract capabilities are inferred from generic tool schemas.
+    search_schema = {
+        "type": "function",
+        "function": {
+            "name": "mcp_searxng_web_1234",
+            "description": "Search the web and return ranked results.",
+            "parameters": {"type": "object", "properties": {"query": {"type": "string"}}},
+        },
+    }
+    extract_schema = {
+        "type": "function",
+        "function": {
+            "name": "mcp_reader_extract_1234",
+            "description": "Extract markdown from known URLs.",
+            "parameters": {"type": "object", "properties": {"urls": {"type": "array"}}},
+        },
+    }
+    augmented_search = augment_tool_schema_with_capability(search_schema)
+    _assert(
+        infer_tool_capability(
+            search_schema["function"]["name"],
+            search_schema["function"]["description"],
+            search_schema["function"]["parameters"],
+        ) == CAPABILITY_SEARCH_DISCOVERY,
+        "SearXNG-like search schema should infer search.discovery",
+    )
+    _assert(
+        "ToolUsePolicy:" in augmented_search["function"]["description"],
+        "search schema should receive capability-aware usage guidance",
+    )
+    _assert(
+        infer_tool_capability(
+            search_schema["function"]["name"],
+            augmented_search["function"]["description"],
+            search_schema["function"]["parameters"],
+        ) == CAPABILITY_SEARCH_DISCOVERY,
+        "augmented search schema should still infer search.discovery",
+    )
+    _assert(
+        should_skip_content_fetch_after_search(
+            tool_name=extract_schema["function"]["name"],
+            description=extract_schema["function"]["description"],
+            args={"urls": ["https://example.com/a"]},
+            task_text="summarize the latest market news",
+            successful_search_count=1,
+        ),
+        "extract should be skipped when search snippets are sufficient",
+    )
+    _assert(
+        not should_skip_content_fetch_after_search(
+            tool_name=extract_schema["function"]["name"],
+            description=extract_schema["function"]["description"],
+            args={"urls": ["https://example.com/a"]},
+            task_text="quote the original source text",
+            successful_search_count=1,
+        ),
+        "extract should be allowed when exact source text is requested",
+    )
+    _assert(
+        normalize_extract_args(
+            {"urls": ["http://www.weather.com.cn/weather1d/101210101.shtm"]}
+        )["urls"][0].endswith(".shtml"),
+        "weather.com.cn weather1d .shtm URLs should normalize to .shtml before extraction",
+    )
+
+    # 17. Partial extract success is valid, and search results can satisfy discovery.
+    sufficient_search_result = json.dumps(
+        {
+            "results": [
+                {"title": "A", "url": "https://example.com/a", "content": "snippet a"},
+                {"title": "B", "url": "https://example.com/b", "content": "snippet b"},
+            ]
+        },
+        ensure_ascii=False,
+    )
+    _assert(
+        result_has_sufficient_discovery(
+            "mcp_searxng_web_1234",
+            sufficient_search_result,
+            "Search the web and return ranked results.",
+        ),
+        "two useful search results should count as sufficient discovery evidence",
+    )
+    weather_single_result = json.dumps(
+        {
+            "query": "杭州 2026年4月22日 实时天气 温度 天气状况 风力",
+            "results": [
+                {
+                    "title": "杭州天气",
+                    "url": "https://example.com/hangzhou-weather",
+                    "content": "杭州 2026年4月22日 阴有阵雨，气温 15℃ ~ 20℃，东北风 3级。",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    _assert(
+        result_has_sufficient_discovery(
+            "mcp_tavily_search_eval",
+            weather_single_result,
+            "Search the web and return ranked results.",
+            task_text="查询杭州今天的实时天气情况，包括温度、天气状况、风力等信息。",
+        ),
+        "one weather search result covering requested fields should be sufficient",
+    )
+    _assert(
+        should_skip_content_fetch_after_search(
+            tool_name=extract_schema["function"]["name"],
+            description=extract_schema["function"]["description"],
+            args={"urls": ["https://example.com/hangzhou-weather"]},
+            task_text="查询杭州今天的实时天气情况，包括温度、天气状况、风力等信息。",
+            successful_search_count=1,
+        ),
+        "extract should be skipped after one sufficient weather search result",
+    )
+    partial_extract_inner = json.dumps(
+        {
+            "results": [{"url": "https://example.com/a", "content": "ok"}],
+            "failed_results": [{"url": "https://example.com/b", "error": "403"}],
+        },
+        ensure_ascii=False,
+    )
+    partial_extract_wrapper = json.dumps(
+        {"content": [{"type": "text", "text": partial_extract_inner}], "isError": False},
+        ensure_ascii=False,
+    )
+    partial_validation = validate_tool_result(
+        tool_name="mcp_reader_extract_1234",
+        result=partial_extract_wrapper,
+        error=False,
+    )
+    _assert(partial_validation.ok, f"partial extract success should be valid: {partial_validation}")
+
+    # 18. Current-turn search results are compacted before re-entering the LLM.
     nested_search = json.dumps(
         {
             "query": "贵州茅台 最新新闻",
@@ -299,7 +452,240 @@ async def main() -> None:
             f"compact search result should retain title and url: {compacted}")
     _assert(len(compacted) < len(tavily_wrapper), "compact result should be shorter than original")
 
-    print("Agent Harness eval passed: 17 cases")
+    # 19. EvidenceBundle preserves structured handoff from sub-agent to Lead Agent.
+    evidence_item = build_tool_evidence({
+        "name": "mcp_tavily_search_eval",
+        "displayName": "TavilyMcp Search",
+        "result": json.dumps(
+            {
+                "results": [
+                    {
+                        "title": "杭州天气",
+                        "url": "https://example.com/weather",
+                        "content": "杭州 2026年4月22日 白天阴有阵雨 15℃ ~ 20℃ 湿度 82% 东北风 3级",
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        "error": False,
+    })
+    _assert(evidence_item is not None, "tool evidence should be built from search result")
+    bundle = normalize_evidence_bundle(
+        {
+            "summary": "杭州今天阴有阵雨，气温 15℃ ~ 20℃。",
+            "required_fields": [
+                {"field": "temperature", "label": "温度"},
+                {"field": "humidity", "label": "湿度"},
+            ],
+            "facts": [
+                {
+                    "field": "temperature",
+                    "label": "温度",
+                    "value": "15℃ ~ 20℃",
+                    "source_url": "https://example.com/weather",
+                    "evidence": "15℃ ~ 20℃",
+                    "confidence": "high",
+                }
+            ],
+            "sources": [{"title": "杭州天气", "url": "https://example.com/weather"}],
+            "capabilities_used": [CAPABILITY_SEARCH_DISCOVERY],
+            "evidence_sufficient": True,
+            "needs_more_tools": False,
+        },
+        task="查询杭州天气，包括温度和湿度",
+        answer="杭州今天阴有阵雨，气温 15℃ ~ 20℃。",
+        tool_evidence=[evidence_item],
+    )
+    _assert(bundle["facts"][0]["value"] == "15℃ ~ 20℃",
+            f"evidence facts should preserve requested numeric values: {bundle}")
+    _assert(
+        any(fact["field"] == "weather_result" and "湿度 82%" in fact["evidence"] for fact in bundle["facts"]),
+        f"search snippets should be preserved as deterministic facts: {bundle}",
+    )
+    _assert("湿度" not in bundle["missing_fields"],
+            f"required fields present in deterministic search evidence should not be marked missing: {bundle}")
+    fallback_bundle = fallback_evidence_bundle(
+        task="查询杭州天气，包括温度和湿度",
+        answer="杭州今天阴有阵雨。",
+        tool_evidence=[evidence_item],
+    )
+    _assert(CAPABILITY_SEARCH_DISCOVERY in fallback_bundle["capabilities_used"],
+            f"fallback evidence should retain search capability: {fallback_bundle}")
+    _assert(
+        any(fact["field"] == "weather_result" and "15℃ ~ 20℃" in fact["evidence"] for fact in fallback_bundle["facts"]),
+        f"fallback evidence should lift search snippets into facts: {fallback_bundle}",
+    )
+
+    news_evidence_item = build_tool_evidence({
+        "name": "mcp_tavily_search_eval",
+        "displayName": "TavilyMcp Search",
+        "result": json.dumps(
+            {
+                "query": "贵州茅台 600519 最新新闻 公司公告 市场消息 2026年",
+                "results": [
+                    {
+                        "title": "贵州茅台发布2025年年度报告",
+                        "url": "https://example.com/moutai-annual-report",
+                        "content": "贵州茅台披露2025年年报，营业收入与利润变化成为市场关注点。",
+                        "published_date": "2026-04-16",
+                    },
+                    {
+                        "title": "贵州茅台召开股东大会并讨论分红方案",
+                        "url": "https://example.com/moutai-dividend",
+                        "content": "公司公告显示，股东大会审议分红、经营计划等事项。",
+                        "published_date": "2026-04-18",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        "error": False,
+    })
+    _assert(news_evidence_item is not None, "news search evidence should be built")
+    news_fallback_bundle = fallback_evidence_bundle(
+        task="搜索贵州茅台（600519）的最新新闻和动态，包括公司公告、市场表现、行业相关新闻等。",
+        answer="搜索结果未返回具体新闻内容。",
+        tool_evidence=[news_evidence_item],
+    )
+    _assert(
+        any(fact["field"] == "news_item" and "年度报告" in fact["value"] for fact in news_fallback_bundle["facts"]),
+        f"news search titles should survive fallback evidence: {news_fallback_bundle}",
+    )
+    _assert(
+        any("moutai-annual-report" in fact["source_url"] for fact in news_fallback_bundle["facts"]),
+        f"news facts should keep source urls: {news_fallback_bundle}",
+    )
+    _assert(
+        news_fallback_bundle["evidence_sufficient"] is True and news_fallback_bundle["needs_more_tools"] is False,
+        f"news fallback should be sufficient when search results exist: {news_fallback_bundle}",
+    )
+
+    delegate_payload = json.loads(subagent_module.build_subagent_tool_result([
+        {
+            "agentName": "weather_research",
+            "role": "research",
+            "task": "查询杭州天气，包括温度和湿度",
+            "answer": "杭州今天阴有阵雨。",
+            "failed": False,
+            "evidence": bundle,
+            "elapsedMs": 123,
+        }
+    ]))
+    _assert(delegate_payload["facts"][0]["value"] == "15℃ ~ 20℃",
+            f"delegate result should expose facts at top level: {delegate_payload}")
+    _assert(delegate_payload["evidenceSufficient"] is True,
+            f"delegate result should propagate evidence sufficiency: {delegate_payload}")
+    _assert(CAPABILITY_SEARCH_DISCOVERY in delegate_payload["capabilitiesUsed"],
+            f"delegate result should propagate capabilities: {delegate_payload}")
+    _assert(
+        _delegate_result_has_sufficient_search(json.dumps(delegate_payload, ensure_ascii=False)),
+        f"delegate result with sufficient search evidence should update Lead search state: {delegate_payload}",
+    )
+    news_delegate_payload = json.loads(subagent_module.build_subagent_tool_result([
+        {
+            "agentName": "news_research",
+            "role": "research",
+            "task": "搜索贵州茅台（600519）的最新新闻和动态，包括公司公告、市场表现、行业相关新闻等。",
+            "answer": "搜索结果未返回具体新闻内容。",
+            "failed": False,
+            "evidence": news_fallback_bundle,
+            "elapsedMs": 123,
+        }
+    ]))
+    _assert(
+        any("年度报告" in fact["value"] for fact in news_delegate_payload["facts"]),
+        f"delegate result should expose deterministic news facts: {news_delegate_payload}",
+    )
+    _assert(
+        _delegate_result_has_sufficient_search(json.dumps(news_delegate_payload, ensure_ascii=False)),
+        f"delegate result with deterministic news facts should update Lead search state: {news_delegate_payload}",
+    )
+    stock_evidence_item = build_tool_evidence({
+        "name": "skill_hithink_stock_quote",
+        "displayName": "同花顺行情查询 Skill 调用",
+        "result": (
+            "📊 行情查询结果（共 1 条）\n"
+            "查询词：300033 同花顺 今日股价 涨跌幅 成交量\n\n"
+            "────────────────────────────\n"
+            "同花顺（300033.SZ）\n"
+            "当前股价：246.74 元\n"
+            "今日涨跌：▲ 0.39%\n"
+            "成交量：1248.3 万手\n"
+            "────────────────────────────\n"
+            "数据来源：同花顺问财"
+        ),
+        "error": False,
+    })
+    _assert(stock_evidence_item is not None, "stock skill evidence should be built")
+    stock_delegate_payload = json.loads(subagent_module.build_subagent_tool_result([
+        {
+            "agentName": "stock_research",
+            "role": "research",
+            "task": "查询股票代码300033（同花顺）的最新行情信息，包括当前股价、涨跌幅、成交量等关键指标。",
+            "answer": "行情查询返回了基础信息。",
+            "failed": False,
+            "evidence": fallback_evidence_bundle(
+                task="查询股票代码300033（同花顺）的最新行情信息，包括当前股价、涨跌幅、成交量等关键指标。",
+                answer="行情查询返回了基础信息。",
+                tool_evidence=[stock_evidence_item],
+            ),
+            "toolEvidence": [stock_evidence_item],
+            "elapsedMs": 123,
+        }
+    ]))
+    merged_stock_results = str(stock_delegate_payload.get("mergedToolResults") or "")
+    _assert(
+        "246.74 元" in merged_stock_results
+        and "0.39%" in merged_stock_results
+        and "1248.3 万手" in merged_stock_results,
+        f"delegate merged tool results should preserve stock skill data: {stock_delegate_payload}",
+    )
+    _assert(
+        stock_delegate_payload["toolEvidence"][0]["content"].find("当前股价：246.74 元") >= 0,
+        f"delegate toolEvidence should expose compact raw skill output: {stock_delegate_payload}",
+    )
+    stock_context = compact_tool_result_for_context(
+        tool_name="delegate_task",
+        result=json.dumps(stock_delegate_payload, ensure_ascii=False),
+        is_subagent=False,
+        max_chars=DELEGATE_TOOL_CONTEXT_CHARS,
+    )
+    _assert(
+        "当前股价：246.74 元" in stock_context and "成交量：1248.3 万手" in stock_context,
+        f"Lead context should retain merged stock tool data: {stock_context}",
+    )
+    blocked_delegate_payload = dict(delegate_payload)
+    blocked_delegate_payload["needsMoreTools"] = True
+    _assert(
+        not _delegate_result_has_sufficient_search(
+            json.dumps(blocked_delegate_payload, ensure_ascii=False)
+        ),
+        "delegate result that still needs tools must not globally skip later fetch/extract",
+    )
+    original_acompletion = evidence_bundle_module.acompletion
+
+    async def slow_distiller_call(**_kwargs):
+        await asyncio.sleep(0.05)
+        raise AssertionError("timeout should cancel slow distiller call")
+
+    evidence_bundle_module.acompletion = slow_distiller_call
+    try:
+        timeout_bundle = await distill_evidence_bundle(
+            litellm_model="eval-model",
+            api_key="eval-key",
+            api_base=None,
+            task="查询杭州天气，包括温度和湿度",
+            answer="杭州今天阴有阵雨。",
+            tool_evidence=[evidence_item],
+            timeout_seconds=0.01,
+        )
+    finally:
+        evidence_bundle_module.acompletion = original_acompletion
+    _assert("distiller_error" in timeout_bundle,
+            f"slow evidence distiller should timeout into fallback evidence: {timeout_bundle}")
+
+    print("Agent Harness eval passed: 21 cases")
 
 
 if __name__ == "__main__":

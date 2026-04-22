@@ -220,6 +220,8 @@
   - [x] 采用 OpenAI function calling / LangGraph / smolagents 风格的工具描述引导，不再用正则 scope 接管工具路由
   - [x] 引入 `ToolPolicyGuard`，拦截 Skill 本地路径被误传给文件工具、非虚拟文件路径访问、calculator 非数学表达式、重复工具调用等问题
   - [x] 引入 `ToolResultValidation`，校验空结果、策略拦截、工具异常、缺少 Key、Skill 脚本失败等结果状态
+  - [x] 引入 `tool_capabilities.py`，按 schema 推断 `search.discovery` / `web.extract` / `web.fetch` 等能力，通用于 Tavily、SearXNG、Reader 类 MCP
+  - [x] 搜索结果已足够时软跳过正文抓取；Extract 部分成功结果不再整步标红，并对 weather.com.cn `weather1d/*.shtm` 做保守 URL 归一化
   - [x] 引入时间参数归一化，按当前日期修正实时查询里模型生成的过期年份
   - [x] 工具执行前增加策略审计事件，前端可展示“已拦截不合规工具调用，正在修正”
   - [x] 工具执行后增加 validation 状态事件，模型可基于校验提示继续 ReAct 修正
@@ -250,10 +252,14 @@
   - [x] `get_tools_for_model()` 按角色裁剪工具面，并支持额外 `allowed_tools` 收窄
   - [x] 并行执行上限 4 个子任务，结构化汇总结果返回 Lead Agent
   - [x] WebSocket 已转发 `subagent_token` / `subagent_result`，前端已重写为 Lead Agent 调度面板 + 子 Agent 运行线 + 兜底工具区
-  - [x] Harness eval 增至 17 个用例，覆盖子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离与当前轮工具结果压缩
+  - [x] 子 Agent 输出默认只汇总给 Lead Agent；前端折叠展示子任务详情，并按 Search / Extract / Fetch 区分 MCP 工具
+  - [x] 子 Agent 结果交接升级为 EvidenceBundle：自然语言 answer 保留给调试，Lead Agent 优先消费 `facts` / `sources` / `missingFields` / `capabilitiesUsed`，并继承子 Agent 已充分搜索的状态，减少重复 extract/fetch
+  - [x] EvidenceBundle 增加搜索结果确定性事实抽取：搜索标题、摘要、链接、时间会提升为 `news_item` / `weather_result` / `market_result` / `search_result`，避免模型摘要或超时 fallback 丢掉已搜到的数据
+  - [x] 实验性开启 `toolEvidence` / `mergedToolResults`：子 Agent 的 compact 工具结果会合并进入 `delegate_task` 返回，Lead Agent 可直接看到 Skill/API 原始输出，验证结构化抽取漏字段问题
+  - [x] Harness eval 增至 21 个用例，覆盖子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 search/extract capability policy、EvidenceBundle 结构化交接、搜索结果确定性 facts 与 merged tool results
 - [x] 可观测性与评测
   - [x] 基础 Trace / 调用链状态事件
-  - [x] Harness eval 扩展至 17 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程、子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩）
+  - [x] Harness eval 扩展至 21 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程、子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 Search/Extract 能力推断、部分成功校验、EvidenceBundle 交接、搜索结果事实抽取与 merged tool results）
   - [x] Trace 后端集成：Arize Phoenix（`TRACE_PHOENIX_ENDPOINT`）+ LangSmith（`TRACE_LANGSMITH_API_KEY`），零配置零开销
   - [ ] 工具调用成功率 / 路由准确率 / 端到端任务完成率（需真实流量积累）
   - [ ] Token / 成本统计

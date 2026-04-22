@@ -23,6 +23,11 @@ import re
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from app.core.tool_capabilities import (
+    json_result_has_partial_success,
+    json_result_has_total_extract_failure,
+)
+
 FILE_TOOL_NAMES: frozenset[str] = frozenset({"list_files", "read_file", "write_file"})
 
 
@@ -302,7 +307,12 @@ def validate_tool_result(
             fallback_hint="遵循策略提示修正参数，不要重复调用被拦截的工具。",
         )
 
-    if is_mcp_tool(tool_name) and _json_has_no_search_results(text):
+    if is_mcp_tool(tool_name) and json_result_has_partial_success(text):
+        return ToolResultValidation(ok=True)
+
+    if is_mcp_tool(tool_name) and (
+        json_result_has_total_extract_failure(text) or _json_has_no_search_results(text)
+    ):
         return ToolResultValidation(
             ok=False,
             reason="no_search_results",

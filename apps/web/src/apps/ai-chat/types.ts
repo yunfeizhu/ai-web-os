@@ -12,6 +12,8 @@ export interface ToolCall {
   role?: string;
 }
 
+export type EvidenceBundle = Record<string, unknown>;
+
 export interface SubagentRun {
   subagentId: string;
   agentName: string;
@@ -21,6 +23,7 @@ export interface SubagentRun {
   failed?: boolean;
   error?: string | null;
   elapsedMs?: number;
+  evidence?: EvidenceBundle;
 }
 
 export interface SkillActivity {

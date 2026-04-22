@@ -114,6 +114,15 @@ RESEARCH_SYSTEM_PROMPT = """\
 4. 给出来源链接、时间、关键证据和不确定性
 """
 
+RESEARCH_SYSTEM_PROMPT += """
+
+Generic search policy:
+1. Prefer search/discovery tools first for current facts.
+2. If title, URL, date, and snippet evidence already answer the task, summarize from search results instead of extracting page bodies.
+3. Use full-page fetch/extract only when snippets are insufficient, sources conflict, or the user asks for original text, exact quotes, full documents, or verification.
+4. If a page extraction partially succeeds, keep the successful pages and ignore failed URLs unless the missing URL is essential.
+"""
+
 CODER_SYSTEM_PROMPT = """\
 你是一个专业的 **Code Agent**，负责：
 - Python 代码编写与执行
@@ -164,6 +173,8 @@ SUBAGENT_OUTPUT_CONTRACT = """\
 - 最终回答必须包含：结论、关键依据、已使用的数据/工具、无法确认的部分。
 - 如果任务要求固定格式，严格按任务里的 `output_format` 输出。
 - 如果工具失败或信息不足，明确说明失败原因，不要补编事实。
+- Lead Agent 会额外接收一份结构化 EvidenceBundle。你的自然语言最终回答仍应覆盖任务中点名要求的关键字段，例如温度、湿度、价格、日期、地点、来源等；缺失字段要显式说明。
+- 搜索结果已经包含足够标题、URL、日期和摘要证据时，直接基于搜索结果总结；只有摘要不足、来源冲突或用户要求原文/精确引用时才继续抓取正文。
 """
 
 
@@ -202,6 +213,8 @@ def build_supervisor_prompt(agent_mode: str = "auto") -> str:
 - 为每个子任务指定 `role`，只能使用 research/coder/system/writer。
 - 并行任务之间不能互相依赖；有依赖时先自己执行或分轮委派。
 - 子 Agent 是工具，不是对话接管者；你必须综合结果后再回答用户。
+- `delegate_task` 返回结构化 `facts` / `sources` / `missingFields` 时，最终回答优先使用 `facts` 和证据片段；如果 facts 已包含搜索标题、摘要、链接或时间，不要因为子 Agent 的自然语言 answer 保守或遗漏而声称“没有具体内容”。
+- `delegate_task` 返回 `mergedToolResults` / `toolEvidence` 时，把它们视为子 Agent 的原始工具证据；当 `facts` 或自然语言 answer 漏掉价格、温度、成交量、日期等字段时，必须回看这些原始工具结果再回答。
 """
 
 

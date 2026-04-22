@@ -27,6 +27,13 @@ from app.core.agent_harness import (
 from app.core.app_registry import get_app_registry
 from app.core.browser_tools import BROWSER_TOOL_SCHEMAS, dispatch_browser_tool
 from app.core.database import AsyncSessionLocal
+from app.core.tool_capabilities import (
+    CAPABILITY_SEARCH_DISCOVERY,
+    CAPABILITY_WEB_EXTRACT,
+    CAPABILITY_WEB_FETCH,
+    augment_tool_schema_with_capability,
+    infer_tool_capability,
+)
 
 # ── MCP route cache ───────────────────────────────────────────────────────────
 _MCP_ROUTES_CACHE: list[dict] | None = None
@@ -864,6 +871,17 @@ async def get_tool_display_name(name: str) -> str | None:
         return "加载 Skill 上下文"
     for route in await _list_external_mcp_tool_routes():
         if route["alias"] == name:
+            capability = infer_tool_capability(
+                route["alias"],
+                route.get("description"),
+                route.get("input_schema"),
+            )
+            if capability == CAPABILITY_SEARCH_DISCOVERY:
+                return f"{route['app_name']} Search"
+            if capability == CAPABILITY_WEB_EXTRACT:
+                return f"{route['app_name']} Extract"
+            if capability == CAPABILITY_WEB_FETCH:
+                return f"{route['app_name']} Fetch"
             return route["app_name"]
     # User-skill tools
     for tool_info in _list_user_skill_tools():
@@ -1228,4 +1246,4 @@ async def get_tools_for_model(
         allowed_set = set(allowed_tools)
         tools = [t for t in tools if _tool_schema_name(t) in allowed_set]
 
-    return tools
+    return [augment_tool_schema_with_capability(tool) for tool in tools]

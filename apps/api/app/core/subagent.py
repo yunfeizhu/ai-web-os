@@ -14,13 +14,21 @@ from app.core.agent_types import (
     get_agent_role,
     normalize_role_id,
 )
-from app.core.llm_provider import agent_loop
+from app.core.evidence_bundle import (
+    MAX_TOOL_EVIDENCE_ITEMS,
+    build_tool_evidence,
+    distill_evidence_bundle,
+    fallback_evidence_bundle,
+)
+from app.core.llm_provider import agent_loop, build_litellm_model
 
 
 # Top-level Lead Agent is depth 0. Specialist tool-agents run at depth 1.
 # Further nesting is deliberately disabled until there is a richer scheduler.
 MAX_AGENT_DEPTH = 1
 MAX_PARALLEL_SUBAGENTS = 4
+DELEGATE_TOOL_CONTEXT_CHARS = 24000
+MAX_MERGED_TOOL_RESULT_CHARS = 18000
 
 
 def _slug(value: str) -> str:
@@ -127,6 +135,7 @@ async def run_subagent(
         ctx["allowed_tools"] = list(spec["allowed_tools"])
 
     tokens: list[str] = []
+    tool_evidence: list[dict[str, Any]] = []
     failed = False
     error_msg = ""
     started_at = time.perf_counter()
@@ -171,12 +180,49 @@ async def run_subagent(
             tagged = dict(payload) if isinstance(payload, dict) else {"content": payload}
             if event_type in {"tool_call", "tool_result"}:
                 _namespace_tool_event_id(tagged, subagent_id)
+            if event_type == "tool_result" and len(tool_evidence) < MAX_TOOL_EVIDENCE_ITEMS:
+                evidence_item = build_tool_evidence(tagged)
+                if evidence_item:
+                    tool_evidence.append(evidence_item)
             tagged.update(base_payload)
             yield (event_type, tagged)
 
     except Exception as exc:
         failed = True
         error_msg = f"{type(exc).__name__}: {exc}"
+
+    answer = "".join(tokens).strip()
+    if failed:
+        evidence = fallback_evidence_bundle(
+            task=str(spec.get("task") or ""),
+            answer=answer,
+            tool_evidence=tool_evidence,
+            error=error_msg,
+        )
+    elif role.id == "research" and tool_evidence and api_key:
+        if provider_id:
+            litellm_model = build_litellm_model(provider_id, model, compat_type)
+        elif model.startswith("deepseek"):
+            litellm_model = f"deepseek/{model}"
+        elif model.startswith("gemini"):
+            litellm_model = f"gemini/{model}"
+        else:
+            litellm_model = model
+        evidence = await distill_evidence_bundle(
+            litellm_model=litellm_model,
+            api_key=api_key,
+            api_base=api_base,
+            task=str(spec.get("task") or ""),
+            answer=answer,
+            tool_evidence=tool_evidence,
+            max_tokens=min(max_tokens, 2400),
+        )
+    else:
+        evidence = fallback_evidence_bundle(
+            task=str(spec.get("task") or ""),
+            answer=answer,
+            tool_evidence=tool_evidence,
+        )
 
     yield (
         "subagent_result",
@@ -185,7 +231,9 @@ async def run_subagent(
             "agentName": agent_name,
             "role": role.id,
             "task": spec.get("task") or "",
-            "answer": "".join(tokens).strip(),
+            "answer": answer,
+            "evidence": evidence,
+            "toolEvidence": tool_evidence,
             "failed": failed,
             "error": error_msg if failed else None,
             "elapsedMs": int((time.perf_counter() - started_at) * 1000),
@@ -272,11 +320,21 @@ def build_subagent_tool_result(results: list[dict[str, Any]]) -> str:
     agents: list[dict[str, Any]] = []
     failed: list[str] = []
     errors: dict[str, str] = {}
+    evidence_by_key: dict[str, Any] = {}
+    facts: list[dict[str, Any]] = []
+    sources: list[dict[str, Any]] = []
+    missing_fields: list[dict[str, Any]] = []
+    capabilities_used: set[str] = set()
+    evidence_sufficient = False
+    needs_more_tools = False
+    seen_sources: set[str] = set()
+    tool_evidence_items: list[dict[str, Any]] = []
 
     for result in results:
         name = str(result.get("agentName") or result.get("subagentId") or "unknown")
         role = str(result.get("role") or "research")
         key = f"{role}:{name}"
+        evidence = result.get("evidence") if isinstance(result.get("evidence"), dict) else None
         agent_record = {
             "agentName": name,
             "role": role,
@@ -284,6 +342,66 @@ def build_subagent_tool_result(results: list[dict[str, Any]]) -> str:
             "failed": bool(result.get("failed")),
             "elapsedMs": result.get("elapsedMs"),
         }
+        result_tool_evidence = (
+            result.get("toolEvidence")
+            if isinstance(result.get("toolEvidence"), list)
+            else result.get("tool_evidence")
+        )
+        if isinstance(result_tool_evidence, list):
+            count = 0
+            for index, item in enumerate(result_tool_evidence, start=1):
+                normalized = _normalize_tool_evidence_for_lead(
+                    item,
+                    agent_key=key,
+                    agent_name=name,
+                    role=role,
+                    task=str(result.get("task") or ""),
+                    index=index,
+                )
+                if normalized:
+                    tool_evidence_items.append(normalized)
+                    capability = str(normalized.get("capability") or "").strip()
+                    if capability:
+                        capabilities_used.add(capability)
+                    count += 1
+            if count:
+                agent_record["toolEvidenceCount"] = count
+        if evidence:
+            evidence_by_key[key] = evidence
+            agent_record["evidence"] = evidence
+            for fact in evidence.get("facts") or []:
+                if not isinstance(fact, dict):
+                    continue
+                item = dict(fact)
+                item["agentKey"] = key
+                item["agentName"] = name
+                facts.append(item)
+            for source in evidence.get("sources") or []:
+                if not isinstance(source, dict):
+                    continue
+                source_key = str(source.get("url") or source.get("title") or "").strip()
+                if source_key and source_key in seen_sources:
+                    continue
+                if source_key:
+                    seen_sources.add(source_key)
+                item = dict(source)
+                item["agentKey"] = key
+                item["agentName"] = name
+                sources.append(item)
+            for field in evidence.get("missing_fields") or []:
+                label = str(field or "").strip()
+                if label:
+                    missing_fields.append({
+                        "agentKey": key,
+                        "agentName": name,
+                        "field": label,
+                    })
+            for capability in evidence.get("capabilities_used") or []:
+                text = str(capability or "").strip()
+                if text:
+                    capabilities_used.add(text)
+            evidence_sufficient = evidence_sufficient or bool(evidence.get("evidence_sufficient"))
+            needs_more_tools = needs_more_tools or bool(evidence.get("needs_more_tools"))
         if result.get("failed"):
             failed.append(key)
             if result.get("error"):
@@ -296,6 +414,15 @@ def build_subagent_tool_result(results: list[dict[str, Any]]) -> str:
 
     payload: dict[str, Any] = {
         "mode": "manager_subagents",
+        "facts": facts,
+        "sources": sources,
+        "mergedToolResults": _merge_tool_evidence_for_lead(tool_evidence_items),
+        "toolEvidence": tool_evidence_items,
+        "missingFields": missing_fields,
+        "capabilitiesUsed": sorted(capabilities_used),
+        "evidenceSufficient": evidence_sufficient,
+        "needsMoreTools": needs_more_tools,
+        "evidence": evidence_by_key,
         "results": successful,
         "agents": agents,
     }
@@ -305,3 +432,64 @@ def build_subagent_tool_result(results: list[dict[str, Any]]) -> str:
         payload["errors"] = errors
 
     return json.dumps(payload, ensure_ascii=False, indent=2)
+
+
+def _normalize_tool_evidence_for_lead(
+    item: Any,
+    *,
+    agent_key: str,
+    agent_name: str,
+    role: str,
+    task: str,
+    index: int,
+) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    content = str(item.get("content") or "").strip()
+    if not content:
+        return None
+    return {
+        "agentKey": agent_key,
+        "agentName": agent_name,
+        "role": role,
+        "task": task,
+        "index": index,
+        "tool": str(item.get("tool") or "").strip(),
+        "displayName": str(item.get("displayName") or item.get("tool") or "").strip(),
+        "capability": str(item.get("capability") or "").strip(),
+        "error": bool(item.get("error")),
+        "content": content,
+    }
+
+
+def _merge_tool_evidence_for_lead(items: list[dict[str, Any]]) -> str:
+    if not items:
+        return ""
+    blocks: list[str] = []
+    for item in items:
+        header = (
+            f"[{item.get('agentName') or item.get('agentKey')} #{item.get('index')}] "
+            f"{item.get('displayName') or item.get('tool') or 'tool'}"
+        )
+        metadata = [
+            f"agent: {item.get('agentKey')}",
+            f"role: {item.get('role')}",
+            f"task: {item.get('task')}",
+            f"tool: {item.get('tool')}",
+            f"capability: {item.get('capability') or 'unknown'}",
+            f"error: {str(bool(item.get('error'))).lower()}",
+        ]
+        blocks.append(
+            "\n".join([
+                header,
+                *metadata,
+                "result:",
+                str(item.get("content") or "").strip(),
+            ])
+        )
+
+    merged = "\n\n---\n\n".join(blocks).strip()
+    if len(merged) <= MAX_MERGED_TOOL_RESULT_CHARS:
+        return merged
+    marker = "\n\n...[merged tool results truncated; use structured facts/sources/toolEvidence above for the retained subset]"
+    return merged[: max(500, MAX_MERGED_TOOL_RESULT_CHARS - len(marker))] + marker

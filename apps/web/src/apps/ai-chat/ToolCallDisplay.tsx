@@ -24,7 +24,7 @@ import {
   Settings2,
   XCircle,
 } from "lucide-react";
-import type { SubagentRun, ToolCall } from "./types";
+import type { EvidenceBundle, SubagentRun, ToolCall } from "./types";
 
 type ToolMeta = {
   label: string;
@@ -32,7 +32,7 @@ type ToolMeta = {
   color: string;
 };
 
-type AgentStatus = "pending" | "running" | "done" | "error";
+type AgentStatus = "pending" | "running" | "summarizing" | "done" | "error";
 
 type AgentRunView = {
   key: string;
@@ -46,6 +46,7 @@ type AgentRunView = {
   failed: boolean;
   error?: string | null;
   elapsedMs?: number;
+  evidence?: EvidenceBundle;
   done: boolean;
   status: AgentStatus;
   order: number;
@@ -65,6 +66,7 @@ type DelegateAgentRecord = {
   failed?: boolean;
   error?: string | null;
   elapsedMs?: number;
+  evidence?: EvidenceBundle;
 };
 
 type DelegatePayload = {
@@ -73,6 +75,7 @@ type DelegatePayload = {
   agents?: DelegateAgentRecord[];
   failed?: string[];
   errors?: Record<string, string>;
+  evidence?: Record<string, EvidenceBundle>;
 };
 
 const TOOL_META: Record<string, ToolMeta> = {
@@ -243,6 +246,7 @@ const ROLE_META: Record<
 const STATUS_COPY: Record<AgentStatus, string> = {
   pending: "等待",
   running: "执行中",
+  summarizing: "整理结果",
   done: "完成",
   error: "失败",
 };
@@ -253,6 +257,42 @@ function getRoleMeta(role?: string) {
     icon: <Bot size={13} />,
     color: "#64748B",
     tint: "rgba(100,116,139,0.12)",
+  };
+}
+
+function withCapabilitySuffix(label: string, suffix: "Search" | "Extract" | "Fetch") {
+  const hasSuffix = /\b(Search|Extract|Fetch)\b|搜索|抓取|正文|读取/.test(label);
+  return hasSuffix ? label : `${label} ${suffix}`;
+}
+
+function getMcpToolMeta(tc: ToolCall): ToolMeta {
+  const name = tc.name.toLowerCase();
+  const label = tc.displayName || "MCP";
+  if (/(^|_)search(_|$)|searx|query|news/.test(name)) {
+    return {
+      label: withCapabilitySuffix(label, "Search"),
+      icon: <Search size={13} />,
+      color: "#0EA5E9",
+    };
+  }
+  if (/(^|_)(extract|scrape|crawl|reader)(_|$)|page_content|url_content/.test(name)) {
+    return {
+      label: withCapabilitySuffix(label, "Extract"),
+      icon: <FileText size={13} />,
+      color: "#F59E0B",
+    };
+  }
+  if (/(^|_)fetch(_|$)|download|open_url/.test(name)) {
+    return {
+      label: withCapabilitySuffix(label, "Fetch"),
+      icon: <Link size={13} />,
+      color: "#5856D6",
+    };
+  }
+  return {
+    label: tc.displayName || "MCP 工具",
+    icon: <Globe size={13} />,
+    color: "#0EA5E9",
   };
 }
 
@@ -267,11 +307,7 @@ function getToolMeta(tc: ToolCall): ToolMeta {
     };
   }
   if (tc.name.startsWith("mcp_")) {
-    return {
-      label: tc.displayName || "MCP 工具",
-      icon: <Globe size={13} />,
-      color: "#0EA5E9",
-    };
+    return getMcpToolMeta(tc);
   }
   return {
     label: tc.displayName || tc.name,
@@ -441,6 +477,7 @@ function createCollector(
     agent.failed = source.failed ?? agent.failed;
     agent.error = source.error ?? agent.error;
     agent.elapsedMs = source.elapsedMs ?? agent.elapsedMs;
+    agent.evidence = source.evidence ?? agent.evidence;
     agent.done = source.done ?? agent.done;
     agent.order = Math.min(agent.order, source.order ?? agent.order);
 
@@ -459,6 +496,7 @@ function createCollector(
       failed: result.failed,
       error: result.error,
       elapsedMs: result.elapsedMs,
+      evidence: result.evidence,
       done: true,
       order: fallbackOrder,
     });
@@ -513,6 +551,7 @@ function mergeDelegateResult(
         failed: agent.failed ?? failed.has(resultKey),
         error: agent.error ?? errors[resultKey] ?? null,
         elapsedMs: agent.elapsedMs,
+        evidence: agent.evidence ?? payload.evidence?.[resultKey],
       },
       index,
     );
@@ -615,6 +654,7 @@ function buildMultiAgentView(
       const anyError = agent.calls.some((tc) => tc.status === "error" || tc.error);
       const answer = agent.answer;
       const done = agent.done || (!!agent.answer && !agent.failed);
+      const hasFinishedToolWork = agent.calls.length > 0 && !anyRunning;
       const status: AgentStatus = agent.failed
         ? "error"
         : anyError
@@ -623,9 +663,11 @@ function buildMultiAgentView(
             ? "running"
             : done
               ? "done"
-              : agent.tokenText
-                ? "running"
-                : "pending";
+              : hasFinishedToolWork
+                ? "summarizing"
+                : agent.tokenText
+                  ? "running"
+                  : "pending";
       return {
         ...agent,
         answer,
@@ -647,7 +689,7 @@ function StatusIcon({
   color: string;
   size?: number;
 }) {
-  if (status === "running") {
+  if (status === "running" || status === "summarizing") {
     return (
       <Loader2
         size={size}
@@ -784,6 +826,7 @@ function SummaryPill({ children }: { children: ReactNode }) {
 function getAgentBrief(agent: AgentRunView) {
   if (agent.status === "error") return "失败，展开查看错误和工具明细";
   if (agent.status === "running") return "执行中，结果将交给 Lead Agent 汇总";
+  if (agent.status === "summarizing") return "工具已完成，正在整理结果交给 Lead Agent";
   if (agent.status === "done") return "完成，结果已交给 Lead Agent 汇总";
   return "等待执行";
 }

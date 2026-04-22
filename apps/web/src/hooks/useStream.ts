@@ -69,6 +69,7 @@ export interface SubagentResultEvent {
   failed?: boolean;
   error?: string | null;
   elapsedMs?: number;
+  evidence?: Record<string, unknown>;
 }
 
 export interface EmbeddingParams {

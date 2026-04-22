@@ -846,6 +846,7 @@ export function AiChat() {
                             failed: event.failed,
                             error: event.error,
                             elapsedMs: event.elapsedMs,
+                            evidence: event.evidence,
                           },
                           [subagentId]: {
                             subagentId,
@@ -856,6 +857,7 @@ export function AiChat() {
                             failed: event.failed,
                             error: event.error,
                             elapsedMs: event.elapsedMs,
+                            evidence: event.evidence,
                           },
                         },
                       }

@@ -21,6 +21,17 @@ from app.core.agent_harness import (
 )
 from app.core.agent_graph import AgentGraphRuntime
 from app.core.context_manager import compact_tool_result_for_context, prepare_messages
+from app.core.tool_capabilities import (
+    CAPABILITY_SEARCH_DISCOVERY,
+    WEB_CONTENT_CAPABILITIES,
+    build_search_sufficient_tool_result,
+    infer_tool_capability,
+    normalize_extract_args,
+    result_has_sufficient_discovery,
+    should_skip_content_fetch_after_search,
+    tool_schema_description,
+    tool_schema_name,
+)
 
 litellm.set_verbose = False
 
@@ -168,6 +179,49 @@ def _strip_internal_model_markup(text: str) -> str:
     return cleaned.strip()
 
 
+def _delegate_result_has_sufficient_search(result: str) -> bool:
+    """Return True when a delegated research result already carries search evidence."""
+    try:
+        payload = json.loads(result or "{}")
+    except Exception:
+        return False
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("needsMoreTools") is True or payload.get("needs_more_tools") is True:
+        return False
+
+    caps = {
+        str(item or "").strip()
+        for item in (payload.get("capabilitiesUsed") or payload.get("capabilities_used") or [])
+        if str(item or "").strip()
+    }
+    if (
+        CAPABILITY_SEARCH_DISCOVERY in caps
+        and payload.get("evidenceSufficient") is True
+        and payload.get("needsMoreTools") is not True
+    ):
+        return True
+
+    evidence_map = payload.get("evidence")
+    if not isinstance(evidence_map, dict):
+        return False
+    for evidence in evidence_map.values():
+        if not isinstance(evidence, dict):
+            continue
+        evidence_caps = {
+            str(item or "").strip()
+            for item in (evidence.get("capabilities_used") or evidence.get("capabilitiesUsed") or [])
+            if str(item or "").strip()
+        }
+        if (
+            CAPABILITY_SEARCH_DISCOVERY in evidence_caps
+            and evidence.get("evidence_sufficient") is True
+            and evidence.get("needs_more_tools") is not True
+        ):
+            return True
+    return False
+
+
 def build_litellm_model(provider_id: str, model_id: str, compat_type: str = "openai") -> str:
     if provider_id in PROVIDER_PREFIX:
         prefix = PROVIDER_PREFIX[provider_id]
@@ -253,7 +307,11 @@ async def agent_loop(
         get_tools_for_model,
     )
     from app.core.agent_types import build_supervisor_prompt
-    from app.core.subagent import build_subagent_tool_result, run_subagents_parallel
+    from app.core.subagent import (
+        DELEGATE_TOOL_CONTEXT_CHARS,
+        build_subagent_tool_result,
+        run_subagents_parallel,
+    )
 
     if provider_id:
         litellm_model = build_litellm_model(provider_id, model, compat_type)
@@ -279,6 +337,18 @@ async def agent_loop(
         user_message=user_message,
         skill_context=skill_context,
     )
+    tool_capability_by_name: dict[str, str | None] = {}
+    tool_description_by_name: dict[str, str] = {}
+    for tool in tools:
+        name = tool_schema_name(tool)
+        if not name:
+            continue
+        function = tool.get("function") or {}
+        parameters = function.get("parameters") if isinstance(function, dict) else None
+        description = tool_schema_description(tool)
+        tool_description_by_name[name] = description
+        tool_capability_by_name[name] = infer_tool_capability(name, description, parameters)
+    successful_search_count = 0
 
     effective_system_prompt = system_prompt or ""
     if not is_subagent and agent_mode != "single":
@@ -388,6 +458,8 @@ async def agent_loop(
                 args=args,
                 user_message=user_message,
             )
+            if tool_capability_by_name.get(tool_call["name"]) in WEB_CONTENT_CAPABILITIES:
+                args = normalize_extract_args(args)
 
             display_name = await get_tool_display_name(tool_call["name"])
             parsed_calls.append({
@@ -484,11 +556,13 @@ async def agent_loop(
                         subagent_result_payloads.append(sa_payload)
 
                 result = build_subagent_tool_result(subagent_result_payloads) if subagent_result_payloads else '{"results": {}}'
+                if _delegate_result_has_sufficient_search(result):
+                    successful_search_count += 1
                 context_result = compact_tool_result_for_context(
                     tool_name=parsed_call["name"],
                     result=result,
                     is_subagent=False,
-                    max_chars=6000,
+                    max_chars=DELEGATE_TOOL_CONTEXT_CHARS,
                 )
 
                 yield (
@@ -506,6 +580,48 @@ async def agent_loop(
                         "role": "tool",
                         "tool_call_id": parsed_call["id"],
                         "content": context_result,
+                    }
+                )
+                continue
+
+            if should_skip_content_fetch_after_search(
+                tool_name=parsed_call["name"],
+                description=tool_description_by_name.get(parsed_call["name"]),
+                args=parsed_call["args"],
+                task_text=user_message,
+                successful_search_count=successful_search_count,
+            ):
+                result = build_search_sufficient_tool_result(successful_search_count)
+                yield (
+                    "status",
+                    graph.status(
+                        "policy_guard",
+                        status="tool_policy",
+                        tool=parsed_call["name"],
+                        decision="skipped",
+                        reason="search_results_sufficient",
+                        hint=(
+                            "A discovery/search result is already available; "
+                            "skip full-page extraction unless exact source text is needed."
+                        ),
+                        args=parsed_call["args"],
+                    ),
+                )
+                yield (
+                    "tool_result",
+                    {
+                        "id": parsed_call["id"],
+                        "name": parsed_call["name"],
+                        "displayName": parsed_call.get("displayName"),
+                        "result": result,
+                        "error": False,
+                    },
+                )
+                full_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": parsed_call["id"],
+                        "content": result,
                     }
                 )
                 continue
@@ -601,6 +717,17 @@ async def agent_loop(
                 error=error,
             )
             display_error = error or not validation.ok
+            if (
+                not display_error
+                and tool_capability_by_name.get(parsed_call["name"]) == CAPABILITY_SEARCH_DISCOVERY
+                and result_has_sufficient_discovery(
+                    parsed_call["name"],
+                    result,
+                    tool_description_by_name.get(parsed_call["name"]),
+                    task_text=user_message,
+                )
+            ):
+                successful_search_count += 1
 
             yield (
                 "status",

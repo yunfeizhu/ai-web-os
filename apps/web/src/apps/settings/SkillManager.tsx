@@ -357,8 +357,8 @@ const panelStyle = {
 };
 
 const cardStyle = {
-  background: "rgba(0,0,0,0.02)",
-  border: "0.5px solid rgba(0,0,0,0.08)",
+  background: "var(--panel-bg-soft)",
+  border: "0.5px solid var(--border)",
 };
 
 const apiKeyCardStyle = {
@@ -367,20 +367,20 @@ const apiKeyCardStyle = {
 };
 
 const inputStyle = {
-  background: "rgba(255,255,255,0.92)",
-  border: "0.5px solid rgba(0,0,0,0.12)",
+  background: "var(--input-bg)",
+  border: "0.5px solid var(--border)",
   color: "var(--t1)",
 };
 
 const pathBoxStyle = {
-  background: "rgba(0,0,0,0.03)",
-  border: "0.5px solid rgba(0,0,0,0.06)",
+  background: "var(--panel-bg)",
+  border: "0.5px solid var(--border-faint)",
   color: "var(--t2)",
 };
 
 const emptyStateStyle = {
-  background: "rgba(0,0,0,0.02)",
-  border: "0.5px solid rgba(0,0,0,0.08)",
+  background: "var(--panel-bg-soft)",
+  border: "0.5px solid var(--border)",
   color: "var(--t2)",
 };
 

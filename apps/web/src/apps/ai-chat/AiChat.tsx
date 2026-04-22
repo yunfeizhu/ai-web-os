@@ -775,15 +775,15 @@ export function AiChat() {
   return (
     <div
       className="flex h-full overflow-hidden"
-      style={{ background: "var(--bg, #fff)", color: "var(--t1)" }}
+      style={{ background: "var(--window-content-bg)", color: "var(--t1)" }}
     >
       {/* ── 侧边栏 ── */}
       <aside
         className="flex flex-col shrink-0 h-full"
         style={{
           width: 220,
-          borderRight: "0.5px solid rgba(0,0,0,0.07)",
-          background: "rgba(250,250,252,0.9)",
+          borderRight: "0.5px solid var(--border)",
+          background: "var(--panel-bg)",
         }}
       >
         {/* 新建对话 */}
@@ -818,13 +818,13 @@ export function AiChat() {
                     className="group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors relative"
                     style={{
                       background: active
-                        ? "rgba(0,122,255,0.08)"
+                        ? "rgba(10, 132, 255, 0.16)"
                         : "transparent",
                     }}
                     onMouseEnter={(e) => {
                       if (!active)
                         (e.currentTarget as HTMLElement).style.background =
-                          "rgba(0,0,0,0.04)";
+                          "var(--control-bg)";
                     }}
                     onMouseLeave={(e) => {
                       if (!active)
@@ -883,8 +883,8 @@ export function AiChat() {
           className="flex items-center justify-between px-4 shrink-0"
           style={{
             height: 48,
-            borderBottom: "0.5px solid rgba(0,0,0,0.07)",
-            background: "rgba(250,250,252,0.8)",
+            borderBottom: "0.5px solid var(--border)",
+            background: "var(--panel-bg-soft)",
           }}
         >
           <span
@@ -947,15 +947,15 @@ export function AiChat() {
                       }}
                       className="flex flex-col gap-1 px-3 py-3 rounded-xl text-left transition-all"
                       style={{
-                        background: "rgba(0,0,0,0.03)",
-                        border: "0.5px solid rgba(0,0,0,0.07)",
+                        background: "var(--panel-bg)",
+                        border: "0.5px solid var(--border)",
                       }}
                       onMouseEnter={(e) =>
                         (e.currentTarget.style.background =
-                          "rgba(0,122,255,0.05)")
+                          "rgba(10, 132, 255, 0.12)")
                       }
                       onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "rgba(0,0,0,0.03)")
+                        (e.currentTarget.style.background = "var(--panel-bg)")
                       }
                     >
                       <span className="text-[17px]">{q.icon}</span>
@@ -985,7 +985,7 @@ export function AiChat() {
                   <div
                     className="absolute left-4 top-0 flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] pointer-events-none"
                     style={{
-                      background: "rgba(0,0,0,0.05)",
+                      background: "var(--control-bg)",
                       color: "var(--t3)",
                       whiteSpace: "nowrap",
                     }}
@@ -1030,7 +1030,10 @@ export function AiChat() {
         {/* 输入区 */}
         <div
           className="shrink-0 px-4 pb-4 pt-2"
-          style={{ background: "rgba(250,250,252,0.8)" }}
+          style={{
+            background: "var(--panel-bg-soft)",
+            borderTop: "0.5px solid var(--border)",
+          }}
         >
           {pendingConfirmation && (
             <div
@@ -1038,8 +1041,8 @@ export function AiChat() {
               style={{
                 maxWidth: 720,
                 borderColor: "rgba(245,158,11,0.24)",
-                background: "rgba(255,251,235,0.92)",
-                color: "#92400e",
+                background: "rgba(245, 158, 11, 0.14)",
+                color: "#ffb340",
               }}
             >
               <span className="min-w-0 flex-1">
@@ -1054,7 +1057,7 @@ export function AiChat() {
               </button>
               <button
                 className="rounded-full px-3 py-1 font-medium"
-                style={{ background: "rgba(255,255,255,0.82)", color: "#92400e" }}
+                style={{ background: "var(--control-bg)", color: "#ffb340" }}
                 onClick={() => {
                   setPendingConfirmation("");
                   setStatusText("已取消高风险操作。");
@@ -1074,8 +1077,8 @@ export function AiChat() {
                   key={app.appId}
                   className="rounded-full border px-3 py-1.5 text-[12px] transition-colors"
                   style={{
-                    borderColor: "rgba(0,0,0,0.08)",
-                    background: "rgba(255,255,255,0.78)",
+                    borderColor: "var(--border)",
+                    background: "var(--control-bg)",
                     color: "var(--t2)",
                   }}
                   onClick={() => {
@@ -1107,9 +1110,10 @@ export function AiChat() {
             className="mx-auto rounded-2xl overflow-hidden transition-shadow"
             style={{
               maxWidth: 720,
-              background: "#fff",
-              border: "0.5px solid rgba(0,0,0,0.12)",
-              boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+              background: "var(--input-bg)",
+              border: "0.5px solid var(--border)",
+              boxShadow:
+                "0 12px 32px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.05)",
             }}
           >
             <textarea
@@ -1140,7 +1144,7 @@ export function AiChat() {
                 <button
                   onClick={stopGeneration}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[14px] font-medium transition-all"
-                  style={{ background: "rgba(0,0,0,0.06)", color: "var(--t2)" }}
+                  style={{ background: "var(--control-bg)", color: "var(--t2)" }}
                 >
                   <Square size={11} fill="currentColor" /> 停止
                 </button>
@@ -1153,7 +1157,7 @@ export function AiChat() {
                     background:
                       input.trim() && selectedModel
                         ? "var(--accent)"
-                        : "rgba(0,0,0,0.06)",
+                        : "var(--disabled-bg)",
                     color: input.trim() && selectedModel ? "#fff" : "var(--t3)",
                   }}
                 >

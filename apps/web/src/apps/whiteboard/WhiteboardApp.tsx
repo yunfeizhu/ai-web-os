@@ -933,6 +933,7 @@ export function WhiteboardApp({ appState }: WhiteboardAppProps) {
                           borderColor:
                             selectedNodeId === node.id ? "rgba(124,58,237,0.35)" : "rgba(15,23,42,0.08)",
                           background: node.color,
+                          color: "#1f2937",
                           cursor: isEditingTitle || isEditingBody ? "text" : "grab",
                           boxShadow:
                             selectedNodeId === node.id
@@ -958,7 +959,7 @@ export function WhiteboardApp({ appState }: WhiteboardAppProps) {
                       >
                         <div
                           className="flex items-center gap-2 text-[12px] font-medium"
-                          style={{ color: "rgba(15,23,42,0.68)" }}
+                          style={{ color: "rgba(31,41,55,0.68)" }}
                         >
                           <Grip size={12} />
                           {node.kind === "sticky" ? "便签" : node.kind === "box" ? "模块" : "文本"}

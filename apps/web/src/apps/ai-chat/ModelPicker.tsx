@@ -51,7 +51,8 @@ export function ModelPicker({ value, onChange }: Props) {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[13px] font-medium transition-colors"
         style={{
-          background: "rgba(0,0,0,0.05)",
+          background: "var(--control-bg)",
+          border: "0.5px solid var(--border)",
           color: "var(--t2)",
           maxWidth: 240,
         }}
@@ -73,10 +74,10 @@ export function ModelPicker({ value, onChange }: Props) {
             minWidth: 240,
             maxHeight: 320,
             overflowY: "auto",
-            background: "rgba(255,255,255,0.95)",
+            background: "var(--surface-solid)",
             backdropFilter: "blur(20px)",
-            border: "0.5px solid rgba(0,0,0,0.1)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+            border: "0.5px solid var(--border)",
+            boxShadow: "var(--shadow-window)",
           }}
         >
           {configuredBuiltin.length === 0 && configuredCustom.length === 0 ? (
@@ -113,7 +114,7 @@ export function ModelPicker({ value, onChange }: Props) {
                         <button key={encoded} onClick={() => { onChange(encoded); setOpen(false); }}
                           className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left"
                           style={{ background: active ? p.color + "12" : "transparent" }}
-                          onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.04)"; }}
+                          onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "var(--control-bg)"; }}
                           onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                         >
                           <div className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white" style={{ background: p.color }}>
@@ -143,7 +144,7 @@ export function ModelPicker({ value, onChange }: Props) {
                       <button key={encoded} onClick={() => { onChange(encoded); setOpen(false); }}
                         className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left"
                         style={{ background: active ? color + "12" : "transparent" }}
-                        onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,0,0,0.04)"; }}
+                        onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "var(--control-bg)"; }}
                         onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
                       >
                         <div className="w-5 h-5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-bold text-white" style={{ background: color }}>
@@ -159,12 +160,12 @@ export function ModelPicker({ value, onChange }: Props) {
               ))}
 
               {/* 去设置入口 */}
-              <div style={{ borderTop: "0.5px solid rgba(0,0,0,0.06)" }}>
+              <div style={{ borderTop: "0.5px solid var(--border)" }}>
                 <button
                   onClick={() => { openWindow("settings", "设置", "⚙️"); setOpen(false); }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-[13px] transition-colors"
                   style={{ color: "var(--t3)" }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.04)")}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "var(--control-bg)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                 >
                   <Settings size={11} /> 管理模型提供商

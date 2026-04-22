@@ -155,9 +155,9 @@ export function ThemeConfig() {
                 style={{
                   border: isActive
                     ? "2.5px solid var(--accent)"
-                    : "0.5px solid rgba(0,0,0,0.12)",
+                    : "0.5px solid var(--border)",
                   boxShadow: isActive
-                    ? "0 0 0 2px rgba(0,122,255,0.25)"
+                    ? "0 0 0 2px var(--accent-bg-h)"
                     : "none",
                 }}
               >

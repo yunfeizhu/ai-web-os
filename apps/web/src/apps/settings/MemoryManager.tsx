@@ -145,14 +145,21 @@ export function MemoryManager() {
       {activeProvider && (
         <div
           className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
-          style={{ background: "rgba(0,0,0,0.03)", border: "0.5px solid rgba(0,0,0,0.07)" }}
+          style={{
+            background: "var(--panel-bg)",
+            border: "0.5px solid var(--border)",
+          }}
         >
           <Database size={14} style={{ color: "var(--t3)", flexShrink: 0 }} />
           <div className="flex items-center gap-1.5 flex-1 min-w-0">
             <span className="text-[13px]" style={{ color: "var(--t3)" }}>当前模型</span>
             <span
               className="text-[13px] font-medium px-1.5 py-0.5 rounded-md truncate"
-              style={{ background: "rgba(0,0,0,0.05)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
+              style={{
+                background: "var(--control-bg)",
+                color: "var(--t1)",
+                fontFamily: "var(--font-mono)",
+              }}
             >
               {activeProvider.model}
             </span>
@@ -194,7 +201,11 @@ export function MemoryManager() {
       <div className="flex gap-2">
         <div
           className="flex-1 flex items-center gap-2 px-3 rounded-xl"
-          style={{ background: "rgba(0,0,0,0.04)", border: "0.5px solid rgba(0,0,0,0.08)", height: 36 }}
+          style={{
+            background: "var(--search-field-bg)",
+            border: "0.5px solid var(--search-field-border)",
+            height: 36,
+          }}
         >
           <Search size={14} style={{ color: "var(--t3)", flexShrink: 0 }} />
           <input
@@ -217,7 +228,7 @@ export function MemoryManager() {
           <button
             onClick={() => { setSearchResults(null); setSearchQ(""); }}
             className="px-3 rounded-xl text-[14px]"
-            style={{ background: "rgba(0,0,0,0.06)", color: "var(--t2)", height: 36 }}
+            style={{ background: "var(--control-bg)", color: "var(--t2)", height: 36 }}
           >
             清除
           </button>
@@ -233,7 +244,11 @@ export function MemoryManager() {
           <button
             onClick={load}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[14px]"
-            style={{ background: "rgba(0,0,0,0.04)", color: "var(--t2)", border: "0.5px solid rgba(0,0,0,0.08)" }}
+            style={{
+              background: "var(--control-bg)",
+              color: "var(--t2)",
+              border: "0.5px solid var(--border)",
+            }}
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> 刷新
           </button>

@@ -43,8 +43,8 @@ export function WindowSnapZoneOverlay({ activeZone }: SnapZoneOverlayProps) {
   const base: React.CSSProperties = {
     position: "absolute",
     zIndex: 9998,
-    background: "rgba(255,255,255,0.62)",
-    border: "1px solid rgba(255,255,255,0.9)",
+    background: "var(--panel-bg-raised)",
+    border: "1px solid var(--border-strong)",
     backdropFilter: "blur(24px) saturate(180%)",
     WebkitBackdropFilter: "blur(24px) saturate(180%)",
     borderRadius: 16,

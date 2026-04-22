@@ -722,16 +722,15 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
   return (
     <div
       data-desktop-blocker="true"
-      className="flex h-full min-w-0 overflow-hidden rounded-[28px]"
+      className="document-editor-root flex h-full min-w-0 overflow-hidden"
       style={{
         color: "var(--t1)",
-        background:
-          "radial-gradient(circle at top left, rgba(251,113,133,0.14), transparent 28%), linear-gradient(180deg, rgba(255,255,255,0.96), rgba(249,250,251,0.98))",
+        background: "var(--window-content-bg)",
       }}
     >
       <aside
         className="flex w-[260px] shrink-0 flex-col border-r px-4 py-4"
-        style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.82)" }}
+        style={{ borderColor: "var(--border)", background: "var(--panel-bg-soft)" }}
       >
         <div className="mb-4">
           <div className="text-[12px] font-medium" style={{ color: "#e11d48" }}>
@@ -749,8 +748,9 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
             onChange={(event) => setCreateTitleInput(event.target.value)}
             className="min-w-0 flex-1 rounded-2xl border px-3 py-2 text-[13px] outline-none"
             style={{
-              borderColor: "rgba(15,23,42,0.08)",
-              background: "rgba(248,250,252,0.88)",
+              borderColor: "var(--border)",
+              background: "var(--input-bg)",
+              color: "var(--t1)",
             }}
             placeholder="新文档标题"
           />
@@ -772,7 +772,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
           {documents.length === 0 ? (
             <div
               className="rounded-3xl border border-dashed px-4 py-6 text-[13px] leading-6"
-              style={{ borderColor: "rgba(15,23,42,0.1)", color: "var(--t3)" }}
+              style={{ borderColor: "var(--border)", color: "var(--t3)" }}
             >
               还没有文档。直接输入标题后点击右上角加号，就会在文档目录中创建一份新文档。
             </div>
@@ -783,11 +783,11 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                 className="rounded-[22px] border px-4 py-3"
                 style={{
                   borderColor:
-                    doc.path === activePath ? "rgba(225,29,72,0.32)" : "rgba(15,23,42,0.06)",
+                    doc.path === activePath ? "rgba(225,29,72,0.36)" : "var(--border)",
                   background:
                     doc.path === activePath
-                      ? "linear-gradient(135deg, rgba(251,113,133,0.12), rgba(255,255,255,0.92))"
-                      : "rgba(255,255,255,0.72)",
+                      ? "linear-gradient(135deg, rgba(251,113,133,0.16), var(--panel-bg-raised))"
+                      : "var(--panel-bg)",
                 }}
               >
                 <button
@@ -809,7 +809,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                       onChange={(event) => setRenameDraft(event.target.value)}
                       autoFocus
                       className="w-full rounded-2xl border px-3 py-2 text-[12px] outline-none"
-                      style={{ borderColor: "rgba(225,29,72,0.18)", background: "rgba(255,255,255,0.92)" }}
+                      style={{ borderColor: "rgba(225,29,72,0.24)", background: "var(--input-bg)", color: "var(--t1)" }}
                       onKeyDown={(event) => {
                         if (event.key === "Enter") {
                           event.preventDefault();
@@ -825,7 +825,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                       <button
                         disabled={saving || !renameDraft.trim()}
                         className="rounded-full border px-3 py-1.5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-55"
-                        style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.88)" }}
+                        style={{ borderColor: "var(--border)", background: "var(--control-bg)" }}
                         onClick={() => void renameDocument(doc, renameDraft)}
                       >
                         确认
@@ -833,7 +833,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                       <button
                         disabled={saving}
                         className="rounded-full border px-3 py-1.5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-55"
-                        style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.88)" }}
+                        style={{ borderColor: "var(--border)", background: "var(--control-bg)" }}
                         onClick={cancelRenameDocument}
                       >
                         取消
@@ -843,7 +843,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                 ) : deleteCandidateId === doc.id ? (
                   <div
                     className="mt-3 rounded-2xl border px-3 py-3"
-                    style={{ borderColor: "rgba(220,38,38,0.14)", background: "rgba(255,255,255,0.92)" }}
+                    style={{ borderColor: "rgba(220,38,38,0.22)", background: "rgba(220,38,38,0.08)" }}
                   >
                     <div className="text-[12px] leading-5" style={{ color: "var(--t2)" }}>
                       确认删除“{doc.name.replace(DOC_EXTENSION, "")}”吗？
@@ -852,7 +852,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                       <button
                         disabled={saving}
                         className="rounded-full border px-3 py-1.5 text-[12px] font-medium text-[#dc2626] disabled:cursor-not-allowed disabled:opacity-55"
-                        style={{ borderColor: "rgba(220,38,38,0.14)", background: "rgba(255,255,255,0.88)" }}
+                        style={{ borderColor: "rgba(220,38,38,0.22)", background: "rgba(220,38,38,0.08)" }}
                         onClick={() => void deleteDocument(doc)}
                       >
                         确认删除
@@ -860,7 +860,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                       <button
                         disabled={saving}
                         className="rounded-full border px-3 py-1.5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-55"
-                        style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.88)", color: "#475569" }}
+                        style={{ borderColor: "var(--border)", background: "var(--control-bg)", color: "var(--t2)" }}
                         onClick={cancelDeleteDocument}
                       >
                         取消
@@ -872,7 +872,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                     <button
                       disabled={saving}
                       className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-55"
-                      style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.88)", color: "#475569" }}
+                      style={{ borderColor: "var(--border)", background: "var(--control-bg)", color: "var(--t2)" }}
                       onClick={() => startRenameDocument(doc)}
                     >
                       <Pencil size={12} />
@@ -881,7 +881,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                     <button
                       disabled={saving}
                       className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-medium text-[#dc2626] disabled:cursor-not-allowed disabled:opacity-55"
-                      style={{ borderColor: "rgba(220,38,38,0.14)", background: "rgba(255,255,255,0.88)", color: "#be123c" }}
+                      style={{ borderColor: "rgba(220,38,38,0.22)", background: "rgba(220,38,38,0.08)", color: "#ff453a" }}
                       onClick={() => requestDeleteDocument(doc)}
                     >
                       <Trash2 size={12} />
@@ -898,7 +898,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
       <section className="flex min-w-0 flex-1 flex-col">
         <div
           className="border-b px-4 py-3"
-          style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.75)" }}
+          style={{ borderColor: "var(--border)", background: "var(--panel-bg-soft)" }}
         >
           <div className="flex flex-wrap items-center gap-3">
             <ToolbarGroup>
@@ -968,7 +968,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
             <div
               className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5"
-              style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.82)", color: "#64748b" }}
+              style={{ borderColor: "var(--border)", background: "var(--panel-bg)", color: "var(--t2)" }}
             >
               <span className="font-medium" style={{ color: "#be123c" }}>工具提示</span>
               <span>悬停图标可查看功能说明</span>
@@ -977,8 +977,8 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
               className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5"
               style={{
                 borderColor: isDirty ? "rgba(245,158,11,0.18)" : "rgba(34,197,94,0.18)",
-                background: isDirty ? "rgba(255,251,235,0.9)" : "rgba(240,253,244,0.92)",
-                color: isDirty ? "#b45309" : "#15803d",
+                background: isDirty ? "rgba(255,159,10,0.12)" : "rgba(48,209,88,0.12)",
+                color: isDirty ? "#ff9f0a" : "#30d158",
               }}
             >
               <span className="font-medium">{isDirty ? "保存状态" : "已保存"}</span>
@@ -988,8 +988,8 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
               className="inline-flex items-center gap-2 rounded-full border px-3 py-1.5"
               style={{
                 borderColor: selectionText ? "rgba(225,29,72,0.14)" : "rgba(15,23,42,0.08)",
-                background: selectionText ? "rgba(255,241,242,0.92)" : "rgba(255,255,255,0.82)",
-                color: selectionText ? "#be123c" : "#64748b",
+                background: selectionText ? "rgba(255,55,95,0.12)" : "var(--panel-bg)",
+                color: selectionText ? "#ff375f" : "var(--t2)",
               }}
             >
               <span className="font-medium">{selectionText ? "已选中内容" : "智能改写"}</span>
@@ -1010,7 +1010,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
                 <div
                   className="rounded-[32px]"
                   style={{
-                    background: "rgba(255,255,255,0.92)",
+                    background: "transparent",
                   }}
                 >
                   <EditorContent editor={editor} />
@@ -1021,7 +1021,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
 
           <aside
             className="w-[280px] shrink-0 border-l px-4 py-4"
-            style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.72)" }}
+            style={{ borderColor: "var(--border)", background: "var(--panel-bg-soft)" }}
           >
             <div className="text-[12px] font-medium" style={{ color: "#be123c" }}>
               文档信息
@@ -1037,7 +1037,7 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
             </div>
             <div
               className="mt-5 rounded-[28px] border px-4 py-4 text-[12px] leading-6"
-              style={{ borderColor: "rgba(15,23,42,0.08)", color: "var(--t3)" }}
+              style={{ borderColor: "var(--border)", background: "var(--panel-bg)", color: "var(--t3)" }}
             >
               文档说明：
               <br />
@@ -1056,8 +1056,8 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
       {closePromptOpen && (
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/20 backdrop-blur-sm">
           <div
-            className="w-[420px] rounded-[28px] border bg-white p-5 shadow-2xl"
-            style={{ borderColor: "rgba(15,23,42,0.08)" }}
+            className="w-[420px] rounded-[28px] border p-5 shadow-2xl"
+            style={{ borderColor: "var(--border)", background: "var(--surface-solid)" }}
           >
             <div className="text-[20px] font-semibold">还有未保存的修改</div>
             <p className="mt-3 text-[13px] leading-6" style={{ color: "var(--t3)" }}>
@@ -1066,14 +1066,14 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
             <div className="mt-5 flex items-center justify-end gap-2">
               <button
                 className="rounded-full border px-4 py-2 text-[13px]"
-                style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.92)" }}
+                style={{ borderColor: "var(--border)", background: "var(--control-bg)" }}
                 onClick={() => resolveClosePrompt(false)}
               >
                 取消
               </button>
               <button
                 className="rounded-full border px-4 py-2 text-[13px]"
-                style={{ borderColor: "rgba(239,68,68,0.14)", background: "rgba(255,255,255,0.92)", color: "#be123c" }}
+                style={{ borderColor: "rgba(239,68,68,0.22)", background: "rgba(239,68,68,0.08)", color: "#ff453a" }}
                 onClick={() => resolveClosePrompt(true)}
               >
                 直接关闭
@@ -1094,12 +1094,12 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
       <style jsx global>{`
         .document-editor-prosemirror {
           min-height: 920px;
-          border: 1px solid rgba(15, 23, 42, 0.08);
+          border: 1px solid var(--border);
           border-radius: 32px;
           padding: 48px;
-          background: rgba(255, 255, 255, 0.92);
-          box-shadow: 0 26px 80px rgba(15, 23, 42, 0.08);
-          color: #111827;
+          background: var(--surface-solid);
+          box-shadow: var(--shadow-window);
+          color: var(--t1);
           line-height: 1.6;
           outline: none;
         }
@@ -1140,14 +1140,14 @@ export function DocumentEditor({ appState, windowId }: DocumentEditorProps) {
           margin: 0.7rem 0;
           border-left: 3px solid rgba(225, 29, 72, 0.2);
           padding-left: 1rem;
-          color: #475569;
+          color: var(--t2);
         }
 
         .document-editor-prosemirror .is-editor-empty:first-child::before {
           content: attr(data-placeholder);
           float: left;
           height: 0;
-          color: #94a3b8;
+          color: var(--t3);
           pointer-events: none;
         }
       `}</style>
@@ -1166,12 +1166,12 @@ function ToolbarGroup({
     <div
       className="inline-flex items-center gap-1 rounded-[18px] border px-2 py-1.5"
       style={{
-        borderColor: accent === "pink" ? "rgba(225,29,72,0.12)" : "rgba(15,23,42,0.08)",
+        borderColor: accent === "pink" ? "rgba(225,29,72,0.22)" : "var(--border)",
         background:
           accent === "pink"
-            ? "linear-gradient(180deg, rgba(255,241,242,0.9), rgba(255,255,255,0.92))"
-            : "linear-gradient(180deg, rgba(255,255,255,0.92), rgba(248,250,252,0.92))",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.88)",
+            ? "linear-gradient(180deg, rgba(255,55,95,0.11), var(--panel-bg-raised))"
+            : "var(--panel-bg-raised)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.05)",
       }}
     >
       {children}
@@ -1205,8 +1205,8 @@ function ToolbarIconButton({
           : active
             ? "rgba(251,113,133,0.14)"
             : "transparent",
-        color: disabled ? "rgba(100,116,139,0.72)" : active ? "#be123c" : "#0f172a",
-        border: active ? "1px solid rgba(251,113,133,0.16)" : "1px solid transparent",
+        color: disabled ? "var(--t3)" : active ? "#ff375f" : "var(--t1)",
+        border: active ? "1px solid rgba(251,113,133,0.22)" : "1px solid transparent",
       }}
     >
       {icon}
@@ -1218,9 +1218,9 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   return (
     <div
       className="rounded-[24px] border px-4 py-3"
-      style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(248,250,252,0.9)" }}
+      style={{ borderColor: "var(--border)", background: "var(--panel-bg)" }}
     >
-      <div className="text-[11px] font-medium" style={{ color: "#64748b" }}>
+      <div className="text-[11px] font-medium" style={{ color: "var(--t3)" }}>
         {label}
       </div>
       <div className="mt-2 text-[13px] leading-6">{value}</div>

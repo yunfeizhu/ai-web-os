@@ -220,8 +220,8 @@ export function KnowledgeBase() {
         <div
           className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
           style={{
-            background: "rgba(0,0,0,0.03)",
-            border: "0.5px solid rgba(0,0,0,0.07)",
+            background: "var(--panel-bg)",
+            border: "0.5px solid var(--border)",
           }}
         >
           <Database size={14} style={{ color: "var(--t3)", flexShrink: 0 }} />
@@ -232,7 +232,7 @@ export function KnowledgeBase() {
             <span
               className="text-[13px] font-medium px-1.5 py-0.5 rounded-md truncate"
               style={{
-                background: "rgba(0,0,0,0.05)",
+                background: "var(--control-bg)",
                 color: "var(--t1)",
                 fontFamily: "var(--font-mono)",
               }}
@@ -371,8 +371,8 @@ export function KnowledgeBase() {
           <div
             className="flex-1 flex items-center gap-2 px-3 rounded-xl"
             style={{
-              background: "rgba(0,0,0,0.04)",
-              border: "0.5px solid rgba(0,0,0,0.08)",
+              background: "var(--search-field-bg)",
+              border: "0.5px solid var(--search-field-border)",
               height: 36,
             }}
           >
@@ -408,7 +408,7 @@ export function KnowledgeBase() {
               }}
               className="px-3 rounded-xl text-[14px]"
               style={{
-                background: "rgba(0,0,0,0.06)",
+                background: "var(--control-bg)",
                 color: "var(--t2)",
                 height: 36,
               }}

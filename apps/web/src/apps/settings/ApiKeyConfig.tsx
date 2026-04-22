@@ -109,7 +109,7 @@ function ProviderCard({ def }: { def: ProviderDef }) {
   };
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `0.5px solid ${isConfigured ? def.color + "50" : "rgba(0,0,0,0.08)"}`, background: "rgba(0,0,0,0.01)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ border: `0.5px solid ${isConfigured ? def.color + "50" : "var(--border)"}`, background: "var(--panel-bg-soft)" }}>
       <button className="w-full flex items-center gap-3 px-4 py-3 text-left" onClick={handleExpand}>
         <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: isConfigured ? def.color : "rgba(0,0,0,0.1)" }}>
           {def.name.slice(0, 2).toUpperCase()}
@@ -127,7 +127,7 @@ function ProviderCard({ def }: { def: ProviderDef }) {
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid rgba(0,0,0,0.06)" }}>
+        <div className="px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
           <ProviderForm
             baseUrl={baseUrl} setBaseUrl={setBaseUrl}
             defaultBaseUrl={def.defaultBaseUrl}
@@ -226,7 +226,7 @@ function CustomProviderCard({ id }: { id: string }) {
   };
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `0.5px solid ${cfg.apiKey ? CUSTOM_COLOR + "50" : "rgba(0,0,0,0.08)"}`, background: "rgba(0,0,0,0.01)" }}>
+    <div className="rounded-xl overflow-hidden" style={{ border: `0.5px solid ${cfg.apiKey ? CUSTOM_COLOR + "50" : "var(--border)"}`, background: "var(--panel-bg-soft)" }}>
       <button className="w-full flex items-center gap-3 px-4 py-3 text-left" onClick={handleExpand}>
         <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: cfg.apiKey ? CUSTOM_COLOR : "rgba(0,0,0,0.1)" }}>
           {(cfg.name ?? "?").slice(0, 2).toUpperCase()}
@@ -246,14 +246,14 @@ function CustomProviderCard({ id }: { id: string }) {
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid rgba(0,0,0,0.06)" }}>
+        <div className="px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
           {/* 名称 */}
           <div className="pt-3">
             <label className="text-[13px] font-medium mb-1 block" style={{ color: "var(--t3)" }}>名称</label>
             <input type="text" value={name} onChange={(e) => setName(e.target.value)}
               placeholder="如：SiliconFlow、Groq、本地 Ollama"
               className="w-full px-3 py-1.5 rounded-lg text-[13px] outline-none"
-              style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)" }}
+              style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)" }}
             />
           </div>
           <ProviderForm
@@ -326,7 +326,7 @@ function AddCustomProviderForm({ onAdd }: { onAdd: () => void }) {
           placeholder="名称，如：SiliconFlow、Groq、本地 Ollama"
           autoFocus
           className="flex-1 px-3 py-1.5 rounded-lg text-[13px] outline-none"
-          style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)" }}
+          style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)" }}
         />
         <button onClick={handleAdd} disabled={!name.trim()}
           className="px-3 py-1.5 rounded-lg text-[13px] font-medium"
@@ -473,7 +473,7 @@ function EmbeddingSection() {
 
   if (!editing && embeddingConfig) {
     return (
-      <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ border: "0.5px solid rgba(0,0,0,0.08)", background: "rgba(0,0,0,0.01)" }}>
+      <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}>
         <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: "#0EA5E9" }}>
           EM
         </div>
@@ -490,7 +490,7 @@ function EmbeddingSection() {
           setModel(embeddingConfig.model); setBaseUrl(embeddingConfig.baseUrl);
           setApiKey(embeddingConfig.apiKey); setDims(String(embeddingConfig.dims));
           setName(embeddingConfig.name ?? ""); setTestResult(null); setEditing(true);
-        }} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[13px]" style={{ color: "var(--t3)", background: "rgba(0,0,0,0.05)" }}>
+        }} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[13px]" style={{ color: "var(--t3)", background: "var(--control-bg)" }}>
           <PencilLine size={12} /> 修改
         </button>
         <button onClick={() => setEmbeddingConfig(null)} className="px-2 py-1 rounded-lg text-[13px]" style={{ color: "var(--red)" }}>
@@ -501,17 +501,17 @@ function EmbeddingSection() {
   }
 
   return (
-    <div className="rounded-xl px-4 pb-4 flex flex-col gap-3" style={{ border: "0.5px solid rgba(0,0,0,0.08)", background: "rgba(0,0,0,0.01)" }}>
+    <div className="rounded-xl px-4 pb-4 flex flex-col gap-3" style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}>
       <div className="pt-3 flex items-center justify-between">
         <p className="text-[13px] font-medium" style={{ color: "var(--t2)" }}>配置 Embedding 模型</p>
         <div className="relative">
           <button onClick={() => setShowPresets((v) => !v)}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[13px]"
-            style={{ background: "rgba(0,0,0,0.05)", color: "var(--t3)" }}>
+            style={{ background: "var(--control-bg)", color: "var(--t3)" }}>
             常用预设 <ChevronDown size={11} className={showPresets ? "rotate-180" : ""} />
           </button>
           {showPresets && (
-            <div className="absolute right-0 top-full mt-1 z-10 rounded-xl overflow-hidden" style={{ minWidth: 280, background: "#fff", border: "0.5px solid rgba(0,0,0,0.1)", boxShadow: "0 4px 16px rgba(0,0,0,0.1)" }}>
+            <div className="absolute right-0 top-full mt-1 z-10 rounded-xl overflow-hidden" style={{ minWidth: 280, background: "var(--surface-solid)", border: "0.5px solid var(--border)", boxShadow: "var(--shadow-menu)" }}>
               {EMBEDDING_PRESETS.map((p) => (
                 <button key={p.model} onClick={() => applyPreset(p)}
                   className="w-full flex flex-col px-3 py-2 text-left hover:bg-black/5 text-[13px]"
@@ -531,7 +531,7 @@ function EmbeddingSection() {
           <input type="text" value={model} onChange={(e) => { setModel(e.target.value); setTestResult(null); }}
             placeholder="text-embedding-3-small"
             className="w-full px-3 py-1.5 rounded-lg text-[13px] outline-none"
-            style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
+            style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
           />
         </div>
         <div>
@@ -539,7 +539,7 @@ function EmbeddingSection() {
           <input type="number" value={dims} onChange={(e) => setDims(e.target.value)}
             placeholder="1024"
             className="w-full px-3 py-1.5 rounded-lg text-[13px] outline-none"
-            style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)" }}
+            style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)" }}
           />
         </div>
       </div>
@@ -549,7 +549,7 @@ function EmbeddingSection() {
         <input type="text" value={baseUrl} onChange={(e) => { setBaseUrl(e.target.value); setTestResult(null); }}
           placeholder="https://api.siliconflow.cn/v1"
           className="w-full px-3 py-1.5 rounded-lg text-[13px] outline-none"
-          style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
+          style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
         />
       </div>
 
@@ -560,7 +560,7 @@ function EmbeddingSection() {
             onChange={(e) => { setApiKey(e.target.value); setTestResult(null); }}
             placeholder="sk-..."
             className="w-full pr-8 pl-3 py-1.5 rounded-lg text-[13px] outline-none"
-            style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
+            style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
           />
           <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setShowKey((v) => !v)}>
             {showKey ? <EyeOff size={13} color="rgba(0,0,0,0.3)" /> : <Eye size={13} color="rgba(0,0,0,0.3)" />}
@@ -574,13 +574,13 @@ function EmbeddingSection() {
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[13px] font-medium"
           style={apiKey.trim() && model.trim() && baseUrl.trim() && dims && testResult?.ok && !saving
             ? { background: "#0EA5E9", color: "#fff" }
-            : { background: "rgba(0,0,0,0.06)", color: "rgba(0,0,0,0.25)", cursor: "not-allowed", opacity: 0.5, border: "0.5px dashed rgba(0,0,0,0.15)" }}>
+            : { background: "var(--disabled-bg)", color: "var(--disabled-text)", cursor: "not-allowed", opacity: 0.5, border: "0.5px dashed var(--border-strong)" }}>
           <Check size={12} /> {saving ? "保存中…" : "保存并激活"}
         </button>
         <button onClick={handleTest}
           disabled={testing || !apiKey.trim() || !model.trim() || !baseUrl.trim()}
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[13px] font-medium"
-          style={{ background: "rgba(0,0,0,0.05)", color: "var(--t2)" }}>
+          style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
           {testing ? <Loader size={12} className="animate-spin" /> : <Wifi size={12} />}
           {testing ? "测试中…" : "测试连接"}
         </button>
@@ -624,7 +624,7 @@ function ProviderForm({ baseUrl, setBaseUrl, defaultBaseUrl, placeholder, apiKey
         <input type="text" value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={placeholder ?? defaultBaseUrl ?? "https://your-endpoint/v1"}
           className="w-full px-3 py-1.5 rounded-lg text-[13px] outline-none"
-          style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
+          style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
         />
       </div>
       <div>
@@ -640,7 +640,7 @@ function ProviderForm({ baseUrl, setBaseUrl, defaultBaseUrl, placeholder, apiKey
           <input type={showKey ? "text" : "password"} value={apiKey} onChange={(e) => setApiKey(e.target.value)}
             placeholder="sk-..."
             className="w-full pr-8 pl-3 py-1.5 rounded-lg text-[13px] outline-none"
-            style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
+            style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
           />
           <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setShowKey(!showKey)}>
             {showKey ? <EyeOff size={13} color="rgba(0,0,0,0.3)" /> : <Eye size={13} color="rgba(0,0,0,0.3)" />}
@@ -668,18 +668,18 @@ function ProviderActions({ color, apiKey, savedApiKey, testResult, testing, fetc
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[13px] font-medium"
           style={canSave
             ? { background: color, color: "#fff" }
-            : { background: "rgba(0,0,0,0.06)", color: "rgba(0,0,0,0.25)", cursor: "not-allowed", opacity: 0.5, border: "0.5px dashed rgba(0,0,0,0.15)" }}>
+            : { background: "var(--disabled-bg)", color: "var(--disabled-text)", cursor: "not-allowed", opacity: 0.5, border: "0.5px dashed var(--border-strong)" }}>
           <Check size={12} /> 保存
         </button>
         <button onClick={onTest} disabled={testing || !canTest}
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[13px] font-medium"
-          style={{ background: "rgba(0,0,0,0.05)", color: "var(--t2)" }}>
+          style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
           {testing ? <Loader size={12} className="animate-spin" /> : <Wifi size={12} />}
           {testing ? "测试中…" : "测试连接"}
         </button>
         <button onClick={onFetch} disabled={fetching}
           className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[13px] font-medium"
-          style={{ background: "rgba(0,0,0,0.05)", color: "var(--t2)" }}>
+          style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
           <RefreshCw size={12} className={fetching ? "animate-spin" : ""} />
           {fetching ? "获取中…" : "获取模型列表"}
         </button>
@@ -740,9 +740,9 @@ function ModelSelector({ fetchedModels, enabledModels, color, customInput, setCu
             onKeyDown={(e) => e.key === "Enter" && onAddCustom()}
             placeholder="输入模型 ID，如 gpt-4o"
             className="flex-1 px-3 py-1.5 rounded-lg text-[13px] outline-none"
-            style={{ background: "#fff", border: "0.5px solid rgba(0,0,0,0.12)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
+            style={{ background: "var(--input-bg)", border: "0.5px solid var(--border)", color: "var(--t1)", fontFamily: "var(--font-mono)" }}
           />
-          <button onClick={onAddCustom} className="px-3 py-1.5 rounded-lg text-[13px] flex items-center gap-1" style={{ background: "rgba(0,0,0,0.05)", color: "var(--t2)" }}>
+          <button onClick={onAddCustom} className="px-3 py-1.5 rounded-lg text-[13px] flex items-center gap-1" style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
             <Plus size={12} /> 添加
           </button>
         </div>
@@ -770,7 +770,7 @@ function GroupPanel({ title, description, defaultOpen = false, children }: {
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: "0.5px solid rgba(0,0,0,0.08)", background: "rgba(0,0,0,0.01)" }}>
+    <div className="rounded-2xl overflow-hidden" style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}>
       <button className="w-full flex items-center justify-between px-5 py-4 text-left" onClick={() => setOpen((v) => !v)}>
         <div>
           <p className="text-[15px] font-semibold" style={{ color: "var(--t1)" }}>{title}</p>
@@ -779,7 +779,7 @@ function GroupPanel({ title, description, defaultOpen = false, children }: {
         {open ? <ChevronUp size={15} color="var(--t3)" /> : <ChevronDown size={15} color="var(--t3)" />}
       </button>
       {open && (
-        <div className="px-4 pb-4 flex flex-col gap-2" style={{ borderTop: "0.5px solid rgba(0,0,0,0.06)" }}>
+        <div className="px-4 pb-4 flex flex-col gap-2" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
           <div className="pt-2" />
           {children}
         </div>

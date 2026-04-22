@@ -119,11 +119,30 @@ button:disabled {
 
 :root {
   /* ── Backgrounds ─────────────────────── */
+  --bg: #ffffff;
   --bg-desktop: #e8e4df;
   --surface: rgba(255, 255, 255, 0.72);
   --surface-solid: #ffffff;
   --surface-raise: rgba(255, 255, 255, 0.82);
   --surface-dock: rgba(243, 243, 248, 0.65);
+  --window-bg: rgba(246, 246, 248, 0.86);
+  --window-content-bg: rgba(255, 255, 255, 0.56);
+  --window-titlebar-bg: rgba(255, 255, 255, 0.58);
+  --window-titlebar-bg-inactive: rgba(245, 245, 247, 0.68);
+  --window-titlebar-border: rgba(0, 0, 0, 0.08);
+  --panel-bg: rgba(0, 0, 0, 0.03);
+  --panel-bg-soft: rgba(0, 0, 0, 0.02);
+  --panel-bg-raised: rgba(255, 255, 255, 0.7);
+  --control-bg: rgba(0, 0, 0, 0.05);
+  --control-bg-hover: rgba(0, 0, 0, 0.08);
+  --input-bg: rgba(255, 255, 255, 0.84);
+  --search-field-bg: transparent;
+  --search-field-border: rgba(0, 0, 0, 0.075);
+  --virtualized-bg:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(238, 242, 247, 0.52));
+  --disabled-bg: rgba(0, 0, 0, 0.06);
+  --disabled-text: rgba(0, 0, 0, 0.25);
+  --traffic-disabled: #d4d4d4;
 
   /* ── Borders ─────────────────────────── */
   --border-faint: rgba(0, 0, 0, 0.04);
@@ -176,11 +195,30 @@ button:disabled {
 
 [data-theme="dark"] {
   /* ── Backgrounds ─────────────────────── */
-  --bg-desktop: #13131a;
-  --surface: rgba(26, 26, 34, 0.88);
-  --surface-solid: #1c1c26;
-  --surface-raise: rgba(34, 34, 46, 0.94);
-  --surface-dock: rgba(16, 16, 22, 0.75);
+  --bg: #1e1e1e;
+  --bg-desktop: #0b0c10;
+  --surface: rgba(30, 30, 30, 0.88);
+  --surface-solid: #1e1e1e;
+  --surface-raise: rgba(44, 44, 46, 0.92);
+  --surface-dock: rgba(24, 24, 26, 0.76);
+  --window-bg: rgba(30, 30, 30, 0.9);
+  --window-content-bg: rgba(20, 20, 22, 0.72);
+  --window-titlebar-bg: rgba(44, 44, 46, 0.78);
+  --window-titlebar-bg-inactive: rgba(30, 30, 32, 0.72);
+  --window-titlebar-border: rgba(255, 255, 255, 0.08);
+  --panel-bg: rgba(255, 255, 255, 0.055);
+  --panel-bg-soft: rgba(255, 255, 255, 0.035);
+  --panel-bg-raised: rgba(255, 255, 255, 0.075);
+  --control-bg: rgba(255, 255, 255, 0.075);
+  --control-bg-hover: rgba(255, 255, 255, 0.11);
+  --input-bg: rgba(44, 44, 46, 0.84);
+  --search-field-bg: transparent;
+  --search-field-border: rgba(255, 255, 255, 0.085);
+  --virtualized-bg:
+    linear-gradient(135deg, rgba(44, 44, 46, 0.48), rgba(20, 20, 22, 0.72));
+  --disabled-bg: rgba(255, 255, 255, 0.07);
+  --disabled-text: rgba(255, 255, 255, 0.32);
+  --traffic-disabled: rgba(255, 255, 255, 0.22);
 
   /* ── Borders ─────────────────────────── */
   --border-faint: rgba(255, 255, 255, 0.04);
@@ -265,6 +303,146 @@ body {
 
 .window-content {
   user-select: text;
+}
+
+.settings-root input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
+.settings-root select,
+.settings-root textarea:not(.bg-transparent) {
+  background-color: var(--input-bg) !important;
+  border-color: var(--border) !important;
+  color: var(--t1) !important;
+  color-scheme: light;
+}
+
+.settings-root input.bg-transparent,
+.settings-root textarea.bg-transparent {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  color: var(--t1) !important;
+  color-scheme: normal;
+}
+
+.settings-root input::placeholder,
+.settings-root textarea::placeholder {
+  color: var(--t3);
+}
+
+[data-theme="dark"] .settings-root input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
+[data-theme="dark"] .settings-root select,
+[data-theme="dark"] .settings-root textarea:not(.bg-transparent) {
+  color-scheme: dark;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .macos-dark-app,
+[data-theme="dark"] .macos-dark-app > [style*="background:"] {
+  background: var(--window-content-bg) !important;
+  color: var(--t1) !important;
+}
+
+[data-theme="dark"] .macos-dark-app > * {
+  border-radius: 0 !important;
+}
+
+[data-theme="dark"] .macos-dark-app .bg-white,
+[data-theme="dark"] .macos-dark-app .bg-white\/78,
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(255,255,255"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(255, 255, 255"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(252,252,253"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(252, 252, 253"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(250,250,250"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(250, 250, 250"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(249,250,251"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(249, 250, 251"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(248,250,252"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(248, 250, 252"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(246,247,249"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(246, 247, 249"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(244,246,248"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(244, 246, 248"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(238,240,244"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(238, 240, 244"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(236,238,242"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(236, 238, 242"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgb(255,255,255"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgb(255, 255, 255"],
+[data-theme="dark"] .macos-dark-app [style*="background: #fff"],
+[data-theme="dark"] .macos-dark-app [style*="background: #ffffff"],
+[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(255,255,255"],
+[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(255, 255, 255"],
+[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(249"],
+[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(248"],
+[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(246"],
+[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(244"],
+[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(236"] {
+  background: var(--panel-bg-raised) !important;
+}
+
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(15,23,42"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(15, 23, 42"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(148,163,184"],
+[data-theme="dark"] .macos-dark-app [style*="background: rgba(148, 163, 184"] {
+  background: var(--control-bg) !important;
+}
+
+[data-theme="dark"] .macos-dark-app input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
+[data-theme="dark"] .macos-dark-app select,
+[data-theme="dark"] .macos-dark-app textarea:not(.bg-transparent) {
+  background: var(--input-bg) !important;
+  border-color: var(--border) !important;
+  color: var(--t1) !important;
+  color-scheme: dark;
+}
+
+[data-theme="dark"] .macos-dark-app input.bg-transparent,
+[data-theme="dark"] .macos-dark-app textarea.bg-transparent {
+  background: transparent !important;
+  color: var(--t1) !important;
+  color-scheme: dark;
+}
+
+[data-theme="dark"] .macos-dark-app input::placeholder,
+[data-theme="dark"] .macos-dark-app textarea::placeholder {
+  color: var(--t3);
+}
+
+[data-theme="dark"] .macos-dark-app [style*="border-color: rgba(15, 23, 42"],
+[data-theme="dark"] .macos-dark-app [style*="borderColor: rgba(15,23,42"],
+[data-theme="dark"] .macos-dark-app [style*="border-color: rgba(15,23,42"],
+[data-theme="dark"] .macos-dark-app [style*="borderColor: rgba(15, 23, 42"],
+[data-theme="dark"] .macos-dark-app [style*="border: 0.5px solid rgba(15,23,42"],
+[data-theme="dark"] .macos-dark-app [style*="border: 1px solid rgba(15,23,42"] {
+  border-color: var(--border) !important;
+}
+
+[data-theme="dark"] .macos-dark-app .border {
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .macos-dark-app [style*="color: #111827"],
+[data-theme="dark"] .macos-dark-app [style*="color: #1f2937"],
+[data-theme="dark"] .macos-dark-app [style*="color: #0f172a"],
+[data-theme="dark"] .macos-dark-app [style*="color: #334155"] {
+  color: var(--t1) !important;
+}
+
+[data-theme="dark"] .macos-dark-app [style*="color: #475569"],
+[data-theme="dark"] .macos-dark-app [style*="color: #64748b"],
+[data-theme="dark"] .macos-dark-app [style*="color: #6b7280"] {
+  color: var(--t2) !important;
+}
+
+[data-theme="dark"] .macos-dark-app [style*="color: #94a3b8"],
+[data-theme="dark"] .macos-dark-app [style*="color: #9ca3af"] {
+  color: var(--t3) !important;
+}
+
+[data-theme="dark"] .document-editor-prosemirror {
+  background: var(--surface-solid) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 26px 80px rgba(0, 0, 0, 0.22) !important;
+  color: var(--t1) !important;
 }
 
 /* ── Scrollbar ──────────────────────────── */

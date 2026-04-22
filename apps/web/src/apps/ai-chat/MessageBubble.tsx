@@ -5,7 +5,7 @@ import { Check, Copy, RotateCcw, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
-import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { Components } from "react-markdown";
 import type { ChatMessage } from "./types";
 import { ToolCallDisplay } from "./ToolCallDisplay";
@@ -32,7 +32,7 @@ const markdownComponents: Components = {
         style={{
           fontFamily: "var(--font-mono, ui-monospace, monospace)",
           fontSize: "0.95em",
-          background: "rgba(0,0,0,0.06)",
+          background: "var(--control-bg)",
           padding: "0.15em 0.4em",
           borderRadius: 4,
         }}
@@ -56,13 +56,13 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   return (
     <div
       className="relative my-2 overflow-hidden rounded-xl"
-      style={{ border: "0.5px solid rgba(0,0,0,0.1)" }}
+      style={{ border: "0.5px solid var(--border)" }}
     >
       <div
         className="flex items-center justify-between px-3 py-1.5"
         style={{
-          background: "rgba(0,0,0,0.04)",
-          borderBottom: "0.5px solid rgba(0,0,0,0.08)",
+          background: "var(--panel-bg)",
+          borderBottom: "0.5px solid var(--border)",
         }}
       >
         <span
@@ -76,7 +76,7 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
           className="flex items-center gap-1 rounded-md px-2 py-0.5 text-[12px] transition-colors"
           style={{ color: copied ? "#22C55E" : "var(--t3)" }}
           onMouseEnter={(event) => {
-            event.currentTarget.style.background = "rgba(0,0,0,0.06)";
+            event.currentTarget.style.background = "var(--control-bg)";
           }}
           onMouseLeave={(event) => {
             event.currentTarget.style.background = "transparent";
@@ -95,12 +95,12 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
       </div>
       <SyntaxHighlighter
         language={lang}
-        style={oneLight}
+        style={oneDark}
         customStyle={{
           margin: 0,
           padding: "0.8em 1em",
           fontSize: "0.92em",
-          background: "rgba(0,0,0,0.02)",
+          background: "var(--surface-solid)",
           borderRadius: 0,
         }}
         codeTagProps={{
@@ -165,7 +165,7 @@ export function MessageBubble({ message, onRetry }: Props) {
               className="mt-1 flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] transition-colors"
               style={{
                 color: "var(--accent)",
-                background: "rgba(0,122,255,0.06)",
+                background: "rgba(10, 132, 255, 0.12)",
               }}
             >
               <RotateCcw size={11} /> 重试
@@ -270,7 +270,7 @@ function ActionBtn({
       className="flex h-7 w-7 items-center justify-center rounded-lg transition-colors"
       style={{ color: "var(--t3)" }}
       onMouseEnter={(event) => {
-        event.currentTarget.style.background = "rgba(0,0,0,0.06)";
+        event.currentTarget.style.background = "var(--control-bg)";
       }}
       onMouseLeave={(event) => {
         event.currentTarget.style.background = "transparent";

@@ -339,7 +339,7 @@ export function AppManager() {
 
       <div
         className="rounded-2xl p-4"
-        style={{ background: "rgba(0,0,0,0.02)", border: "0.5px solid rgba(0,0,0,0.08)" }}
+        style={{ background: "var(--panel-bg-soft)", border: "0.5px solid var(--border)" }}
       >
         <div className="mb-4 flex items-center justify-between gap-4">
           <div>
@@ -357,7 +357,7 @@ export function AppManager() {
               await loadApps();
             }}
             className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] leading-none"
-            style={{ background: "rgba(0,0,0,0.05)" }}
+            style={{ background: "var(--control-bg)" }}
           >
             <span className="inline-flex items-center gap-1.5 leading-none">
               <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
@@ -390,7 +390,7 @@ export function AppManager() {
             <button
               onClick={resetForm}
               className="inline-flex h-8 items-center justify-center rounded-lg px-3 text-[12px]"
-              style={{ background: "rgba(0,0,0,0.05)", color: "var(--t2)" }}
+              style={{ background: "var(--control-bg)", color: "var(--t2)" }}
             >
               取消编辑
             </button>
@@ -562,7 +562,7 @@ export function AppManager() {
             <button
               onClick={resetForm}
               className="rounded-lg px-3 py-2 text-[13px]"
-              style={{ background: "rgba(0,0,0,0.05)", color: "var(--t2)" }}
+              style={{ background: "var(--control-bg)", color: "var(--t2)" }}
             >
               取消
             </button>
@@ -631,7 +631,7 @@ export function AppManager() {
       ) : (
         <div
           className="rounded-2xl p-4 text-[13px]"
-          style={{ background: "rgba(0,0,0,0.02)", border: "0.5px solid rgba(0,0,0,0.08)", color: "var(--t2)" }}
+          style={{ background: "var(--panel-bg-soft)", border: "0.5px solid var(--border)", color: "var(--t2)" }}
         >
           当前还没有接入外部 MCP 服务。你可以先在上方填写命令、URL 与参数，接入第一个扩展。
         </div>
@@ -676,7 +676,7 @@ function ManagedAppCard({
   return (
     <div
       className="rounded-2xl p-4"
-      style={{ background: "rgba(0,0,0,0.02)", border: "0.5px solid rgba(0,0,0,0.08)" }}
+      style={{ background: "var(--panel-bg-soft)", border: "0.5px solid var(--border)" }}
     >
       <div className="mb-3 flex items-start justify-between gap-4">
         <div>
@@ -684,7 +684,7 @@ function ManagedAppCard({
             <span className="text-[15px] font-semibold">{app.name}</span>
             <span
               className="rounded-full px-2 py-0.5 text-[11px]"
-              style={{ background: "rgba(0,0,0,0.05)", color: "var(--t3)" }}
+              style={{ background: "var(--control-bg)", color: "var(--t3)" }}
             >
               {app.version}
             </span>
@@ -725,7 +725,7 @@ function ManagedAppCard({
           <button
             onClick={() => void onToggleEnabled(app)}
             className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] leading-none"
-            style={{ background: "rgba(0,0,0,0.05)" }}
+            style={{ background: "var(--control-bg)" }}
           >
             <span className="inline-flex items-center gap-1.5 leading-none">
               <Power size={13} />
@@ -738,7 +738,7 @@ function ManagedAppCard({
             disabled={activeLoading}
             className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] leading-none"
             style={{
-              background: "rgba(0,0,0,0.05)",
+              background: "var(--control-bg)",
               opacity: activeLoading ? 0.72 : 1,
               cursor: activeLoading ? "wait" : "pointer",
             }}
@@ -754,7 +754,7 @@ function ManagedAppCard({
             disabled={healthLoading}
             className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] leading-none"
             style={{
-              background: "rgba(0,0,0,0.05)",
+              background: "var(--control-bg)",
               opacity: healthLoading ? 0.72 : 1,
               cursor: healthLoading ? "wait" : "pointer",
             }}
@@ -768,7 +768,7 @@ function ManagedAppCard({
           <button
             onClick={() => void onRefreshTools(app.id)}
             className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] leading-none"
-            style={{ background: "rgba(0,0,0,0.05)" }}
+            style={{ background: "var(--control-bg)" }}
           >
             <span className="inline-flex items-center gap-1.5 leading-none">
               <Wrench size={13} />
@@ -801,7 +801,7 @@ function ManagedAppCard({
         </div>
       ) : null}
 
-      <div className="rounded-xl p-3 text-[13px]" style={{ background: "rgba(255,255,255,0.65)" }}>
+      <div className="rounded-xl p-3 text-[13px]" style={{ background: "var(--panel-bg-raised)" }}>
         <div className="mb-2 flex items-center justify-between gap-2">
           <div className="font-medium" style={{ color: "var(--t2)" }}>
             MCP 工具
@@ -827,7 +827,7 @@ function ManagedAppCard({
               <div
                 key={tool.name}
                 className="rounded-lg px-2.5 py-2"
-                style={{ background: "rgba(0,0,0,0.03)" }}
+                style={{ background: "var(--panel-bg)" }}
               >
                 <div className="font-medium">{tool.name}</div>
                 {tool.description ? (
@@ -859,7 +859,7 @@ function Badge({ label }: { label: string }) {
   return (
     <span
       className="rounded-full px-2 py-0.5"
-      style={{ background: "rgba(0,0,0,0.05)", color: "var(--t3)" }}
+      style={{ background: "var(--control-bg)", color: "var(--t3)" }}
     >
       {label}
     </span>
@@ -884,7 +884,7 @@ function StatCard({
   tone: "neutral" | "blue" | "green";
 }) {
   const toneStyles = {
-    neutral: { background: "rgba(0,0,0,0.03)", color: "var(--t1)" },
+    neutral: { background: "var(--panel-bg)", color: "var(--t1)" },
     blue: { background: "rgba(0,122,255,0.08)", color: "#007AFF" },
     green: { background: "rgba(16,185,129,0.10)", color: "#059669" },
   }[tone];
@@ -892,7 +892,7 @@ function StatCard({
   return (
     <div
       className="rounded-xl p-3"
-      style={{ background: "rgba(255,255,255,0.7)", border: "0.5px solid rgba(0,0,0,0.06)" }}
+      style={{ background: "var(--panel-bg-raised)", border: "0.5px solid var(--border-faint)" }}
     >
       <div className="text-[12px]" style={{ color: "var(--t3)" }}>
         {label}
@@ -1022,8 +1022,8 @@ function joinHeaders(value?: Record<string, string>) {
 }
 
 const inputStyle: CSSProperties = {
-  background: "rgba(255,255,255,0.8)",
-  border: "0.5px solid rgba(0,0,0,0.12)",
+  background: "var(--input-bg)",
+  border: "0.5px solid var(--border)",
   color: "var(--t1)",
 };
 

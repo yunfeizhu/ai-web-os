@@ -474,7 +474,10 @@ export function FileManager() {
     <div
       ref={containerRef}
       className="relative flex h-full flex-col"
-      style={{ color: "var(--t1)" }}
+      style={{
+        background: "var(--window-content-bg)",
+        color: "var(--t1)",
+      }}
     >
       <input
         ref={fileInputRef}
@@ -485,7 +488,10 @@ export function FileManager() {
 
       <div
         className="flex items-center gap-2 border-b px-4 py-2"
-        style={{ borderColor: "rgba(0,0,0,0.08)" }}
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--panel-bg-soft)",
+        }}
       >
         <ActionButton
           icon={<FolderPlus size={13} />}
@@ -593,7 +599,10 @@ export function FileManager() {
 
       <div
         className="border-b px-4 py-2.5"
-        style={{ borderColor: "rgba(0,0,0,0.08)" }}
+        style={{
+          borderColor: "var(--border)",
+          background: "var(--panel-bg)",
+        }}
       >
         <div
           className="flex items-center gap-3 overflow-x-auto whitespace-nowrap"
@@ -608,9 +617,8 @@ export function FileManager() {
           <div
             className="flex min-w-0 items-center gap-1.5 rounded-2xl px-2 py-1"
             style={{
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,0.82), rgba(244,246,250,0.92))",
-              boxShadow: "inset 0 0 0 1px rgba(15,23,42,0.06)",
+              background: "var(--control-bg)",
+              boxShadow: "inset 0 0 0 1px var(--border)",
             }}
           >
             {breadcrumbs.map((item, index) => {
@@ -621,19 +629,19 @@ export function FileManager() {
                     <ChevronRight
                       size={12}
                       strokeWidth={1.8}
-                      style={{ color: "rgba(15,23,42,0.32)" }}
+                      style={{ color: "var(--t3)" }}
                     />
                   )}
                   <button
                     onClick={() => loadEntries(item)}
                     className="rounded-full px-2.5 py-1 text-[13px] transition-all"
                     style={{
-                      color: isCurrent ? "#0f172a" : "rgba(15,23,42,0.58)",
+                      color: isCurrent ? "var(--t1)" : "var(--t2)",
                       background: isCurrent
-                        ? "linear-gradient(180deg, rgba(227,239,255,0.96), rgba(211,228,255,0.92))"
+                        ? "rgba(10, 132, 255, 0.16)"
                         : "transparent",
                       boxShadow: isCurrent
-                        ? "inset 0 0 0 1px rgba(59,130,246,0.14)"
+                        ? "inset 0 0 0 1px rgba(10, 132, 255, 0.22)"
                         : "none",
                       fontWeight: isCurrent ? 600 : 500,
                     }}
@@ -651,8 +659,8 @@ export function FileManager() {
         <div
           className="flex items-center gap-2 border-b px-4 py-2 text-[13px]"
           style={{
-            borderColor: "rgba(0,0,0,0.08)",
-            background: "rgba(0,0,0,0.02)",
+            borderColor: "var(--border)",
+            background: "var(--panel-bg-soft)",
           }}
         >
           <span style={{ color: "var(--t2)", minWidth: 72 }}>
@@ -671,8 +679,9 @@ export function FileManager() {
             }
             className="flex-1 rounded-lg px-3 py-1.5 outline-none"
             style={{
-              background: "#fff",
-              border: "0.5px solid rgba(0,0,0,0.12)",
+              background: "var(--input-bg)",
+              border: "0.5px solid var(--border)",
+              color: "var(--t1)",
             }}
           />
           <ActionButton label="取消" onClick={() => setAction(null)} />
@@ -684,8 +693,8 @@ export function FileManager() {
         <aside
           className="w-[220px] overflow-y-auto border-r p-3"
           style={{
-            borderColor: "rgba(0,0,0,0.08)",
-            background: "rgba(0,0,0,0.02)",
+            borderColor: "var(--border)",
+            background: "var(--panel-bg)",
           }}
         >
           <TreeView
@@ -696,10 +705,17 @@ export function FileManager() {
           />
         </aside>
 
-        <main className="min-w-0 flex-1 overflow-y-auto p-3">
+        <main
+          className="min-w-0 flex-1 overflow-y-auto p-3"
+          style={{ background: "var(--window-content-bg)" }}
+        >
           <div
-            className="min-h-full rounded-2xl border border-dashed p-3"
-            style={{ borderColor: "rgba(0,0,0,0.08)" }}
+            className="min-h-full rounded-2xl border p-3"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--panel-bg-soft)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)",
+            }}
             onDragOver={(event) => {
               event.preventDefault();
             }}
@@ -744,8 +760,8 @@ export function FileManager() {
         <aside
           className="w-[300px] overflow-y-auto border-l p-4"
           style={{
-            borderColor: "rgba(0,0,0,0.08)",
-            background: "rgba(0,0,0,0.02)",
+            borderColor: "var(--border)",
+            background: "var(--panel-bg)",
           }}
         >
           {!selected ? (
@@ -787,7 +803,7 @@ export function FileManager() {
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 rounded-full px-2 py-1 transition-colors"
-                        style={{ background: "rgba(0,0,0,0.04)", color: "var(--t2)" }}
+                        style={{ background: "var(--control-bg)", color: "var(--t2)" }}
                       >
                         <ExternalLink size={12} />
                         新窗口打开
@@ -985,9 +1001,9 @@ export function FileManager() {
             style={{
               top: contextMenu.y,
               left: contextMenu.x,
-              background: "rgba(255,255,255,0.95)",
-              boxShadow: "0 12px 40px rgba(0,0,0,0.15)",
-              border: "0.5px solid rgba(0,0,0,0.08)",
+              background: "var(--surface-solid)",
+              boxShadow: "var(--shadow-window)",
+              border: "0.5px solid var(--border)",
             }}
           >
             {(() => {
@@ -1088,7 +1104,9 @@ function ActionButton({
       disabled={disabled}
       className="inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 align-middle text-[13px] leading-none [&_svg]:shrink-0"
       style={{
-        background: "rgba(0,0,0,0.05)",
+        background: "var(--control-bg)",
+        border: "0.5px solid var(--border)",
+        color: "var(--t1)",
         opacity: disabled ? 0.5 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
       }}
@@ -1117,7 +1135,8 @@ function TreeView({
         className="flex w-full select-none items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px]"
         style={{
           background:
-            currentPath === "/" ? "rgba(0,122,255,0.08)" : "transparent",
+            currentPath === "/" ? "rgba(10, 132, 255, 0.16)" : "transparent",
+          color: currentPath === "/" ? "var(--t1)" : "var(--t2)",
         }}
       >
         <HardDrive size={14} />
@@ -1155,7 +1174,8 @@ function TreeNodeItem({
         style={{
           paddingLeft: 8 + depth * 12,
           background:
-            currentPath === node.path ? "rgba(0,122,255,0.08)" : "transparent",
+            currentPath === node.path ? "rgba(10, 132, 255, 0.16)" : "transparent",
+          color: currentPath === node.path ? "var(--t1)" : "var(--t2)",
         }}
       >
         {isDrivePath(node.path) ? <HardDrive size={14} /> : <Folder size={14} />}
@@ -1178,7 +1198,10 @@ function InfoCard({ label, value }: { label: string; value: string }) {
   return (
     <div
       className="rounded-xl p-2.5"
-      style={{ background: "rgba(0,0,0,0.04)" }}
+      style={{
+        background: "var(--control-bg)",
+        border: "0.5px solid var(--border)",
+      }}
     >
       <div style={{ color: "var(--t3)" }}>{label}</div>
       <div className="mt-1 break-all font-medium" style={{ color: "var(--t1)" }}>
@@ -1192,7 +1215,11 @@ function EmptyPanel({ text }: { text: string }) {
   return (
     <div
       className="rounded-xl p-4 text-[13px]"
-      style={{ background: "rgba(0,0,0,0.04)", color: "var(--t3)" }}
+      style={{
+        background: "var(--control-bg)",
+        border: "0.5px solid var(--border)",
+        color: "var(--t3)",
+      }}
     >
       {text}
     </div>
@@ -1210,8 +1237,8 @@ function MediaPreviewShell({
     <div
       className={`rounded-xl border p-3 ${className}`.trim()}
       style={{
-        background: "rgba(255,255,255,0.72)",
-        borderColor: "rgba(0,0,0,0.08)",
+        background: "var(--panel-bg-soft)",
+        borderColor: "var(--border)",
       }}
     >
       {children}
@@ -1253,8 +1280,8 @@ function SpreadsheetPreviewTable({
                 key={colIndex}
                 className="border-b border-r px-2 py-2 text-left"
                 style={{
-                  background: "#f8fafc",
-                  borderColor: "rgba(15,23,42,0.08)",
+                  background: "var(--panel-bg)",
+                  borderColor: "var(--border)",
                   color: "var(--t2)",
                 }}
               >
@@ -1271,9 +1298,9 @@ function SpreadsheetPreviewTable({
                   key={`${rowIndex}-${colIndex}`}
                   className="max-w-[112px] border-b border-r px-2 py-2 align-top"
                   style={{
-                    borderColor: "rgba(15,23,42,0.08)",
+                    borderColor: "var(--border)",
                     color: "var(--t1)",
-                    background: rowIndex % 2 === 0 ? "rgba(255,255,255,0.9)" : "rgba(248,250,252,0.88)",
+                    background: rowIndex % 2 === 0 ? "var(--surface-solid)" : "var(--panel-bg)",
                     wordBreak: "break-word",
                   }}
                 >
@@ -1287,7 +1314,7 @@ function SpreadsheetPreviewTable({
 
       <div
         className="border-t px-3 py-2 text-[12px]"
-        style={{ borderColor: "rgba(15,23,42,0.08)", color: "var(--t3)" }}
+        style={{ borderColor: "var(--border)", color: "var(--t3)" }}
       >
         已显示 {visibleRows} 行 / {visibleCols} 列，原表共 {totalRows || visibleRows} 行、{totalCols || visibleCols} 列。
       </div>
@@ -1319,12 +1346,22 @@ function EntryCard({
       }}
       className="select-none rounded-xl p-3 text-left transition-colors"
       style={{
-        background: selected ? "rgba(0,122,255,0.08)" : "rgba(0,0,0,0.03)",
+        background: selected ? "rgba(10, 132, 255, 0.16)" : "var(--panel-bg)",
+        border: selected
+          ? "0.5px solid rgba(10, 132, 255, 0.34)"
+          : "0.5px solid var(--border)",
+        boxShadow: selected
+          ? "0 12px 28px rgba(10, 132, 255, 0.12), inset 0 1px 0 rgba(255,255,255,0.06)"
+          : "0 8px 20px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.04)",
       }}
     >
       <div
-        className="mb-2"
-        style={{ color: getEntryAccentColor(entry) }}
+        className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg"
+        style={{
+          background: "var(--control-bg)",
+          color: getEntryAccentColor(entry),
+          border: "0.5px solid var(--border)",
+        }}
       >
         {getEntryIcon(entry, 18)}
       </div>
@@ -1360,8 +1397,8 @@ function EntryRow({
       }}
       className="flex w-full select-none items-center gap-3 border-b px-3 py-2 text-left text-[13px]"
       style={{
-        background: selected ? "rgba(0,122,255,0.08)" : "transparent",
-        borderColor: "rgba(0,0,0,0.05)",
+        background: selected ? "rgba(10, 132, 255, 0.16)" : "var(--panel-bg)",
+        borderColor: "var(--border)",
       }}
     >
       <span style={{ color: getEntryAccentColor(entry) }}>

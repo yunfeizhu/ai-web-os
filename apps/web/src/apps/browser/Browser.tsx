@@ -1677,27 +1677,25 @@ export function Browser({ appState, windowId }: BrowserProps) {
     <div
       className="relative flex h-full flex-col overflow-hidden"
       style={{
-        background:
-          "linear-gradient(180deg, rgba(246,248,252,0.98) 0%, rgba(235,241,248,0.98) 100%)",
-        color: "#172033",
+        background: "var(--window-content-bg)",
+        color: "var(--t1)",
       }}
     >
       <div
         className="border-b px-4 py-2.5"
         style={{
-          borderColor: "rgba(18, 30, 56, 0.08)",
-          background:
-            "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(243,247,251,0.96) 100%)",
+          borderColor: "var(--border)",
+          background: "var(--panel-bg-soft)",
         }}
       >
         <div className="mb-2 flex items-center justify-between gap-3">
           <div
             className="flex items-center gap-2.5 text-[12px]"
-            style={{ color: "#60708f" }}
+            style={{ color: "var(--t2)" }}
           >
             <span
               className="font-medium tracking-[0.06em]"
-              style={{ color: "#24324a" }}
+              style={{ color: "var(--t1)" }}
             >
               浏览器
             </span>
@@ -1731,9 +1729,9 @@ export function Browser({ appState, windowId }: BrowserProps) {
               style={{
                 background: preciseControl
                   ? "rgba(17, 92, 214, 0.12)"
-                  : "rgba(255,255,255,0.82)",
-                color: preciseControl ? "#0f56cf" : "#4c5d79",
-                border: "1px solid rgba(18, 30, 56, 0.08)",
+                  : "var(--control-bg)",
+                color: preciseControl ? "#0f56cf" : "var(--t2)",
+                border: "1px solid var(--border)",
               }}
             >
               {preciseControl ? "精准点击开" : "精准点击"}
@@ -1757,8 +1755,8 @@ export function Browser({ appState, windowId }: BrowserProps) {
               className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
               style={{
                 background: "rgba(15, 23, 42, 0.06)",
-                color: activeSessionId ? "#4c5d79" : "#9ba8bd",
-                border: "1px solid rgba(18, 30, 56, 0.08)",
+                color: activeSessionId ? "var(--t2)" : "var(--t3)",
+                border: "1px solid var(--border)",
               }}
             >
               <Cookie size={13} />
@@ -1771,8 +1769,8 @@ export function Browser({ appState, windowId }: BrowserProps) {
               className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
               style={{
                 background: "rgba(15, 23, 42, 0.06)",
-                color: activeSessionId ? "#4c5d79" : "#9ba8bd",
-                border: "1px solid rgba(18, 30, 56, 0.08)",
+                color: activeSessionId ? "var(--t2)" : "var(--t3)",
+                border: "1px solid var(--border)",
                 opacity: !activeSessionId || savingProfile ? 0.7 : 1,
               }}
             >
@@ -1789,8 +1787,8 @@ export function Browser({ appState, windowId }: BrowserProps) {
               className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
               style={{
                 background: "rgba(15, 23, 42, 0.06)",
-                color: "#4c5d79",
-                border: "1px solid rgba(18, 30, 56, 0.08)",
+                color: "var(--t2)",
+                border: "1px solid var(--border)",
               }}
             >
               <BookOpen size={13} />
@@ -1803,7 +1801,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
               className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
               style={{
                 background: "rgba(15, 92, 214, 0.08)",
-                color: activeSessionId ? "#0f56cf" : "#9ba8bd",
+                color: activeSessionId ? "#0f56cf" : "var(--t3)",
                 border: "1px solid rgba(17, 92, 214, 0.08)",
                 opacity: !activeSessionId || savingKnowledge ? 0.7 : 1,
               }}
@@ -1864,9 +1862,9 @@ export function Browser({ appState, windowId }: BrowserProps) {
             disabled={!activeSessionId || reloading}
             className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border"
             style={{
-              borderColor: "rgba(18, 30, 56, 0.08)",
-              background: "rgba(255,255,255,0.96)",
-              color: activeSessionId ? "#1f2a44" : "#a2aec3",
+              borderColor: "var(--border)",
+              background: "var(--control-bg)",
+              color: activeSessionId ? "var(--t1)" : "var(--t3)",
             }}
           >
             <ArrowLeft size={16} />
@@ -1878,9 +1876,9 @@ export function Browser({ appState, windowId }: BrowserProps) {
             disabled={!activeSessionId || reloading}
             className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border"
             style={{
-              borderColor: "rgba(18, 30, 56, 0.08)",
-              background: "rgba(255,255,255,0.96)",
-              color: activeSessionId ? "#1f2a44" : "#a2aec3",
+              borderColor: "var(--border)",
+              background: "var(--control-bg)",
+              color: activeSessionId ? "var(--t1)" : "var(--t3)",
             }}
           >
             <ArrowRight size={16} />
@@ -1892,9 +1890,9 @@ export function Browser({ appState, windowId }: BrowserProps) {
             disabled={!activeSessionId || reloading}
             className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border"
             style={{
-              borderColor: "rgba(18, 30, 56, 0.08)",
-              background: "rgba(255,255,255,0.96)",
-              color: activeSessionId ? "#1f2a44" : "#a2aec3",
+              borderColor: "var(--border)",
+              background: "var(--control-bg)",
+              color: activeSessionId ? "var(--t1)" : "var(--t3)",
             }}
           >
             {reloading ? (
@@ -1910,11 +1908,11 @@ export function Browser({ appState, windowId }: BrowserProps) {
             <div
               className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-2xl border px-3"
               style={{
-                borderColor: "rgba(18, 30, 56, 0.08)",
-                background: "rgba(255,255,255,0.98)",
+                borderColor: "var(--border)",
+                background: "var(--input-bg)",
               }}
             >
-              <Globe size={15} style={{ color: "#7a88a5", flexShrink: 0 }} />
+              <Globe size={15} style={{ color: "var(--t3)", flexShrink: 0 }} />
               <input
                 value={urlInput}
                 onChange={(event) => setUrlInput(event.target.value)}
@@ -1931,7 +1929,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
                     : "先新建浏览器会话"
                 }
                 className="min-w-0 flex-1 bg-transparent text-[14px] outline-none"
-                style={{ color: "#172033" }}
+                style={{ color: "var(--t1)" }}
                 disabled={!activeSessionId}
               />
             </div>
@@ -1966,10 +1964,10 @@ export function Browser({ appState, windowId }: BrowserProps) {
                       background:
                         session.id === activeSessionId
                           ? "linear-gradient(135deg, rgba(20,101,255,0.18) 0%, rgba(86,143,255,0.18) 100%)"
-                          : "rgba(255,255,255,0.76)",
+                          : "var(--control-bg)",
                       color:
-                        session.id === activeSessionId ? "#0f56cf" : "#55637f",
-                      border: "1px solid rgba(18, 30, 56, 0.08)",
+                        session.id === activeSessionId ? "#0f56cf" : "var(--t2)",
+                      border: "1px solid var(--border)",
                       boxShadow:
                         session.id === activeSessionId
                           ? "0 10px 24px rgba(20,101,255,0.14)"
@@ -1994,10 +1992,9 @@ export function Browser({ appState, windowId }: BrowserProps) {
             <div
               className="relative min-h-0 flex-1 overflow-hidden rounded-[30px] border"
               style={{
-                borderColor: "rgba(18, 30, 56, 0.08)",
-                background:
-                  "radial-gradient(circle at top left, rgba(80,138,255,0.12) 0%, rgba(255,255,255,0.96) 28%, rgba(241,246,252,0.98) 100%)",
-                boxShadow: "0 26px 60px rgba(33, 48, 76, 0.14)",
+                borderColor: "var(--border)",
+                background: "var(--surface-solid)",
+                boxShadow: "var(--shadow-window)",
               }}
             >
               {activeSessionId && detail ? (
@@ -2005,9 +2002,8 @@ export function Browser({ appState, windowId }: BrowserProps) {
                   <div
                     className="flex shrink-0 items-end justify-between gap-2 border-b px-2.5 pt-1.5 pb-0"
                     style={{
-                      borderColor: "rgba(18, 30, 56, 0.08)",
-                      background:
-                        "linear-gradient(180deg, rgba(252,253,255,0.96) 0%, rgba(244,247,252,0.92) 100%)",
+                      borderColor: "var(--border)",
+                      background: "var(--panel-bg)",
                       backdropFilter: "blur(18px)",
                     }}
                   >
@@ -2020,13 +2016,13 @@ export function Browser({ appState, windowId }: BrowserProps) {
                           className="group relative max-w-[220px] shrink-0 rounded-t-[12px] px-3 py-1.5 text-left text-[12px]"
                           style={{
                             background: tab.is_active
-                              ? "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(250,252,255,0.98) 100%)"
-                              : "linear-gradient(180deg, rgba(233,239,247,0.95) 0%, rgba(225,232,242,0.92) 100%)",
-                            color: tab.is_active ? "#1f2a44" : "#60708f",
-                            border: "1px solid rgba(18, 30, 56, 0.08)",
+                              ? "var(--surface-solid)"
+                              : "var(--control-bg)",
+                            color: tab.is_active ? "var(--t1)" : "var(--t2)",
+                            border: "1px solid var(--border)",
                             borderBottomColor: tab.is_active
-                              ? "rgba(255,255,255,0.96)"
-                              : "rgba(18, 30, 56, 0.08)",
+                              ? "var(--surface-solid)"
+                              : "var(--border)",
                             boxShadow: tab.is_active
                               ? "0 10px 18px rgba(21,33,57,0.08)"
                               : "none",
@@ -2046,7 +2042,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
                               }}
                               className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full"
                               style={{
-                                color: "rgba(96, 112, 143, 0.9)",
+                                color: "var(--t3)",
                                 opacity: detail.tabs.length > 1 ? 0.9 : 0.4,
                                 cursor:
                                   detail.tabs.length > 1 ? "pointer" : "not-allowed",
@@ -2062,9 +2058,9 @@ export function Browser({ appState, windowId }: BrowserProps) {
                         onClick={() => void handleCreateTab()}
                         className="mb-[1px] inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border"
                         style={{
-                          borderColor: "rgba(18, 30, 56, 0.08)",
-                          background: "rgba(255,255,255,0.8)",
-                          color: "#60708f",
+                          borderColor: "var(--border)",
+                          background: "var(--control-bg)",
+                          color: "var(--t2)",
                         }}
                       >
                         <Plus size={14} />
@@ -2094,8 +2090,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
                   <div
                     className="min-h-0 flex-1 p-2"
                     style={{
-                      background:
-                        "linear-gradient(180deg, rgba(241,245,250,0.95) 0%, rgba(235,240,247,0.95) 100%)",
+                      background: "var(--panel-bg-soft)",
                     }}
                   >
                     <div
@@ -2122,16 +2117,16 @@ export function Browser({ appState, windowId }: BrowserProps) {
                 </div>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
-                  <Monitor size={34} style={{ color: "#7a88a5" }} />
+                  <Monitor size={34} style={{ color: "var(--t3)" }} />
                   <div
                     className="text-[16px] font-semibold"
-                    style={{ color: "#172033" }}
+                    style={{ color: "var(--t1)" }}
                   >
                     还没有打开浏览器
                   </div>
                   <p
                     className="max-w-[420px] text-[13px] leading-6"
-                    style={{ color: "#6e7c98" }}
+                    style={{ color: "var(--t2)" }}
                   >
                     点击下面的按钮后，会启动一个真实浏览器。打开成功后，这里会显示浏览器画面，你也可以直接在右侧让 AI 帮你操作网页。
                   </p>
@@ -2179,20 +2174,17 @@ export function Browser({ appState, windowId }: BrowserProps) {
             <div
               className="flex h-full min-h-0 flex-col overflow-hidden rounded-[30px] border"
               style={{
-                borderColor: "rgba(15, 23, 42, 0.08)",
-                background:
-                  "linear-gradient(180deg, rgba(250,252,255,0.92) 0%, rgba(244,247,252,0.9) 100%)",
+                borderColor: "var(--border)",
+                background: "var(--surface-solid)",
                 backdropFilter: "blur(28px)",
-                boxShadow:
-                  "0 28px 60px rgba(16, 24, 40, 0.14), inset 0 1px 0 rgba(255,255,255,0.75)",
+                boxShadow: "var(--shadow-window)",
               }}
             >
               <div
                 className="shrink-0 border-b px-4 py-3"
                 style={{
-                  borderColor: "rgba(15, 23, 42, 0.08)",
-                  background:
-                    "linear-gradient(180deg, rgba(255,255,255,0.72) 0%, rgba(247,250,255,0.4) 100%)",
+                  borderColor: "var(--border)",
+                  background: "var(--panel-bg)",
                 }}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -2200,11 +2192,11 @@ export function Browser({ appState, windowId }: BrowserProps) {
                     <div className="min-w-0">
                       <div
                         className="truncate text-[13px] font-semibold tracking-[0.08em]"
-                        style={{ color: "#1e293b" }}
+                        style={{ color: "var(--t1)" }}
                       >
                         浏览器助手
                       </div>
-                      <div className="truncate text-[11px]" style={{ color: "#7c8aa5" }}>
+                      <div className="truncate text-[11px]" style={{ color: "var(--t2)" }}>
                         用对话驱动真实浏览器
                       </div>
                     </div>
@@ -2229,11 +2221,9 @@ export function Browser({ appState, windowId }: BrowserProps) {
                 <div
                   className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border"
                   style={{
-                    borderColor: "rgba(15, 23, 42, 0.08)",
-                    background:
-                      "linear-gradient(180deg, rgba(255,255,255,0.86) 0%, rgba(248,250,255,0.76) 100%)",
-                    boxShadow:
-                      "inset 0 1px 0 rgba(255,255,255,0.85), 0 16px 34px rgba(148, 163, 184, 0.14)",
+                    borderColor: "var(--border)",
+                    background: "var(--panel-bg-soft)",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                   }}
                 >
                   <div
@@ -2252,16 +2242,16 @@ export function Browser({ appState, windowId }: BrowserProps) {
                                 className="min-w-0 max-w-[76%] rounded-[18px] px-3.5 py-2.5"
                                 style={{
                                   background:
-                                    "linear-gradient(180deg, rgba(218,231,255,0.96) 0%, rgba(204,222,255,0.92) 100%)",
+                                    "linear-gradient(180deg, rgba(24, 82, 177, 0.26) 0%, rgba(18, 75, 166, 0.2) 100%)",
                                   border: "1px solid rgba(96, 141, 255, 0.18)",
                                   boxShadow:
-                                    "0 12px 24px rgba(111, 145, 204, 0.16), inset 0 1px 0 rgba(255,255,255,0.68)",
+                                    "0 12px 24px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255,255,255,0.08)",
                                 }}
                               >
                                 <div
                                   className="whitespace-pre-wrap break-words text-[13px] leading-6"
                                   style={{
-                                    color: "#1c5fd4",
+                                    color: "var(--t1)",
                                     overflowWrap: "anywhere",
                                     wordBreak: "break-word",
                                   }}
@@ -2272,11 +2262,10 @@ export function Browser({ appState, windowId }: BrowserProps) {
                               <div
                                 className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
                                 style={{
-                                  background:
-                                    "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(226,237,255,0.92) 100%)",
+                                  background: "var(--control-bg)",
                                   border: "1px solid rgba(96, 141, 255, 0.18)",
                                   boxShadow:
-                                    "0 10px 18px rgba(111, 145, 204, 0.12), inset 0 1px 0 rgba(255,255,255,0.9)",
+                                    "0 10px 18px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255,255,255,0.08)",
                                   color: "#4f7fe8",
                                 }}
                               >
@@ -2301,17 +2290,16 @@ export function Browser({ appState, windowId }: BrowserProps) {
                               <div
                                 className="min-w-0 flex-1 rounded-[18px] border px-3.5 py-3"
                                 style={{
-                                  borderColor: "rgba(15, 23, 42, 0.08)",
-                                  background:
-                                    "linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(247,249,253,0.92) 100%)",
+                                  borderColor: "var(--border)",
+                                  background: "var(--panel-bg)",
                                   boxShadow:
-                                    "0 16px 28px rgba(148, 163, 184, 0.16), inset 0 1px 0 rgba(255,255,255,0.88)",
+                                    "0 16px 28px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255,255,255,0.06)",
                                 }}
                               >
                                 <div className="flex min-w-0 items-center justify-between gap-3">
                                   <div
                                     className="min-w-0 truncate text-[10px] uppercase tracking-[0.08em]"
-                                    style={{ color: "#8090aa" }}
+                                    style={{ color: "var(--t3)" }}
                                   >
                                     浏览器助手
                                   </div>
@@ -2341,13 +2329,12 @@ export function Browser({ appState, windowId }: BrowserProps) {
                                     className="mt-3 min-w-0 rounded-[16px] border px-2.5 py-2.5"
                                     style={{
                                       borderColor: "rgba(96, 165, 250, 0.14)",
-                                      background:
-                                        "linear-gradient(180deg, rgba(244,248,255,0.92) 0%, rgba(239,244,252,0.76) 100%)",
+                                      background: "var(--panel-bg-soft)",
                                     }}
                                   >
                                     <div
                                       className="mb-2 text-[10px] uppercase tracking-[0.08em]"
-                                      style={{ color: "#94a3b8" }}
+                                      style={{ color: "var(--t3)" }}
                                     >
                                       实时进展
                                     </div>
@@ -2369,7 +2356,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
                                           <div
                                             className="min-w-0 whitespace-pre-wrap break-words text-[11px] leading-5"
                                             style={{
-                                              color: "#5d6d86",
+                                              color: "var(--t2)",
                                               overflowWrap: "anywhere",
                                               wordBreak: "break-word",
                                             }}
@@ -2386,7 +2373,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
                                   <div
                                     className="markdown mt-3 min-w-0 break-words text-[13px] leading-6"
                                     style={{
-                                      color: "#22324c",
+                                      color: "var(--t1)",
                                       overflowWrap: "anywhere",
                                       wordBreak: "break-word",
                                     }}
@@ -2400,14 +2387,14 @@ export function Browser({ appState, windowId }: BrowserProps) {
                                     {message.streaming ? (
                                       <span
                                         className="browser-agent-caret ml-0.5 inline-block h-5 w-[2px] align-[-3px]"
-                                        style={{ background: "#7c8aa5" }}
+                                        style={{ background: "var(--t3)" }}
                                       />
                                     ) : null}
                                   </div>
                                 ) : message.streaming ? (
                                   <div
                                     className="mt-3 text-[13px] leading-6"
-                                    style={{ color: "#7c8aa5" }}
+                                    style={{ color: "var(--t2)" }}
                                   >
                                     正在生成响应
                                     <span className="browser-agent-ellipsis ml-1 inline-flex">
@@ -2425,35 +2412,33 @@ export function Browser({ appState, windowId }: BrowserProps) {
                         <div
                           className="rounded-[16px] border border-dashed px-3.5 py-3"
                           style={{
-                            borderColor: "rgba(15, 23, 42, 0.12)",
-                            background:
-                              "linear-gradient(180deg, rgba(255,255,255,0.74) 0%, rgba(245,248,253,0.7) 100%)",
-                            color: "#64748b",
+                            borderColor: "var(--border-strong)",
+                            background: "var(--panel-bg)",
+                            color: "var(--t2)",
                           }}
                         >
                           <div className="flex items-start gap-2.5">
                             <div
                               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
                               style={{
-                                background:
-                                  "linear-gradient(180deg, rgba(255,255,255,0.95) 0%, rgba(233,239,248,0.95) 100%)",
-                                border: "1px solid rgba(15, 23, 42, 0.08)",
+                                background: "var(--control-bg)",
+                                border: "1px solid var(--border)",
                                 boxShadow:
-                                  "0 6px 14px rgba(148, 163, 184, 0.1), inset 0 1px 0 rgba(255,255,255,0.9)",
+                                  "0 6px 14px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255,255,255,0.08)",
                               }}
                             >
-                              <Monitor size={14} style={{ color: "#7c8aa5" }} />
+                              <Monitor size={14} style={{ color: "var(--t3)" }} />
                             </div>
                             <div className="min-w-0 flex-1">
                               <div
                                 className="text-[10px] uppercase tracking-[0.08em]"
-                                style={{ color: "#94a3b8" }}
+                                style={{ color: "var(--t3)" }}
                               >
                                 可以开始
                               </div>
                               <div
                                 className="mt-0.5 text-[12px] leading-5"
-                                style={{ color: "#60708f" }}
+                                style={{ color: "var(--t2)" }}
                               >
                                 直接说“打开知乎”或“在当前页面帮我总结重点”。
                               </div>
@@ -2468,9 +2453,8 @@ export function Browser({ appState, windowId }: BrowserProps) {
                   <div
                     className="shrink-0 border-t px-2 py-2"
                     style={{
-                      borderColor: "rgba(15, 23, 42, 0.08)",
-                      background:
-                        "linear-gradient(180deg, rgba(255,255,255,0.74) 0%, rgba(248,250,255,0.9) 100%)",
+                      borderColor: "var(--border)",
+                      background: "var(--panel-bg)",
                     }}
                   >
                     {summaryError ? (
@@ -2489,11 +2473,10 @@ export function Browser({ appState, windowId }: BrowserProps) {
                     <div
                       className="rounded-[22px] border p-1.5"
                       style={{
-                        borderColor: "rgba(15, 23, 42, 0.08)",
-                        background:
-                          "linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(246,249,255,0.84) 100%)",
+                        borderColor: "var(--border)",
+                        background: "var(--input-bg)",
                         boxShadow:
-                          "inset 0 1px 0 rgba(255,255,255,0.92), 0 10px 24px rgba(148, 163, 184, 0.12)",
+                          "inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(0, 0, 0, 0.14)",
                       }}
                     >
                       <textarea
@@ -2508,14 +2491,14 @@ export function Browser({ appState, windowId }: BrowserProps) {
                         placeholder="告诉浏览器你想做什么"
                         className="min-h-[68px] w-full resize-none rounded-[18px] border-0 bg-transparent px-3 py-2.5 text-[13px] outline-none"
                         style={{
-                          color: "#172033",
+                          color: "var(--t1)",
                         }}
                       />
 
                       <div className="mt-1.5 flex items-center justify-between gap-3 px-1.5 pb-0.5">
                         <div
                           className="text-[11px]"
-                          style={{ color: "#94a3b8" }}
+                          style={{ color: "var(--t3)" }}
                         >
                           Enter 发送，Shift + Enter 换行
                         </div>
@@ -2526,11 +2509,15 @@ export function Browser({ appState, windowId }: BrowserProps) {
                           className="inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-medium"
                           style={{
                             background:
-                              "linear-gradient(180deg, #1e80ff 0%, #0f6ae6 100%)",
-                            color: "#fff",
-                            opacity: !chatInput.trim() || chatLoading ? 0.65 : 1,
+                              !chatInput.trim() || chatLoading
+                                ? "var(--disabled-bg)"
+                                : "linear-gradient(180deg, #1e80ff 0%, #0f6ae6 100%)",
+                            color:
+                              !chatInput.trim() || chatLoading ? "var(--t3)" : "#fff",
                             boxShadow:
-                              "0 14px 24px rgba(30, 128, 255, 0.24), inset 0 1px 0 rgba(255,255,255,0.28)",
+                              !chatInput.trim() || chatLoading
+                                ? "inset 0 1px 0 rgba(255,255,255,0.05)"
+                                : "0 14px 24px rgba(30, 128, 255, 0.24), inset 0 1px 0 rgba(255,255,255,0.28)",
                           }}
                         >
                           {chatLoading ? (

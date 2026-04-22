@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { AiChat } from "@/apps/ai-chat/AiChat";
 import { Browser } from "@/apps/browser/Browser";
 import { CalendarApp } from "@/apps/calendar/CalendarApp";
@@ -24,30 +26,42 @@ export function AppRenderer({ appId, appState, windowId }: AppRendererProps) {
     case "settings":
       return <Settings />;
     case "ai-chat":
-      return <AiChat />;
+      return withNativeAppTheme(<AiChat />);
     case "file-manager":
-      return <FileManager />;
+      return withNativeAppTheme(<FileManager />);
     case "terminal":
       return <Terminal windowId={windowId} />;
     case "browser":
-      return <Browser appState={appState} windowId={windowId} />;
+      return withNativeAppTheme(<Browser appState={appState} windowId={windowId} />);
     case "notes":
-      return <Notes windowId={windowId} />;
+      return withNativeAppTheme(<Notes windowId={windowId} />);
     case "document-editor":
-      return <DocumentEditor appState={appState} windowId={windowId} />;
+      return withNativeAppTheme(
+        <DocumentEditor appState={appState} windowId={windowId} />,
+      );
     case "text-editor":
-      return <TextEditor appState={appState} windowId={windowId} />;
+      return withNativeAppTheme(
+        <TextEditor appState={appState} windowId={windowId} />,
+      );
     case "spreadsheet-viewer":
-      return <SpreadsheetEditor appState={appState} windowId={windowId} />;
+      return withNativeAppTheme(
+        <SpreadsheetEditor appState={appState} windowId={windowId} />,
+      );
     case "calendar":
-      return <CalendarApp />;
+      return withNativeAppTheme(<CalendarApp />);
     case "mail":
-      return <MailApp appState={appState} />;
+      return withNativeAppTheme(<MailApp appState={appState} />);
     case "whiteboard":
-      return <WhiteboardApp appState={appState} windowId={windowId} />;
+      return withNativeAppTheme(
+        <WhiteboardApp appState={appState} windowId={windowId} />,
+      );
     default:
       return <PlaceholderApp name={appId} description="应用暂未提供内容。" />;
   }
+}
+
+function withNativeAppTheme(children: ReactNode) {
+  return <div className="macos-dark-app h-full min-w-0">{children}</div>;
 }
 
 function PlaceholderApp({

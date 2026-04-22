@@ -207,10 +207,10 @@ export function Window({
         className={`flex flex-col w-full h-full overflow-hidden${animClass ? ` ${animClass}` : ""}`}
         style={{
           borderRadius: isMaximized ? 0 : 12,
-          background: "rgba(246,246,248,0.82)",
+          background: "var(--window-bg)",
           backdropFilter: "blur(60px) saturate(200%)",
           WebkitBackdropFilter: "blur(60px) saturate(200%)",
-          border: `0.5px solid ${win.isFocused ? "rgba(0,0,0,0.22)" : "rgba(0,0,0,0.12)"}`,
+          border: `0.5px solid ${win.isFocused ? "var(--border-strong)" : "var(--border)"}`,
           boxShadow: win.isFocused
             ? "var(--shadow-window-focus)"
             : "var(--shadow-window)",
@@ -227,7 +227,7 @@ export function Window({
         <div
           className="flex-1 overflow-auto window-content"
           data-virtualized={contentVirtualized ? "true" : "false"}
-          style={{ background: "rgba(255,255,255,0.55)" }}
+          style={{ background: "var(--window-content-bg)" }}
         >
           {contentVirtualized ? (
             <VirtualizedWindowContent title={win.title} icon={win.icon} />
@@ -251,16 +251,15 @@ function VirtualizedWindowContent({
     <div
       className="flex h-full items-center justify-center"
       style={{
-        background:
-          "linear-gradient(135deg, rgba(255,255,255,0.34), rgba(238,242,247,0.52))",
+        background: "var(--virtualized-bg)",
       }}
     >
       <div
         className="flex items-center gap-3 rounded-lg px-4 py-3"
         style={{
           color: "var(--t3)",
-          background: "rgba(255,255,255,0.38)",
-          border: "0.5px solid rgba(0,0,0,0.08)",
+          background: "var(--panel-bg-raised)",
+          border: "0.5px solid var(--border)",
         }}
       >
         <span style={{ fontSize: 18, lineHeight: 1 }}>{icon}</span>

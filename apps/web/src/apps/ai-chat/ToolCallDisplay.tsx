@@ -119,8 +119,8 @@ function ToolCallItem({ tc }: ToolCallItemProps) {
     <div
       className="rounded-xl overflow-hidden"
       style={{
-        border: "0.5px solid rgba(0,0,0,0.09)",
-        background: "rgba(0,0,0,0.02)",
+        border: "0.5px solid var(--border)",
+        background: "var(--panel-bg)",
         marginBottom: 6,
       }}
     >
@@ -130,7 +130,7 @@ function ToolCallItem({ tc }: ToolCallItemProps) {
         className="w-full flex items-center gap-2 px-3 py-2 text-left transition-colors"
         style={{ cursor: tc.status === "running" ? "default" : "pointer" }}
         onMouseEnter={(e) => {
-          if (tc.status !== "running") (e.currentTarget as HTMLElement).style.background = "rgba(0,0,0,0.03)";
+          if (tc.status !== "running") (e.currentTarget as HTMLElement).style.background = "var(--control-bg)";
         }}
         onMouseLeave={(e) => {
           (e.currentTarget as HTMLElement).style.background = "transparent";
@@ -175,9 +175,9 @@ function ToolCallItem({ tc }: ToolCallItemProps) {
       {expanded && tc.result !== undefined && (
         <div
           style={{
-            borderTop: "0.5px solid rgba(0,0,0,0.07)",
+            borderTop: "0.5px solid var(--border)",
             padding: "8px 12px",
-            background: "rgba(0,0,0,0.015)",
+            background: "var(--surface-solid)",
           }}
         >
           <pre

@@ -24,12 +24,12 @@ export function Settings() {
   const [tab, setTab] = useState<Tab>("api-keys");
 
   return (
-    <div className="flex h-full" style={{ color: "var(--t1)" }}>
+    <div className="settings-root flex h-full" style={{ color: "var(--t1)" }}>
       <nav
         className="flex w-[180px] shrink-0 flex-col gap-0.5 p-2"
         style={{
-          borderRight: "0.5px solid rgba(0,0,0,0.08)",
-          background: "rgba(0,0,0,0.02)",
+          borderRight: "0.5px solid var(--border)",
+          background: "var(--panel-bg-soft)",
         }}
       >
         {TABS.map((tabItem) => (
@@ -67,8 +67,8 @@ function AboutPanel() {
       <div
         className="space-y-3 rounded-xl p-5 text-[14px] leading-relaxed"
         style={{
-          background: "rgba(0,0,0,0.03)",
-          border: "0.5px solid rgba(0,0,0,0.08)",
+          background: "var(--panel-bg)",
+          border: "0.5px solid var(--border)",
           color: "var(--t2)",
         }}
       >

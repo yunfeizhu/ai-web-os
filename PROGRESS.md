@@ -242,20 +242,31 @@
   - [x] `InMemorySaver` → `AsyncPostgresSaver` 自动升级（`langgraph-checkpoint-postgres`），fallback 到 InMemorySaver
   - [x] interrupt / resume 运行时接口落地（Human-in-the-loop 实际使用）
   - [ ] 多 App 任务计划与结果汇总
+- [x] Manager Subagents 1.0（多 Agent 初版）
+  - [x] 参考 OpenAI agents-as-tools / Anthropic orchestrator-workers / LangChain subagents，确定“Lead Agent 保留对话所有权，specialist 作为工具执行”的主模式
+  - [x] `agent_types.py` 注册 `research` / `coder` / `system` / `writer` 四类角色与独立系统提示词
+  - [x] `delegate_task` 升级为角色化委派工具，要求 `role`、`task`、`agent_name`，支持 `output_format` / `success_criteria`
+  - [x] 子 Agent 独立上下文、独立 `max_iterations`、禁止递归委派
+  - [x] `get_tools_for_model()` 按角色裁剪工具面，并支持额外 `allowed_tools` 收窄
+  - [x] 并行执行上限 4 个子任务，结构化汇总结果返回 Lead Agent
+  - [x] WebSocket 已转发 `subagent_token` / `subagent_result`，前端已重写为 Lead Agent 调度面板 + 子 Agent 运行线 + 兜底工具区
+  - [x] Harness eval 增至 17 个用例，覆盖子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离与当前轮工具结果压缩
 - [x] 可观测性与评测
   - [x] 基础 Trace / 调用链状态事件
-  - [x] Harness eval 扩展至 12 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程）
+  - [x] Harness eval 扩展至 17 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程、子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩）
   - [x] Trace 后端集成：Arize Phoenix（`TRACE_PHOENIX_ENDPOINT`）+ LangSmith（`TRACE_LANGSMITH_API_KEY`），零配置零开销
   - [ ] 工具调用成功率 / 路由准确率 / 端到端任务完成率（需真实流量积累）
   - [ ] Token / 成本统计
 - [ ] 扩展中心 2.0
   - [ ] 基于现有 MCP / Skill / App 管理页演进
   - [ ] 本地安装、来源、版本、更新与权限说明
-- [ ] 多 Agent 并行架构（暂缓，等单 Agent 稳定后评估）
-  - [ ] Lead Agent + Sub-Agent
-  - [ ] 任务拆解、并行执行、结果汇总
+- [ ] 多 Agent 2.0（评估中）
+  - [x] Lead Agent + Sub-Agent 初版：角色化任务拆解、并行执行、结果汇总
   - [x] 基础检查点：Harness 节点状态已进入 LangGraph checkpoint
   - [x] PostgresSaver 持久化检查点（`langgraph-checkpoint-postgres` + `psycopg[binary,pool]`）
+  - [ ] Conversation Handoff：active_agent、上下文过滤、ToolMessage 配对、跨轮记忆归属
+  - [ ] 完整 LangGraph StateGraph：route / delegate / synthesize / evaluate 节点显式化
+  - [ ] 委派准确率、工具成功率、端到端任务完成率 eval
 - [x] 性能与产品打磨
   - [x] WebSocket 重连：指数退避重试（1s→2s→4s→8s→16s）+ 30 秒心跳 ping
   - [x] Light / Dark 主题系统：`[data-theme]` CSS 变量集、`ThemeProvider` 同步到 `<html>`、desktopStore 持久化、Settings 外观页可视化切换

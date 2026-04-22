@@ -45,7 +45,8 @@ const APP_INTENTS: AppIntent[] = [
     icon: "Mail",
     keywords: ["邮件", "邮箱", "收件箱", "发件箱", "草稿箱", "未读", "附件"],
     appState: { activeFolder: "inbox", source: "ai-chat" },
-    reply: "已为你打开系统邮件。你可以在邮件 App 中同步收件箱、查看未读邮件和处理附件。",
+    reply:
+      "已为你打开系统邮件。你可以在邮件 App 中同步收件箱、查看未读邮件和处理附件。",
   },
   {
     appId: "calendar",
@@ -120,21 +121,29 @@ const RISKY_ACTION_PATTERNS = [
 function findAppIntent(input: string) {
   const text = input.trim();
   const isLaunchCommand = /^(打开|启动|进入|切到|切换到)/.test(text);
-  return APP_INTENTS.find((item) => {
-    const exactMatch = item.title === text || item.keywords.some((keyword) => keyword === text);
-    const launchMatch = isLaunchCommand && item.keywords.some((keyword) => text.includes(keyword));
-    const appTaskMatch =
-      item.appId !== "browser" &&
-      item.keywords.some((keyword) => text.includes(keyword));
-    return exactMatch || launchMatch || appTaskMatch;
-  }) ?? null;
+  return (
+    APP_INTENTS.find((item) => {
+      const exactMatch =
+        item.title === text ||
+        item.keywords.some((keyword) => keyword === text);
+      const launchMatch =
+        isLaunchCommand &&
+        item.keywords.some((keyword) => text.includes(keyword));
+      const appTaskMatch =
+        item.appId !== "browser" &&
+        item.keywords.some((keyword) => text.includes(keyword));
+      return exactMatch || launchMatch || appTaskMatch;
+    }) ?? null
+  );
 }
 
 function findAppSearchResults(input: string) {
   const text = input.trim();
   if (!text) return [];
   return APP_INTENTS.filter((item) =>
-    [item.title, ...item.keywords].some((value) => value.includes(text) || text.includes(value)),
+    [item.title, ...item.keywords].some(
+      (value) => value.includes(text) || text.includes(value),
+    ),
   ).slice(0, 4);
 }
 
@@ -187,6 +196,17 @@ function extractBrowserSessionId(
   return "";
 }
 
+function getToolEventKey(event: {
+  id: string;
+  subagentId?: string;
+  agentName?: string;
+}) {
+  const owner = event.subagentId || event.agentName;
+  if (!owner) return event.id;
+  if (event.id.startsWith(`${owner}::`)) return event.id;
+  return `${owner}::${event.id}`;
+}
+
 export function AiChat() {
   const { providers, defaultModel, setDefaultModel, embeddingConfig } =
     useSettingsStore();
@@ -212,6 +232,12 @@ export function AiChat() {
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState<string>("");
   const [pendingConfirmation, setPendingConfirmation] = useState("");
+  const [hitlDialog, setHitlDialog] = useState<{
+    requestId: string;
+    toolName: string;
+    args: Record<string, unknown>;
+  } | null>(null);
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -312,7 +338,9 @@ export function AiChat() {
 
   useEffect(() => {
     return () => {
-      for (const timerId of Object.values(pendingBrowserWindowTimersRef.current)) {
+      for (const timerId of Object.values(
+        pendingBrowserWindowTimersRef.current,
+      )) {
         window.clearTimeout(timerId);
       }
       pendingBrowserWindowTimersRef.current = {};
@@ -334,18 +362,25 @@ export function AiChat() {
                 displayName?: string | null;
                 args: Record<string, unknown>;
                 result?: string | null;
+                subagentId?: string | null;
+                subagentTask?: string | null;
+                agentName?: string | null;
+                role?: string | null;
               }[]
             | null;
           tool_call_id: string | null;
         }[]
       >(`/conversations/${convId}/messages`);
 
-      // tool 消息结果 map：tool_call_id -> content
-      const toolResultMap: Record<string, string> = {};
+      // tool 消息结果 map：tool_call_id -> contents。旧版子 Agent 可能在不同
+      // worker 内生成相同 tool_call_id，这里保留队列，按 tool_calls 顺序消费。
+      const toolResultMap: Record<string, string[]> = {};
       data
         .filter((m) => m.role === "tool")
         .forEach((m) => {
-          if (m.tool_call_id) toolResultMap[m.tool_call_id] = m.content ?? "";
+          if (!m.tool_call_id) return;
+          toolResultMap[m.tool_call_id] = toolResultMap[m.tool_call_id] ?? [];
+          toolResultMap[m.tool_call_id].push(m.content ?? "");
         });
 
       // 过滤 role=tool 的中间消息，只展示 user/assistant
@@ -355,14 +390,27 @@ export function AiChat() {
       setMessages(
         visible.map((m) => {
           const rawCalls = m.tool_calls ?? [];
-          const normalizedCalls = rawCalls.map((tc) => ({
-            id: tc.id,
-            name: tc.name,
-            displayName: tc.displayName ?? null,
-            args: tc.args,
-            result: toolResultMap[tc.id] ?? tc.result ?? undefined,
-            status: "done" as const,
-          }));
+          const resultIndexById: Record<string, number> = {};
+          const normalizedCalls = rawCalls.map((tc) => {
+            const index = resultIndexById[tc.id] ?? 0;
+            resultIndexById[tc.id] = index + 1;
+            return {
+              id: getToolEventKey({
+                id: tc.id,
+                subagentId: tc.subagentId ?? undefined,
+                agentName: tc.agentName ?? undefined,
+              }),
+              name: tc.name,
+              displayName: tc.displayName ?? null,
+              args: tc.args,
+              result: toolResultMap[tc.id]?.[index] ?? tc.result ?? undefined,
+              status: "done" as const,
+              subagentId: tc.subagentId ?? undefined,
+              subagentTask: tc.subagentTask ?? undefined,
+              agentName: tc.agentName ?? undefined,
+              role: tc.role ?? undefined,
+            };
+          });
 
           return {
             id: m.id,
@@ -436,7 +484,15 @@ export function AiChat() {
   const sendMessage = useCallback(
     async (text?: string, historyOverride?: ChatMessage[]) => {
       const content = (text ?? input).trim();
-      if (!content || loading) return;
+      if (!content) return;
+
+      if (loading && !historyOverride) {
+        setQueuedMessage(content);
+        setInput("");
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        setStatusText("消息已排队，上一轮完成后自动发送。");
+        return;
+      }
 
       if (isCurrentTimeIntent(content)) {
         setInput("");
@@ -463,7 +519,10 @@ export function AiChat() {
         return;
       }
 
-      if (needsExecutionConfirmation(content) && pendingConfirmation !== content) {
+      if (
+        needsExecutionConfirmation(content) &&
+        pendingConfirmation !== content
+      ) {
         setPendingConfirmation(content);
         setStatusText("检测到高风险操作，请确认后继续。");
         return;
@@ -560,8 +619,10 @@ export function AiChat() {
           continue;
         }
         if (m.role === "assistant") {
+          // Exclude sub-agent tool calls (agentName is set): they belong to sub-agents
+          // and were never issued by the main LLM directly.
           const completedCalls = (m.toolCalls ?? []).filter(
-            (tc) => tc.status === "done" && tc.result != null,
+            (tc) => tc.status === "done" && tc.result != null && !tc.agentName,
           );
           if (completedCalls.length > 0) {
             // assistant message with tool_calls
@@ -607,7 +668,7 @@ export function AiChat() {
             providerId,
             history,
             systemPrompt:
-              "你是 AI-Native OS 的 AI 助手。你可以理解用户意图，必要时使用工具操作浏览器、文件、知识库或其他系统能力。邮件、日历、文件、文档、笔记、白板等属于系统内置 App 的能力，不能用浏览器或第三方网页服务替代；如果用户要处理这些系统能力，应引导用户使用对应 App。回答要简洁，涉及危险操作前应先说明计划并等待用户确认。",
+              "你是 AI-Native OS 的 AI 助手。你可以理解用户意图，必要时使用工具操作浏览器、文件、知识库或其他系统能力。邮件、日历、文件、文档、笔记、白板等属于系统内置 App 的能力，不能用浏览器或第三方网页服务替代；如果用户要处理这些系统能力，应引导用户使用对应 App。回答要简洁，涉及危险操作前应先说明计划并等待用户确认。当用户同时询问多个互相独立的事项时，可以用 delegate_task 并行处理。",
             apiKey,
             apiBase,
             enableMemory: true,
@@ -642,36 +703,94 @@ export function AiChat() {
             },
             onToolCall: (event) => {
               setStatusText("");
-              liveToolArgsRef.current[event.id] = event.args;
+              const toolEventKey = getToolEventKey(event);
+              liveToolArgsRef.current[toolEventKey] = event.args;
               setMessages((prev) =>
                 prev.map((m) => {
                   if (m.id !== assistantId) return m;
                   const existing = m.toolCalls ?? [];
+                  const alreadyExists = existing.some(
+                    (tc) => tc.id === toolEventKey,
+                  );
+                  if (alreadyExists) {
+                    return {
+                      ...m,
+                      toolCalls: existing.map((tc) =>
+                        tc.id === toolEventKey
+                          ? {
+                              ...tc,
+                              args: event.args,
+                              displayName: event.displayName ?? tc.displayName,
+                            }
+                          : tc,
+                      ),
+                    };
+                  }
+                  // When delegate_task is called, pre-insert placeholder cards for each sub-task
+                  const extraPlaceholders: typeof existing = [];
+                  if (event.name === "delegate_task") {
+                    const tasks = (event.args.tasks ?? []) as {
+                      task: string;
+                      role?: string;
+                      agent_name?: string;
+                      agentName?: string;
+                    }[];
+                    for (const spec of tasks) {
+                      const agentName =
+                        spec.agent_name ?? spec.agentName ?? "subagent";
+                      const placeholderId = `placeholder:${agentName}:${event.id}`;
+                      if (!existing.some((tc) => tc.id === placeholderId)) {
+                        extraPlaceholders.push({
+                          id: placeholderId,
+                          name: "__subagent_placeholder__",
+                          displayName: agentName,
+                          args: { task: spec.task },
+                          status: "running" as const,
+                          subagentId: `${agentName}-pending`,
+                          subagentTask: spec.task,
+                          agentName: agentName,
+                          role: spec.role,
+                        });
+                      }
+                    }
+                  }
                   return {
                     ...m,
+                    // Clear speculative preamble tokens emitted before the first tool call,
+                    // or when delegate_task is called (sub-agents take over the answer).
+                    content:
+                      existing.length === 0 || event.name === "delegate_task"
+                        ? ""
+                        : m.content,
                     toolCalls: [
                       ...existing,
                       {
-                        id: event.id,
+                        id: toolEventKey,
                         name: event.name,
                         displayName: event.displayName ?? null,
                         args: event.args,
                         status: "running" as const,
+                        subagentId: event.subagentId,
+                        subagentTask: event.subagentTask,
+                        agentName: event.agentName,
+                        role: event.role,
                       },
+                      ...extraPlaceholders,
                     ],
                   };
                 }),
               );
             },
             onToolResult: (event) => {
-              const toolArgs = liveToolArgsRef.current[event.id] ?? {};
+              const toolEventKey = getToolEventKey(event);
+              const toolArgs = liveToolArgsRef.current[toolEventKey] ?? {};
               setMessages((prev) =>
                 prev.map((m) => {
                   if (m.id !== assistantId) return m;
                   return {
                     ...m,
                     toolCalls: (m.toolCalls ?? []).map((tc) =>
-                      tc.id === event.id
+                      tc.id === toolEventKey
                         ? {
                             ...tc,
                             displayName:
@@ -681,6 +800,10 @@ export function AiChat() {
                             status: event.error
                               ? ("error" as const)
                               : ("done" as const),
+                            subagentId: event.subagentId ?? tc.subagentId,
+                            subagentTask: event.subagentTask ?? tc.subagentTask,
+                            agentName: event.agentName ?? tc.agentName,
+                            role: event.role ?? tc.role,
                           }
                         : tc,
                     ),
@@ -693,7 +816,52 @@ export function AiChat() {
                 event.result,
                 event.error,
               );
-              delete liveToolArgsRef.current[event.id];
+              delete liveToolArgsRef.current[toolEventKey];
+            },
+            onConfirmRequired: (requestId, toolName, args) => {
+              setHitlDialog({ requestId, toolName, args });
+            },
+            onSubagentResult: (event) => {
+              const agentName = event.agentName || event.subagentId;
+              const subagentId = event.subagentId || agentName;
+              // Mark the sub-agent as done so its card shows checkmark and stops streaming cursor.
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        subagentDone: {
+                          ...(m.subagentDone ?? {}),
+                          [subagentId]: true,
+                          [agentName]: true,
+                        },
+                        subagentResults: {
+                          ...(m.subagentResults ?? {}),
+                          [agentName]: {
+                            subagentId,
+                            agentName,
+                            role: event.role,
+                            task: event.task,
+                            answer: event.answer,
+                            failed: event.failed,
+                            error: event.error,
+                            elapsedMs: event.elapsedMs,
+                          },
+                          [subagentId]: {
+                            subagentId,
+                            agentName,
+                            role: event.role,
+                            task: event.task,
+                            answer: event.answer,
+                            failed: event.failed,
+                            error: event.error,
+                            elapsedMs: event.elapsedMs,
+                          },
+                        },
+                      }
+                    : m,
+                ),
+              );
             },
           },
           abort.signal,
@@ -761,6 +929,14 @@ export function AiChat() {
       syncBrowserWindowFromTool,
     ],
   );
+
+  useEffect(() => {
+    if (!loading && queuedMessage) {
+      const msg = queuedMessage;
+      setQueuedMessage(null);
+      sendMessage(msg);
+    }
+  }, [loading, queuedMessage, sendMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1144,7 +1320,10 @@ export function AiChat() {
                 <button
                   onClick={stopGeneration}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[14px] font-medium transition-all"
-                  style={{ background: "var(--control-bg)", color: "var(--t2)" }}
+                  style={{
+                    background: "var(--control-bg)",
+                    color: "var(--t2)",
+                  }}
                 >
                   <Square size={11} fill="currentColor" /> 停止
                 </button>
@@ -1168,6 +1347,93 @@ export function AiChat() {
           </div>
         </div>
       </div>
+
+      {/* ── HITL 确认弹窗 ── */}
+      {hitlDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{
+            background: "rgba(0,0,0,0.45)",
+            backdropFilter: "blur(4px)",
+          }}
+        >
+          <div
+            className="rounded-2xl overflow-hidden flex flex-col gap-0"
+            style={{
+              width: 400,
+              maxWidth: "90vw",
+              background: "var(--panel-bg)",
+              border: "0.5px solid var(--border)",
+              boxShadow: "0 24px 60px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div className="px-5 pt-5 pb-3">
+              <p
+                className="text-[15px] font-semibold mb-1"
+                style={{ color: "var(--t1)" }}
+              >
+                工具调用确认
+              </p>
+              <p className="text-[13px] mb-3" style={{ color: "var(--t3)" }}>
+                Agent 请求执行以下操作，请选择是否允许：
+              </p>
+              <div
+                className="rounded-xl px-3 py-2.5"
+                style={{
+                  background: "var(--surface-solid)",
+                  border: "0.5px solid var(--border)",
+                }}
+              >
+                <p
+                  className="text-[12px] font-medium mb-1"
+                  style={{ color: "var(--accent)" }}
+                >
+                  {hitlDialog.toolName}
+                </p>
+                <pre
+                  className="text-[12px] leading-relaxed whitespace-pre-wrap break-all"
+                  style={{
+                    color: "var(--t2)",
+                    fontFamily: "var(--font-mono)",
+                    maxHeight: 160,
+                    overflowY: "auto",
+                  }}
+                >
+                  {JSON.stringify(hitlDialog.args, null, 2)}
+                </pre>
+              </div>
+            </div>
+            <div className="flex gap-2 px-5 pb-5">
+              <button
+                className="flex-1 py-2 rounded-xl text-[14px] font-medium transition-all"
+                style={{ background: "var(--control-bg)", color: "var(--t2)" }}
+                onClick={async () => {
+                  setHitlDialog(null);
+                  await fetch(
+                    `${API}/confirm?request_id=${hitlDialog.requestId}&approved=false`,
+                    { method: "POST" },
+                  );
+                }}
+              >
+                拒绝
+              </button>
+              <button
+                className="flex-1 py-2 rounded-xl text-[14px] font-medium transition-all"
+                style={{ background: "var(--accent)", color: "#fff" }}
+                onClick={async () => {
+                  setHitlDialog(null);
+                  await fetch(
+                    `${API}/confirm?request_id=${hitlDialog.requestId}&approved=true`,
+                    { method: "POST" },
+                  );
+                }}
+              >
+                允许执行
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

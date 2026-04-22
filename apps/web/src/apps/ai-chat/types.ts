@@ -6,6 +6,21 @@ export interface ToolCall {
   result?: string;
   error?: boolean;
   status: "running" | "done" | "error";
+  subagentId?: string;
+  subagentTask?: string;
+  agentName?: string;
+  role?: string;
+}
+
+export interface SubagentRun {
+  subagentId: string;
+  agentName: string;
+  role?: string;
+  task?: string;
+  answer?: string;
+  failed?: boolean;
+  error?: string | null;
+  elapsedMs?: number;
 }
 
 export interface SkillActivity {
@@ -24,6 +39,9 @@ export interface ChatMessage {
   streaming?: boolean;
   toolCalls?: ToolCall[];
   cwdLabel?: string;
+  subagentTokens?: Record<string, string>; // agentName → accumulated token text
+  subagentDone?: Record<string, boolean>; // agentName → finished flag
+  subagentResults?: Record<string, SubagentRun>;
 }
 
 export interface Conversation {

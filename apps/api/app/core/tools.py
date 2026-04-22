@@ -175,6 +175,86 @@ RETRIEVE_KNOWLEDGE_SCHEMA: dict = {
 
 LOAD_SKILL_CONTEXT_TOOL_NAME = "load_skill_context"
 
+DELEGATE_TASK_SCHEMA: dict = {
+    "type": "function",
+    "function": {
+        "name": "delegate_task",
+        "description": (
+            "Call one or more specialist agents as tools while you keep ownership "
+            "of the user-facing answer. Use only when a bounded subtask benefits "
+            "from isolated context, a role-specific tool set, or parallel execution. "
+            "Do not use for simple questions, direct conversation handoff, or "
+            "sequential tasks where a later step depends on an earlier result."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "tasks": {
+                    "type": "array",
+                    "description": (
+                        "Specialist tasks. Items may run in parallel, so every task must be "
+                        "independent and self-contained."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "role": {
+                                "type": "string",
+                                "enum": ["research", "coder", "system", "writer"],
+                                "description": (
+                                    "Specialist role. research=web/knowledge/realtime facts; "
+                                    "coder=code/math/data; system=files/calendar/mail/notes; "
+                                    "writer=drafting/translation/formatting."
+                                ),
+                            },
+                            "task": {
+                                "type": "string",
+                                "description": (
+                                    "A complete, self-contained task contract including goal, "
+                                    "scope boundaries, needed context, and what not to do."
+                                ),
+                            },
+                            "agent_name": {
+                                "type": "string",
+                                "description": (
+                                    "Short stable label for the specialist, e.g. "
+                                    "`research_prices`, `coder_analysis`, `writer_summary`."
+                                ),
+                            },
+                            "output_format": {
+                                "type": "string",
+                                "description": (
+                                    "Expected final shape, e.g. `bullets with sources`, "
+                                    "`JSON array`, `markdown table`, or `short answer`."
+                                ),
+                            },
+                            "success_criteria": {
+                                "type": "string",
+                                "description": (
+                                    "How the specialist should know it is done. Include source, "
+                                    "verification, or safety expectations when relevant."
+                                ),
+                            },
+                            "allowed_tools": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": (
+                                    "Optional extra exact tool whitelist. The server still applies "
+                                    "the role's allowlist first."
+                                ),
+                            },
+                        },
+                        "required": ["role", "task", "agent_name"],
+                    },
+                    "minItems": 1,
+                    "maxItems": 4,
+                }
+            },
+            "required": ["tasks"],
+        },
+    },
+}
+
 
 def _tool_schema_name(schema: dict[str, Any]) -> str:
     return str(((schema.get("function") or {}).get("name")) or "")
@@ -550,49 +630,6 @@ def _extract_skill_match_terms(text: str) -> set[str]:
     return terms
 
 
-def _read_skill_match_corpus(skill: dict[str, Any]) -> str:
-    chunks = [
-        str(skill.get("raw_content") or ""),
-        str(skill.get("content") or ""),
-        str(skill.get("description") or ""),
-    ]
-    skill_path = Path(str(skill.get("path") or ""))
-    skill_dir = skill_path.parent
-    if skill_dir.exists():
-        for child in skill_dir.rglob("*"):
-            if not child.is_file() or child == skill_path:
-                continue
-            if child.suffix.lower() not in {".md", ".py", ".json", ".txt"}:
-                continue
-            try:
-                chunks.append(child.read_text(encoding="utf-8", errors="ignore"))
-            except OSError:
-                continue
-    return "\n".join(chunk for chunk in chunks if chunk)
-
-
-def _score_python_code_skill_match(code: str, corpus: str) -> int:
-    score = 0
-    for line in code.splitlines():
-        stripped = line.strip()
-        if len(stripped) >= 24 and stripped in corpus:
-            score += 4
-
-    code_terms = _extract_skill_match_terms(code)
-    corpus_terms = _extract_skill_match_terms(corpus)
-    for term in code_terms & corpus_terms:
-        if term.startswith("http://") or term.startswith("https://"):
-            score += 12
-        elif re.fullmatch(r"[A-Z][A-Z0-9_]{5,}", term):
-            score += 8
-        elif re.fullmatch(r"[\u4e00-\u9fff]{2,}", term):
-            score += min(8, max(3, len(term)))
-        elif len(term) >= 12:
-            score += 5
-        else:
-            score += 1
-    return score
-
 
 def _score_user_message_skill_match(message: str, skill: dict[str, Any]) -> int:
     message = str(message or "").strip()
@@ -771,33 +808,6 @@ def _skill_context_priority(skill_context: dict[str, Any] | None) -> dict[str, i
     return priority
 
 
-def get_python_exec_display_name(code: str, skill_context: dict[str, Any] | None = None) -> str | None:
-    code = str(code or "")
-    if not code.strip():
-        return None
-
-    registry = get_app_registry()
-    priority = _skill_context_priority(skill_context)
-    best_skill: dict[str, Any] | None = None
-    best_score = 0
-    for skill in registry.list_user_skills(enabled_only=True):
-        corpus = _read_skill_match_corpus(skill)
-        score = _score_python_code_skill_match(code, corpus)
-        score += priority.get(f"user-skill:{skill.get('id')}".lower(), 0)
-        score += priority.get(str(skill.get("id") or "").lower(), 0)
-        score += priority.get(str(skill.get("skill_key") or "").lower(), 0)
-        score += priority.get(str(skill.get("name") or "").lower(), 0)
-        if score > best_score:
-            best_score = score
-            best_skill = skill
-
-    if best_skill is None or best_score < 12:
-        return None
-
-    skill_name = str(best_skill.get("name") or best_skill.get("skill_key") or best_skill.get("id") or "Skill")
-    return f"{skill_name} Skill 调用"
-
-
 async def _list_external_mcp_tool_routes() -> list[dict]:
     """List MCP tool routes with a short TTL cache to avoid repeated DB scans."""
     global _MCP_ROUTES_CACHE, _MCP_ROUTES_CACHE_EXPIRES
@@ -848,6 +858,8 @@ async def _list_external_mcp_tool_routes() -> list[dict]:
 
 
 async def get_tool_display_name(name: str) -> str | None:
+    if name == "delegate_task":
+        return "多 Agent 委托"
     if name == LOAD_SKILL_CONTEXT_TOOL_NAME:
         return "加载 Skill 上下文"
     for route in await _list_external_mcp_tool_routes():
@@ -1194,5 +1206,26 @@ async def get_tools_for_model(
         load_schema = _build_load_skill_context_schema(candidate_knowledge[:6])
         if load_schema:
             tools.append(load_schema)
+
+    ctx = skill_context or {}
+    agent_depth: int = int(ctx.get("agent_depth", 0))
+    agent_mode = str(ctx.get("agent_mode") or "auto").lower()
+    # Only the top-level agent (depth 0) may spawn sub-agents
+    if agent_depth == 0 and agent_mode != "single":
+        tools.append(DELEGATE_TASK_SCHEMA)
+
+    # Specialist agents receive a role-scoped tool surface. The top-level Lead
+    # Agent stays broad; sub-agents trade breadth for precision and safety.
+    role_id = ctx.get("agent_role")
+    if role_id:
+        from app.core.agent_types import filter_tools_for_role, get_agent_role
+
+        tools = filter_tools_for_role(tools, get_agent_role(str(role_id)))
+
+    # Honor per-subagent tool allowlist
+    allowed_tools: list[str] | None = ctx.get("allowed_tools") or None
+    if allowed_tools:
+        allowed_set = set(allowed_tools)
+        tools = [t for t in tools if _tool_schema_name(t) in allowed_set]
 
     return tools

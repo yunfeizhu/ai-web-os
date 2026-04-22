@@ -194,12 +194,20 @@ export function MessageBubble({ message, onRetry }: Props) {
       </div>
 
       <div className="relative min-w-0 flex-1">
-        <ToolCallDisplay toolCalls={message.toolCalls} />
+        <ToolCallDisplay
+          toolCalls={message.toolCalls}
+          subagentTokens={message.subagentTokens}
+          subagentDone={message.subagentDone}
+          subagentResults={message.subagentResults}
+        />
         <div
           className="markdown text-[14px] leading-relaxed"
           style={{ color: "var(--t1)", wordBreak: "break-word" }}
         >
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={markdownComponents}
+          >
             {message.content}
           </ReactMarkdown>
           {message.streaming && <StreamingDots />}
@@ -210,8 +218,15 @@ export function MessageBubble({ message, onRetry }: Props) {
             className="absolute flex items-center gap-0.5"
             style={{ bottom: -26, left: 0 }}
           >
-            <ActionBtn onClick={handleCopy} tooltip={copied ? "已复制" : "复制"}>
-              {copied ? <Check size={13} color="#22C55E" /> : <Copy size={13} />}
+            <ActionBtn
+              onClick={handleCopy}
+              tooltip={copied ? "已复制" : "复制"}
+            >
+              {copied ? (
+                <Check size={13} color="#22C55E" />
+              ) : (
+                <Copy size={13} />
+              )}
             </ActionBtn>
             {onRetry && (
               <ActionBtn onClick={onRetry} tooltip="重新生成">

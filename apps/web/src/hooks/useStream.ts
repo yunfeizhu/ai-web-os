@@ -34,6 +34,10 @@ export interface ToolCallEvent {
   name: string;
   displayName?: string | null;
   args: Record<string, unknown>;
+  subagentId?: string;
+  subagentTask?: string;
+  agentName?: string;
+  role?: string;
 }
 
 export interface ToolResultEvent {
@@ -42,6 +46,29 @@ export interface ToolResultEvent {
   displayName?: string | null;
   result: string;
   error: boolean;
+  subagentId?: string;
+  subagentTask?: string;
+  agentName?: string;
+  role?: string;
+}
+
+export interface SubagentTokenEvent {
+  subagentId: string;
+  agentName: string;
+  role?: string;
+  subagentTask?: string;
+  token: string;
+}
+
+export interface SubagentResultEvent {
+  subagentId: string;
+  agentName: string;
+  role?: string;
+  task?: string;
+  answer?: string;
+  failed?: boolean;
+  error?: string | null;
+  elapsedMs?: number;
 }
 
 export interface EmbeddingParams {
@@ -70,6 +97,9 @@ export interface ChatParams {
   onToolCall?: (event: ToolCallEvent) => void;
   onToolResult?: (event: ToolResultEvent) => void;
   onStatus?: (status: string, event?: Record<string, unknown>) => void;
+  onConfirmRequired?: (requestId: string, toolName: string, args: Record<string, unknown>) => void;
+  onSubagentResult?: (event: SubagentResultEvent) => void;
+  onSubagentToken?: (event: SubagentTokenEvent) => void;
 }
 
 // ── 单例 WebSocket 管理器 ─────────────────────────────────────────────────────
@@ -79,6 +109,9 @@ type PendingHandler = {
   onToolCall?: (event: ToolCallEvent) => void;
   onToolResult?: (event: ToolResultEvent) => void;
   onStatus?: (status: string, event?: Record<string, unknown>) => void;
+  onConfirmRequired?: (requestId: string, toolName: string, args: Record<string, unknown>) => void;
+  onSubagentResult?: (event: SubagentResultEvent) => void;
+  onSubagentToken?: (event: SubagentTokenEvent) => void;
   touch: () => void;
   resolve: (result: { title: string }) => void;
   reject: (err: Error) => void;
@@ -159,6 +192,22 @@ class WsManager {
         handler.touch();
         this.pending.delete(requestId);
         handler.reject(new Error((payload.error as string) ?? "未知错误"));
+        break;
+      case "agent_confirm_required":
+        handler.touch();
+        handler.onConfirmRequired?.(
+          requestId,
+          payload.toolName as string,
+          (payload.args ?? {}) as Record<string, unknown>,
+        );
+        break;
+      case "subagent_result":
+        handler.touch();
+        handler.onSubagentResult?.(payload as unknown as SubagentResultEvent);
+        break;
+      case "subagent_token":
+        handler.touch();
+        handler.onSubagentToken?.(payload as unknown as SubagentTokenEvent);
         break;
     }
   }
@@ -314,6 +363,9 @@ export async function streamChat(
         onToolCall: params.onToolCall,
         onToolResult: params.onToolResult,
         onStatus: params.onStatus,
+        onConfirmRequired: params.onConfirmRequired,
+        onSubagentResult: params.onSubagentResult,
+        onSubagentToken: params.onSubagentToken,
         touch,
         resolve: (result) => {
           clearIdleTimer();

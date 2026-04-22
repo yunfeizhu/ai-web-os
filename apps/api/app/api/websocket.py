@@ -282,6 +282,22 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "payload": event_payload,
                                 }
                             )
+                        elif event_type == "subagent_token":
+                            await websocket.send_json(
+                                {
+                                    "type": "subagent_token",
+                                    "requestId": request_id,
+                                    "payload": event_payload,
+                                }
+                            )
+                        elif event_type == "subagent_result":
+                            await websocket.send_json(
+                                {
+                                    "type": "subagent_result",
+                                    "requestId": request_id,
+                                    "payload": event_payload,
+                                }
+                            )
 
                 title = None
                 if conv_id:

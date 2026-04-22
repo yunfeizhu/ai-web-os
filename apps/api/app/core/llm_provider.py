@@ -20,7 +20,7 @@ from app.core.agent_harness import (
     validation_trace_payload,
 )
 from app.core.agent_graph import AgentGraphRuntime
-from app.core.context_manager import prepare_messages
+from app.core.context_manager import compact_tool_result_for_context, prepare_messages
 
 litellm.set_verbose = False
 
@@ -36,7 +36,17 @@ PROVIDER_PREFIX: dict[str, str] = {
     "openai-compatible": "openai/",
 }
 
-AgentEvent = tuple[Literal["token", "tool_call", "tool_result", "status"], str | dict]
+AgentEvent = tuple[
+    Literal[
+        "token",
+        "tool_call",
+        "tool_result",
+        "status",
+        "subagent_token",
+        "subagent_result",
+    ],
+    str | dict,
+]
 
 _MAX_TOOL_CALLS_WARNING = "\n\n\uff08\u5df2\u8fbe\u5230\u6700\u5927\u5de5\u5177\u8c03\u7528\u6b21\u6570\uff09"
 
@@ -239,10 +249,11 @@ async def agent_loop(
     """
     from app.core.tools import (
         execute_tool,
-        get_python_exec_display_name,
         get_tool_display_name,
         get_tools_for_model,
     )
+    from app.core.agent_types import build_supervisor_prompt
+    from app.core.subagent import build_subagent_tool_result, run_subagents_parallel
 
     if provider_id:
         litellm_model = build_litellm_model(provider_id, model, compat_type)
@@ -259,15 +270,27 @@ async def agent_loop(
 
     executed_tool_signatures: set[str] = set()
     loaded_skill_guides: set[str] = set()
+    ctx = skill_context or {}
+    agent_depth = int(ctx.get("agent_depth", 0))
+    agent_mode = str(ctx.get("agent_mode") or "auto").lower()
+    is_subagent = bool(ctx.get("is_subagent")) or agent_depth > 0
     tools = await get_tools_for_model(
         model,
         user_message=user_message,
         skill_context=skill_context,
     )
 
+    effective_system_prompt = system_prompt or ""
+    if not is_subagent and agent_mode != "single":
+        effective_system_prompt = (
+            f"{effective_system_prompt}\n\n{build_supervisor_prompt(agent_mode)}"
+            if effective_system_prompt
+            else build_supervisor_prompt(agent_mode)
+        )
+
     full_messages = prepare_messages(
         model=litellm_model,
-        system_prompt=system_prompt or "",
+        system_prompt=effective_system_prompt,
         history=messages,
         max_output_tokens=max_tokens,
     )
@@ -366,11 +389,7 @@ async def agent_loop(
                 user_message=user_message,
             )
 
-            display_name = (
-                get_python_exec_display_name(str(args.get("code") or ""), skill_context)
-                if tool_call["name"] == "python_exec"
-                else await get_tool_display_name(tool_call["name"])
-            )
+            display_name = await get_tool_display_name(tool_call["name"])
             parsed_calls.append({
                 "id": tool_call["id"],
                 "name": tool_call["name"],
@@ -433,6 +452,64 @@ async def agent_loop(
 
         # ── Execute each tool call ─────────────────────────────────────────────
         for parsed_call in parsed_calls:
+            # ── delegate_task: spawn parallel Sub-Agents ──────────────────────
+            if parsed_call["name"] == "delegate_task":
+                specs = parsed_call["args"].get("tasks", [])
+                subagent_result_payloads: list[dict] = []
+                yield (
+                    "status",
+                    graph.status(
+                        "execute_tool",
+                        tool=parsed_call["name"],
+                        status="multi_agent_dispatch",
+                        agentMode="manager_subagents",
+                        taskCount=len(specs) if isinstance(specs, list) else 0,
+                    ),
+                )
+                async for sa_type, sa_payload in run_subagents_parallel(
+                    specs,
+                    model=model,
+                    api_key=api_key,
+                    provider_id=provider_id,
+                    compat_type=compat_type,
+                    api_base=api_base,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    max_iterations=max_iterations,
+                    skill_context=skill_context,
+                    request_id=request_id,
+                ):
+                    yield (sa_type, sa_payload)
+                    if sa_type == "subagent_result" and isinstance(sa_payload, dict):
+                        subagent_result_payloads.append(sa_payload)
+
+                result = build_subagent_tool_result(subagent_result_payloads) if subagent_result_payloads else '{"results": {}}'
+                context_result = compact_tool_result_for_context(
+                    tool_name=parsed_call["name"],
+                    result=result,
+                    is_subagent=False,
+                    max_chars=6000,
+                )
+
+                yield (
+                    "tool_result",
+                    {
+                        "id": parsed_call["id"],
+                        "name": parsed_call["name"],
+                        "displayName": parsed_call.get("displayName") or "多 Agent 委托",
+                        "result": result,
+                        "error": False,
+                    },
+                )
+                full_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": parsed_call["id"],
+                        "content": context_result,
+                    }
+                )
+                continue
+
             decision = guard_tool_call(
                 tool_name=parsed_call["name"],
                 args=parsed_call["args"],
@@ -548,11 +625,17 @@ async def agent_loop(
                 },
             )
 
+            context_result = compact_tool_result_for_context(
+                tool_name=parsed_call["name"],
+                result=result,
+                is_subagent=is_subagent,
+            )
+
             full_messages.append(
                 {
                     "role": "tool",
                     "tool_call_id": parsed_call["id"],
-                    "content": result,
+                    "content": context_result,
                 }
             )
 

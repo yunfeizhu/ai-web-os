@@ -25,6 +25,10 @@ _HISTORY_BUDGET_RATIO = 0.70
 # When a single tool result exceeds this many characters, it will be
 # summarised in *historical* turns (the current turn keeps the original).
 _TOOL_RESULT_SUMMARY_THRESHOLD = 1500
+_CURRENT_TOOL_RESULT_CONTEXT_LIMIT = 4000
+_SUBAGENT_TOOL_RESULT_CONTEXT_LIMIT = 1400
+_SEARCH_RESULT_SNIPPET_LIMIT = 260
+_MAX_SEARCH_RESULTS_FOR_CONTEXT = 4
 
 # Sentinel appended to truncated tool results so the model sees the cut.
 _TRUNCATION_MARKER = "\n\n…[结果已截断，仅保留关键部分]"
@@ -61,6 +65,37 @@ def count_tokens(model: str, messages: list[dict]) -> int:
         # Rough fallback: ~4 chars per token for CJK-heavy content.
         total_chars = sum(len(str(m.get("content") or "")) for m in messages)
         return total_chars // 3
+
+
+def compact_tool_result_for_context(
+    *,
+    tool_name: str,
+    result: str,
+    is_subagent: bool = False,
+    max_chars: int | None = None,
+) -> str:
+    """Return the model-context version of a current-turn tool result.
+
+    The UI and persistence keep the original result. This compacted text is only
+    appended to the LLM message list so large search payloads do not overflow
+    small OpenAI-compatible context windows during the next ReAct step.
+    """
+    text = str(result or "")
+    limit = max_chars or (
+        _SUBAGENT_TOOL_RESULT_CONTEXT_LIMIT
+        if is_subagent
+        else _CURRENT_TOOL_RESULT_CONTEXT_LIMIT
+    )
+    if len(text) <= limit:
+        return text
+
+    name = str(tool_name or "")
+    if name.startswith(("mcp_", "browser_")) or name in {"fetch_url", "retrieve_knowledge"}:
+        compacted = _compact_search_like_result(text, limit)
+        if compacted:
+            return compacted
+
+    return _truncate_tool_result_to_limit(text, limit)
 
 
 def prepare_messages(
@@ -264,6 +299,97 @@ def _truncate_tool_result(content: str) -> str:
     """Keep the first portion of a tool result up to the threshold."""
     keep = _TOOL_RESULT_SUMMARY_THRESHOLD
     return content[:keep] + _TRUNCATION_MARKER
+
+
+def _truncate_tool_result_to_limit(content: str, limit: int) -> str:
+    keep = max(200, limit - len(_TRUNCATION_MARKER))
+    return content[:keep] + _TRUNCATION_MARKER
+
+
+def _parse_jsonish(value: Any) -> Any | None:
+    if isinstance(value, (dict, list)):
+        return value
+    if not isinstance(value, str):
+        return None
+    s = value.strip()
+    if not s or s[0] not in "{[":
+        return None
+    try:
+        return json.loads(s)
+    except Exception:
+        return None
+
+
+def _find_search_payload(value: Any) -> dict[str, Any] | None:
+    parsed = _parse_jsonish(value)
+    if parsed is None:
+        return None
+
+    if isinstance(parsed, dict):
+        if isinstance(parsed.get("results"), list):
+            return parsed
+        content = parsed.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if isinstance(item, dict):
+                    nested = _find_search_payload(item.get("text"))
+                    if nested:
+                        return nested
+        for child in parsed.values():
+            nested = _find_search_payload(child)
+            if nested:
+                return nested
+    elif isinstance(parsed, list):
+        for item in parsed:
+            nested = _find_search_payload(item)
+            if nested:
+                return nested
+    return None
+
+
+def _compact_search_like_result(content: str, limit: int) -> str | None:
+    payload = _find_search_payload(content)
+    if not payload:
+        return None
+
+    lines: list[str] = [
+        "[ToolResult compacted for model context; original result is stored in the tool event.]",
+    ]
+    query = str(payload.get("query") or "").strip()
+    answer = str(payload.get("answer") or "").strip()
+    if query:
+        lines.append(f"query: {query}")
+    if answer and answer.lower() != "none":
+        lines.append(f"answer: {answer[:_SEARCH_RESULT_SNIPPET_LIMIT]}")
+
+    results = payload.get("results")
+    if isinstance(results, list):
+        for index, item in enumerate(results[:_MAX_SEARCH_RESULTS_FOR_CONTEXT], start=1):
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title") or "").strip()
+            url = str(item.get("url") or "").strip()
+            published = str(
+                item.get("published_date") or item.get("date") or item.get("time") or ""
+            ).strip()
+            snippet = str(item.get("content") or item.get("snippet") or "").strip()
+            snippet = " ".join(snippet.split())[:_SEARCH_RESULT_SNIPPET_LIMIT]
+            lines.append(f"\nresult {index}:")
+            if title:
+                lines.append(f"title: {title}")
+            if url:
+                lines.append(f"url: {url}")
+            if published:
+                lines.append(f"date: {published}")
+            if snippet:
+                lines.append(f"snippet: {snippet}")
+
+    compacted = "\n".join(lines).strip()
+    if not compacted:
+        return None
+    if len(compacted) > limit:
+        return _truncate_tool_result_to_limit(compacted, limit)
+    return compacted
 
 
 def _inject_tool_reminder(messages: list[dict]) -> list[dict]:

@@ -2,7 +2,8 @@
 
 These checks do not call an LLM or external tools. They pin the control-plane
 behavior that should remain stable while we keep improving the agent loop:
-policy guards, result validation, tool dedup, and temporal normalization.
+policy guards, result validation, tool dedup, temporal normalization, and
+multi-agent control-plane boundaries.
 
 Architecture note:
 - No ToolScope routing — all tools are always available.
@@ -13,6 +14,7 @@ Architecture note:
 from __future__ import annotations
 
 import asyncio
+import json
 from pathlib import Path
 import sys
 
@@ -29,7 +31,10 @@ from app.core.agent_harness import (  # noqa: E402
     validate_tool_result,
 )
 from app.core.agent_graph import AgentGraphRuntime  # noqa: E402
+from app.core import subagent as subagent_module  # noqa: E402
+from app.core.context_manager import compact_tool_result_for_context  # noqa: E402
 from app.core.llm_provider import _is_safe_tool_preamble  # noqa: E402
+from app.core.subagent import normalize_subagent_specs  # noqa: E402
 from app.core.tools import get_tools_for_model  # noqa: E402
 
 
@@ -54,6 +59,7 @@ async def main() -> None:
     _assert("fetch_url" in names, f"fetch_url must always be available, got {names}")
     _assert("python_exec" in names, f"python_exec must always be available, got {names}")
     _assert("read_file" in names, f"read_file must always be available, got {names}")
+    _assert("delegate_task" in names, f"Lead Agent should expose delegate_task, got {names}")
 
     # 2. Calculator only blocks non-math expressions, not legitimate calculations
     decision = guard_tool_call(tool_name="calculator", args={"expression": "2+3*4"})
@@ -114,9 +120,6 @@ async def main() -> None:
     _assert(not no_data_validation.ok and no_data_validation.reason == "no_search_results",
             "empty Tavily result should fail validation")
 
-    print("Agent Harness eval passed: 9 cases")
-
-
     # 10. tool_requires_confirmation: default set is empty, extra_tools override works
     _assert(
         not tool_requires_confirmation("calculator"),
@@ -169,7 +172,134 @@ async def main() -> None:
     discard_confirmation("eval-test-req")
     _assert(pending_count() == before, "discard_confirmation should remove entry")
 
-    print("Agent Harness eval passed: 12 cases")
+    # 13. Sub-agent role surfaces are narrower than the Lead Agent surface.
+    research_tools = await get_tools_for_model(
+        "gpt-4o",
+        user_message="查资料",
+        skill_context={"agent_depth": 1, "agent_role": "research"},
+    )
+    research_names = _tool_names(research_tools)
+    _assert("fetch_url" in research_names, f"research role needs fetch_url: {research_names}")
+    _assert("python_exec" not in research_names, "research role must not receive python_exec")
+    _assert("delegate_task" not in research_names, "sub-agents must not receive delegate_task")
+
+    coder_tools = await get_tools_for_model(
+        "gpt-4o",
+        user_message="算一下",
+        skill_context={"agent_depth": 1, "agent_role": "coder"},
+    )
+    coder_names = _tool_names(coder_tools)
+    _assert("python_exec" in coder_names, f"coder role needs python_exec: {coder_names}")
+    _assert("fetch_url" not in coder_names, "coder role must not receive fetch_url by default")
+
+    # 14. Delegation specs are normalized into the role-aware contract.
+    specs = normalize_subagent_specs([
+        {"agent": "search", "task": "搜索最新资料", "agent_name": "Web Research"},
+        {"role": "python", "task": "计算平均值", "agent_name": "Calc"},
+    ])
+    _assert(specs[0]["role"] == "research", f"search alias should map to research: {specs}")
+    _assert(specs[1]["role"] == "coder", f"python alias should map to coder: {specs}")
+
+    # 15. Sub-agent runtime passes a bounded iteration budget into the worker loop.
+    captured_kwargs: dict = {}
+    original_agent_loop = subagent_module.agent_loop
+
+    async def fake_agent_loop(**kwargs):
+        captured_kwargs.update(kwargs)
+        yield (
+            "tool_call",
+            {
+                "id": "functions.fake_tool:0",
+                "name": "fake_tool",
+                "args": {"query": "eval"},
+            },
+        )
+        yield (
+            "tool_result",
+            {
+                "id": "functions.fake_tool:0",
+                "name": "fake_tool",
+                "result": "eval-result",
+                "error": False,
+            },
+        )
+        yield ("token", "ok")
+
+    subagent_module.agent_loop = fake_agent_loop
+    try:
+        events = [
+            event
+            async for event in subagent_module.run_subagent(
+                {
+                    "role": "writer",
+                    "task": "draft a short answer",
+                    "agent_name": "Writer Eval",
+                },
+                model="gpt-4o",
+                api_key="eval-key",
+                max_iterations=99,
+                skill_context={},
+                request_id="eval-subagent",
+            )
+        ]
+    finally:
+        subagent_module.agent_loop = original_agent_loop
+
+    result_events = [payload for event_type, payload in events if event_type == "subagent_result"]
+    _assert(len(result_events) == 1, f"subagent should emit one result event: {events}")
+    _assert(not result_events[0].get("failed"), f"subagent should succeed: {result_events[0]}")
+    _assert(result_events[0].get("answer") == "ok", f"subagent answer should collect tokens: {result_events[0]}")
+    _assert(
+        captured_kwargs.get("max_iterations") == 5,
+        f"writer role should cap delegated max_iterations at 5: {captured_kwargs}",
+    )
+    tool_events = [
+        payload
+        for event_type, payload in events
+        if event_type in {"tool_call", "tool_result"}
+    ]
+    _assert(len(tool_events) == 2, f"subagent should forward tool events: {events}")
+    for payload in tool_events:
+        _assert(
+            str(payload.get("id", "")).startswith(f"{payload.get('subagentId')}::"),
+            f"subagent tool event ids must be namespaced: {payload}",
+        )
+
+    # 17. Current-turn search results are compacted before re-entering the LLM.
+    nested_search = json.dumps(
+        {
+            "query": "贵州茅台 最新新闻",
+            "answer": None,
+            "results": [
+                {
+                    "title": "贵州茅台公告",
+                    "url": "https://example.com/moutai",
+                    "content": "公告内容 " + ("很长 " * 1000),
+                },
+                {
+                    "title": "白酒行业动态",
+                    "url": "https://example.com/baijiu",
+                    "content": "行业内容 " + ("很长 " * 1000),
+                },
+            ],
+        },
+        ensure_ascii=False,
+    )
+    tavily_wrapper = json.dumps(
+        {"content": [{"type": "text", "text": nested_search}], "isError": False},
+        ensure_ascii=False,
+    )
+    compacted = compact_tool_result_for_context(
+        tool_name="mcp_tavily_search_eval",
+        result=tavily_wrapper,
+        is_subagent=True,
+    )
+    _assert(len(compacted) <= 1400, f"subagent search result must be compact: {len(compacted)}")
+    _assert("贵州茅台公告" in compacted and "https://example.com/moutai" in compacted,
+            f"compact search result should retain title and url: {compacted}")
+    _assert(len(compacted) < len(tavily_wrapper), "compact result should be shorter than original")
+
+    print("Agent Harness eval passed: 17 cases")
 
 
 if __name__ == "__main__":

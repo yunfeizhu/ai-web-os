@@ -1,19 +1,89 @@
 "use client";
 
 import type { ReactNode } from "react";
+import dynamic from "next/dynamic";
 
-import { AiChat } from "@/apps/ai-chat/AiChat";
-import { Browser } from "@/apps/browser/Browser";
-import { CalendarApp } from "@/apps/calendar/CalendarApp";
-import { DocumentEditor } from "@/apps/document-editor/DocumentEditor";
-import { FileManager } from "@/apps/file-manager/FileManager";
-import { MailApp } from "@/apps/mail/MailApp";
-import { Notes } from "@/apps/notes/Notes";
-import { Settings } from "@/apps/settings/Settings";
-import { SpreadsheetEditor } from "@/apps/spreadsheet-viewer/SpreadsheetEditor";
-import { Terminal } from "@/apps/terminal/Terminal";
-import { TextEditor } from "@/apps/text-editor/TextEditor";
-import { WhiteboardApp } from "@/apps/whiteboard/WhiteboardApp";
+// ── Loading placeholder ────────────────────────────────
+function AppLoading() {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <div
+        className="h-6 w-6 animate-spin rounded-full border-2 border-t-transparent"
+        style={{ borderColor: "var(--border)", borderTopColor: "transparent" }}
+      />
+    </div>
+  );
+}
+
+// ── 按需懒加载各 App（每个 App 独立 chunk，首次打开时才加载）
+const AiChat = dynamic(
+  () => import("@/apps/ai-chat/AiChat").then((m) => ({ default: m.AiChat })),
+  { loading: AppLoading },
+);
+const Browser = dynamic(
+  () => import("@/apps/browser/Browser").then((m) => ({ default: m.Browser })),
+  { loading: AppLoading },
+);
+const CalendarApp = dynamic(
+  () =>
+    import("@/apps/calendar/CalendarApp").then((m) => ({
+      default: m.CalendarApp,
+    })),
+  { loading: AppLoading },
+);
+const DocumentEditor = dynamic(
+  () =>
+    import("@/apps/document-editor/DocumentEditor").then((m) => ({
+      default: m.DocumentEditor,
+    })),
+  { loading: AppLoading },
+);
+const FileManager = dynamic(
+  () =>
+    import("@/apps/file-manager/FileManager").then((m) => ({
+      default: m.FileManager,
+    })),
+  { loading: AppLoading },
+);
+const MailApp = dynamic(
+  () => import("@/apps/mail/MailApp").then((m) => ({ default: m.MailApp })),
+  { loading: AppLoading },
+);
+const Notes = dynamic(
+  () => import("@/apps/notes/Notes").then((m) => ({ default: m.Notes })),
+  { loading: AppLoading },
+);
+const Settings = dynamic(
+  () =>
+    import("@/apps/settings/Settings").then((m) => ({ default: m.Settings })),
+  { loading: AppLoading },
+);
+const SpreadsheetEditor = dynamic(
+  () =>
+    import("@/apps/spreadsheet-viewer/SpreadsheetEditor").then((m) => ({
+      default: m.SpreadsheetEditor,
+    })),
+  { loading: AppLoading },
+);
+const Terminal = dynamic(
+  () =>
+    import("@/apps/terminal/Terminal").then((m) => ({ default: m.Terminal })),
+  { loading: AppLoading },
+);
+const TextEditor = dynamic(
+  () =>
+    import("@/apps/text-editor/TextEditor").then((m) => ({
+      default: m.TextEditor,
+    })),
+  { loading: AppLoading },
+);
+const WhiteboardApp = dynamic(
+  () =>
+    import("@/apps/whiteboard/WhiteboardApp").then((m) => ({
+      default: m.WhiteboardApp,
+    })),
+  { loading: AppLoading },
+);
 
 interface AppRendererProps {
   appId: string;
@@ -32,7 +102,9 @@ export function AppRenderer({ appId, appState, windowId }: AppRendererProps) {
     case "terminal":
       return <Terminal windowId={windowId} />;
     case "browser":
-      return withNativeAppTheme(<Browser appState={appState} windowId={windowId} />);
+      return withNativeAppTheme(
+        <Browser appState={appState} windowId={windowId} />,
+      );
     case "notes":
       return withNativeAppTheme(<Notes windowId={windowId} />);
     case "document-editor":

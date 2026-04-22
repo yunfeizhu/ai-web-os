@@ -256,9 +256,11 @@
   - [ ] 任务拆解、并行执行、结果汇总
   - [x] 基础检查点：Harness 节点状态已进入 LangGraph checkpoint
   - [x] PostgresSaver 持久化检查点（`langgraph-checkpoint-postgres` + `psycopg[binary,pool]`）
-- [x] 性能与产品打磨（部分）
+- [x] 性能与产品打磨
   - [x] WebSocket 重连：指数退避重试（1s→2s→4s→8s→16s）+ 30 秒心跳 ping
   - [x] Light / Dark 主题系统：`[data-theme]` CSS 变量集、`ThemeProvider` 同步到 `<html>`、desktopStore 持久化、Settings 外观页可视化切换
   - [x] 窗口虚拟化 1.0：窗口层计算可见性，被完全遮挡或屏幕外的可安全重建 App 只保留窗口壳与占位内容
-  - [ ] 代码分割
-  - [ ] 本地优先配置与数据归属统一化
+  - [x] 代码分割：`AppRenderer.tsx` 改用 `next/dynamic` 懒加载，12 个 App 各自独立 chunk，首次打开时按需加载
+  - [x] 本地优先配置与数据归属统一化：Settings → 关于页新增数据归属说明表格 + 配置导出/导入功能（含 API Keys 的完整 JSON 备份）
+  - [x] 自定义主题色：用户可在 Settings 外观页自定义强调色，实时写入 CSS 变量
+  - [x] 窗口动画收尾：open / close / minimize / restore keyframe 动画、snap 拖拽过渡、maximize/restore 位置过渡

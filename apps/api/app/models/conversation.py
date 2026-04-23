@@ -35,6 +35,7 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String(32))   # user | assistant | tool | system
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reasoning_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)
     tool_call_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(

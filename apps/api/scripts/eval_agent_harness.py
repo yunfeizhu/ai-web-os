@@ -31,9 +31,15 @@ from app.core.agent_harness import (  # noqa: E402
     validate_tool_result,
 )
 from app.core.agent_graph import AgentGraphRuntime  # noqa: E402
+from app.core import context_manager as context_manager_module  # noqa: E402
 from app.core import evidence_bundle as evidence_bundle_module  # noqa: E402
 from app.core import subagent as subagent_module  # noqa: E402
-from app.core.context_manager import compact_tool_result_for_context  # noqa: E402
+from app.core.context_manager import (  # noqa: E402
+    CONTEXT_COMPRESSION_MARKER,
+    compact_history_if_needed,
+    compact_tool_result_for_context,
+    prepare_messages,
+)
 from app.core.evidence_bundle import (  # noqa: E402
     build_tool_evidence,
     distill_evidence_bundle,
@@ -42,7 +48,9 @@ from app.core.evidence_bundle import (  # noqa: E402
 )
 from app.core.llm_provider import (  # noqa: E402
     _delegate_result_has_sufficient_search,
+    _extract_delta_reasoning_content,
     _is_safe_tool_preamble,
+    build_litellm_completion_kwargs,
 )
 from app.core.subagent import DELEGATE_TOOL_CONTEXT_CHARS, normalize_subagent_specs  # noqa: E402
 from app.core.tool_capabilities import (  # noqa: E402
@@ -56,6 +64,7 @@ from app.core.tool_capabilities import (  # noqa: E402
     task_requires_full_content,
 )
 from app.core.tools import get_tools_for_model  # noqa: E402
+from app.core.user_errors import user_facing_error_message  # noqa: E402
 
 
 def _tool_names(tools: list[dict]) -> set[str]:
@@ -106,7 +115,95 @@ async def main() -> None:
             "data-like preamble should be blocked")
     _assert(not _is_safe_tool_preamble("x" * 81), "long preamble should be blocked")
 
-    # 6. LangGraph runtime should checkpoint harness node transitions.
+    # 6. Low-level provider errors should be shown as friendly user-facing messages.
+    network_message = user_facing_error_message(
+        Exception("litellm.InternalServerError: OpenAIException - Connection error.")
+    )
+    _assert("网络" in network_message and "Connection error" not in network_message,
+            f"network errors should be friendly: {network_message}")
+    temperature_message = user_facing_error_message(
+        Exception("invalid temperature: only 1 is allowed for this model")
+    )
+    _assert("temperature" in temperature_message and "invalid temperature" not in temperature_message,
+            f"temperature errors should be friendly: {temperature_message}")
+    thinking_message = user_facing_error_message(
+        Exception("thinking is enabled but reasoning_content is missing in assistant tool call message at index 5")
+    )
+    _assert("思考" in thinking_message and "reasoning_content" not in thinking_message,
+            f"thinking history errors should be friendly: {thinking_message}")
+
+    # 7. Kimi K2-series models reject caller-supplied sampling params.
+    kimi_kwargs = build_litellm_completion_kwargs(
+        litellm_model="openai/kimi-k2.6",
+        api_key="eval-key",
+        temperature=0.7,
+        max_tokens=4096,
+    )
+    _assert("temperature" not in kimi_kwargs,
+            f"Kimi K2.6 should not receive temperature: {kimi_kwargs}")
+    _assert(kimi_kwargs.get("extra_body", {}).get("thinking") != {"type": "disabled"},
+            f"Kimi K2.6 should keep provider thinking enabled and preserve reasoning history instead: {kimi_kwargs}")
+    regular_kwargs = build_litellm_completion_kwargs(
+        litellm_model="openai/gpt-4o",
+        api_key="eval-key",
+        temperature=0.7,
+        max_tokens=4096,
+    )
+    _assert(regular_kwargs.get("temperature") == 0.7,
+            f"regular models should keep temperature: {regular_kwargs}")
+    _assert("extra_body" not in regular_kwargs,
+            f"regular models should not receive Kimi-specific extra_body: {regular_kwargs}")
+
+    # 8. Thinking-capable models need assistant tool-call history to retain reasoning_content.
+    prepared_thinking_history = prepare_messages(
+        model="openai/kimi-k2.6",
+        system_prompt="System prompt.",
+        history=[
+            {
+                "role": "assistant",
+                "content": None,
+                "reasoning_content": "I need live stock data before answering.",
+                "tool_calls": [
+                    {
+                        "id": "call_stock",
+                        "type": "function",
+                        "function": {
+                            "name": "stock_quote",
+                            "arguments": '{"symbol":"600519"}',
+                        },
+                    }
+                ],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_stock",
+                "content": '{"price": 1500}',
+            },
+            {"role": "user", "content": "600519怎么样"},
+        ],
+        max_output_tokens=100,
+    )
+    assistant_tool_history = [
+        message
+        for message in prepared_thinking_history
+        if message.get("role") == "assistant" and message.get("tool_calls")
+    ]
+    _assert(
+        assistant_tool_history
+        and assistant_tool_history[0].get("reasoning_content")
+        == "I need live stock data before answering.",
+        f"assistant tool-call history should preserve reasoning_content: {prepared_thinking_history}",
+    )
+    _assert(
+        _extract_delta_reasoning_content({
+            "provider_specific_fields": {
+                "reasoning_content": "Thinking streamed by provider.",
+            },
+        }) == "Thinking streamed by provider.",
+        "LiteLLM reasoning_content deltas should be extracted for UI streaming",
+    )
+
+    # 8. LangGraph runtime should checkpoint harness node transitions.
     graph = AgentGraphRuntime(request_id="eval-agent-harness")
     event = graph.status("build_context")
     _assert(event["graph"] == "langgraph", f"LangGraph should be active, got {event['graph']}")
@@ -114,7 +211,7 @@ async def main() -> None:
     checkpoint = graph.get_checkpoint()
     _assert(checkpoint is not None, "LangGraph checkpoint should exist after status call")
 
-    # 7. Month-only weather queries should be normalized to the current year.
+    # 9. Month-only weather queries should be normalized to the current year.
     normalized_args = normalize_temporal_tool_args(
         tool_name="mcp_tavily_search",
         args={"query": "日本5月天气 2025年 气温 降雨量 旅游季节"},
@@ -733,6 +830,83 @@ async def main() -> None:
         ),
         "delegate result that still needs tools must not globally skip later fetch/extract",
     )
+
+    async def fake_context_summarizer(messages):
+        _assert(len(messages) >= 2, "compaction summarizer should receive old history")
+        return "Decisions: keep the agent loop. Open work: finish context compression."
+
+    long_history: list[dict] = []
+    for idx in range(10):
+        long_history.extend(
+            [
+                {"role": "user", "content": f"old request {idx} " + ("alpha " * 80)},
+                {"role": "assistant", "content": f"old answer {idx} " + ("beta " * 80)},
+            ]
+        )
+    long_history.extend(
+        [
+            {"role": "user", "content": "recent request"},
+            {"role": "assistant", "content": "recent answer"},
+            {"role": "user", "content": "latest question"},
+        ]
+    )
+    compacted_history = await compact_history_if_needed(
+        model="gpt-4o",
+        history=long_history,
+        max_output_tokens=100,
+        token_budget=160,
+        keep_recent_groups=3,
+        summarizer=fake_context_summarizer,
+    )
+    _assert(compacted_history.compacted, "long history should trigger context compaction")
+    _assert(
+        compacted_history.messages[0].get("role") == "system"
+        and CONTEXT_COMPRESSION_MARKER in str(compacted_history.messages[0].get("content")),
+        f"compacted history should begin with summary marker: {compacted_history.messages}",
+    )
+    _assert(
+        "old request 0" not in json.dumps(compacted_history.messages, ensure_ascii=False),
+        "old verbatim turns should be replaced by the summary",
+    )
+    _assert(
+        compacted_history.messages[-1].get("content") == "latest question",
+        "latest user message must remain verbatim after compaction",
+    )
+    small_history = await compact_history_if_needed(
+        model="gpt-4o",
+        history=[{"role": "user", "content": "small"}],
+        max_output_tokens=100,
+        token_budget=10_000,
+        keep_recent_groups=3,
+        summarizer=fake_context_summarizer,
+    )
+    _assert(not small_history.compacted, "small history should not be compacted")
+    _assert(
+        small_history.messages == [{"role": "user", "content": "small"}],
+        "small history should remain unchanged",
+    )
+
+    original_context_window = context_manager_module.get_model_context_window
+    context_manager_module.get_model_context_window = lambda _model: 2100
+    try:
+        prepared_after_trim = prepare_messages(
+            model="gpt-4o",
+            system_prompt="System prompt.",
+            history=[
+                compacted_history.messages[0],
+                {"role": "user", "content": "bulky recent turn " + ("gamma " * 3000)},
+                {"role": "assistant", "content": "bulky recent answer " + ("delta " * 3000)},
+                {"role": "user", "content": "final question"},
+            ],
+            max_output_tokens=100,
+        )
+    finally:
+        context_manager_module.get_model_context_window = original_context_window
+    _assert(
+        any(CONTEXT_COMPRESSION_MARKER in str(message.get("content") or "")
+            for message in prepared_after_trim),
+        "sliding-window trimming must preserve the compaction summary",
+    )
     original_acompletion = evidence_bundle_module.acompletion
 
     async def slow_distiller_call(**_kwargs):
@@ -755,7 +929,7 @@ async def main() -> None:
     _assert("distiller_error" in timeout_bundle,
             f"slow evidence distiller should timeout into fallback evidence: {timeout_bundle}")
 
-    print("Agent Harness eval passed: 25 cases")
+    print("Agent Harness eval passed: 29 cases")
 
 
 if __name__ == "__main__":

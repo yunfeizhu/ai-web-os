@@ -17,5 +17,8 @@ minio_data/
 # IDE
 .vscode/
 .idea/
+
+# Agents
+.agents/
 *.swp
 *.swo

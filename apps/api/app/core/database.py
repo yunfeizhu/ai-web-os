@@ -32,6 +32,7 @@ SCHEMA_PATCHES: dict[str, list[str]] = {
     ],
     "messages": [
         "ADD COLUMN IF NOT EXISTS content TEXT",
+        "ADD COLUMN IF NOT EXISTS reasoning_content TEXT",
         "ADD COLUMN IF NOT EXISTS tool_calls JSON",
         "ADD COLUMN IF NOT EXISTS tool_call_id VARCHAR(128)",
         "ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()",

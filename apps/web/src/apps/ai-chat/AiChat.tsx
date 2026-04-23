@@ -424,6 +424,7 @@ export function AiChat() {
           id: string;
           role: string;
           content: string | null;
+          reasoning_content?: string | null;
           tool_calls:
             | {
                 id: string;
@@ -486,6 +487,7 @@ export function AiChat() {
             id: m.id,
             role: m.role as ChatMessage["role"],
             content: m.content ?? "",
+            reasoningContent: m.reasoning_content ?? undefined,
             toolCalls: normalizedCalls,
           };
         }),
@@ -697,7 +699,7 @@ export function AiChat() {
           );
           if (completedCalls.length > 0) {
             // assistant message with tool_calls
-            history.push({
+            const assistantHistory: Record<string, unknown> = {
               role: "assistant",
               content: m.content || null,
               tool_calls: completedCalls.map((tc) => ({
@@ -708,7 +710,11 @@ export function AiChat() {
                   arguments: JSON.stringify(tc.args ?? {}),
                 },
               })),
-            });
+            };
+            if (m.reasoningContent?.trim()) {
+              assistantHistory.reasoning_content = m.reasoningContent;
+            }
+            history.push(assistantHistory);
             // corresponding tool result messages
             for (const tc of completedCalls) {
               history.push({
@@ -719,7 +725,14 @@ export function AiChat() {
             }
           } else {
             if (m.content.trim()) {
-              history.push({ role: "assistant", content: m.content });
+              const assistantHistory: Record<string, unknown> = {
+                role: "assistant",
+                content: m.content,
+              };
+              if (m.reasoningContent?.trim()) {
+                assistantHistory.reasoning_content = m.reasoningContent;
+              }
+              history.push(assistantHistory);
             }
           }
         } else {
@@ -750,6 +763,8 @@ export function AiChat() {
             onStatus: (s, event) => {
               if (s === "recalled") {
                 setStatusText("已召回相关记忆，正在组织回答…");
+              } else if (s === "context_compacted") {
+                setStatusText("已压缩较早上下文，正在继续回答…");
               } else if (s === "graph_node") {
                 if (event?.node === "validate_result" && event?.error) {
                   setStatusText("工具结果未通过校验，正在让模型修正…");
@@ -765,6 +780,19 @@ export function AiChat() {
                   setStatusText("已拦截一次不合规工具调用，正在修正…");
                 }
               }
+            },
+            onReasoningToken: (token) => {
+              setStatusText("模型正在思考…");
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? {
+                        ...m,
+                        reasoningContent: `${m.reasoningContent ?? ""}${token}`,
+                      }
+                    : m,
+                ),
+              );
             },
             onToken: (token) => {
               setStatusText("");

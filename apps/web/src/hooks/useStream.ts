@@ -98,6 +98,7 @@ export interface ChatParams {
   llmApiKey?: string;
   llmApiBase?: string;
   onToken: (token: string) => void;
+  onReasoningToken?: (token: string) => void;
   onToolCall?: (event: ToolCallEvent) => void;
   onToolResult?: (event: ToolResultEvent) => void;
   onStatus?: (status: string, event?: Record<string, unknown>) => void;
@@ -110,6 +111,7 @@ export interface ChatParams {
 
 type PendingHandler = {
   onToken: (token: string) => void;
+  onReasoningToken?: (token: string) => void;
   onToolCall?: (event: ToolCallEvent) => void;
   onToolResult?: (event: ToolResultEvent) => void;
   onStatus?: (status: string, event?: Record<string, unknown>) => void;
@@ -178,6 +180,10 @@ class WsManager {
       case "token":
         handler.touch();
         handler.onToken(payload.token as string);
+        break;
+      case "reasoning_token":
+        handler.touch();
+        handler.onReasoningToken?.(payload.token as string);
         break;
       case "tool_call":
         handler.touch();
@@ -364,6 +370,7 @@ export async function streamChat(
       },
       {
         onToken: params.onToken,
+        onReasoningToken: params.onReasoningToken,
         onToolCall: params.onToolCall,
         onToolResult: params.onToolResult,
         onStatus: params.onStatus,

@@ -256,6 +256,9 @@ async def run_subagent(
                 )
                 continue
 
+            if event_type == "reasoning_token":
+                continue
+
             tagged = dict(payload) if isinstance(payload, dict) else {"content": payload}
             if (
                 event_type == "status"

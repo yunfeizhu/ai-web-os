@@ -15,6 +15,7 @@ from app.core.confirmation_store import create_confirmation, discard_confirmatio
 from app.core.database import AsyncSessionLocal
 from app.core.llm_provider import agent_loop
 from app.core.skill_context import build_skill_augmented_system_prompt
+from app.core.user_errors import user_facing_error_message
 from app.models.conversation import Conversation, Message
 
 DEFAULT_USER_ID = "default"
@@ -47,12 +48,18 @@ def _split_token_for_display(token: str, *, chunk_size: int = 72) -> list[str]:
     return chunks
 
 
-async def _send_token(websocket: WebSocket, request_id: str, token: str) -> None:
+async def _send_token(
+    websocket: WebSocket,
+    request_id: str,
+    token: str,
+    *,
+    event_type: str = "token",
+) -> None:
     chunks = _split_token_for_display(token)
     for index, chunk in enumerate(chunks):
         await websocket.send_json(
             {
-                "type": "token",
+                "type": event_type,
                 "requestId": request_id,
                 "payload": {"token": chunk},
             }
@@ -65,6 +72,7 @@ async def _save_messages(
     conv_id: str,
     user_content: str,
     assistant_content: str,
+    reasoning_content: str,
     tool_calls: list[dict],
     tool_results: list[dict],
 ):
@@ -87,6 +95,7 @@ async def _save_messages(
                 conversation_id=conv_id,
                 role="assistant",
                 content=assistant_content,
+                reasoning_content=reasoning_content or None,
                 tool_calls=tool_calls or None,
             )
         )
@@ -225,6 +234,7 @@ async def websocket_endpoint(websocket: WebSocket):
                             )
 
                     full_response = ""
+                    reasoning_response = ""
                     tool_calls: list[dict] = []
                     tool_results: list[dict] = []
 
@@ -256,6 +266,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         if event_type == "token":
                             full_response += event_payload
                             await _send_token(websocket, request_id, event_payload)
+                        elif event_type == "reasoning_token":
+                            reasoning_response += event_payload
+                            await _send_token(
+                                websocket,
+                                request_id,
+                                event_payload,
+                                event_type="reasoning_token",
+                            )
                         elif event_type == "tool_call":
                             tool_calls.append(event_payload)
                             await websocket.send_json(
@@ -305,6 +323,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         conv_id,
                         user_message,
                         full_response,
+                        reasoning_response,
                         tool_calls,
                         tool_results,
                     )
@@ -327,12 +346,12 @@ async def websocket_endpoint(websocket: WebSocket):
                     )
 
             except Exception as exc:
-                print(f"[WebSocket agent_invoke error] {exc}")
+                print(f"[WebSocket agent_invoke error] {type(exc).__name__}: {exc}")
                 await websocket.send_json(
                     {
                         "type": "agent_error",
                         "requestId": request_id,
-                        "payload": {"error": str(exc)},
+                        "payload": {"error": user_facing_error_message(exc)},
                     }
                 )
 

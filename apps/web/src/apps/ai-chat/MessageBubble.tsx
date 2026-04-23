@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState } from "react";
-import { Check, Copy, RotateCcw, Sparkles } from "lucide-react";
+import { Brain, Check, Copy, RotateCcw, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -206,6 +206,7 @@ function MessageBubbleView({ message, onRetry }: Props) {
       </div>
 
       <div className="relative min-w-0 flex-1">
+        <ReasoningBlock content={message.reasoningContent} />
         <ToolCallDisplay
           toolCalls={message.toolCalls}
           subagentTokens={message.subagentTokens}
@@ -253,6 +254,42 @@ export const MessageBubble = memo(
     prev.message === next.message &&
     Boolean(prev.onRetry) === Boolean(next.onRetry),
 );
+
+function ReasoningBlock({ content }: { content?: string }) {
+  const text = content?.trim();
+  if (!text) return null;
+
+  return (
+    <div
+      className="mb-3 overflow-hidden rounded-lg text-[12px]"
+      style={{
+        border: "0.5px solid var(--border)",
+        background: "var(--panel-bg)",
+      }}
+    >
+      <div
+        className="flex items-center gap-1.5 px-3 py-1.5 font-medium"
+        style={{
+          color: "var(--t2)",
+          borderBottom: "0.5px solid var(--border)",
+        }}
+      >
+        <Brain size={13} strokeWidth={1.8} />
+        <span>思考过程</span>
+      </div>
+      <div
+        className="max-h-56 overflow-auto px-3 py-2 leading-relaxed"
+        style={{
+          color: "var(--t3)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+        }}
+      >
+        {content}
+      </div>
+    </div>
+  );
+}
 
 function StreamingDots() {
   return (

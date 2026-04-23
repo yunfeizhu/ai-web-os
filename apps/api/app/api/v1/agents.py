@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.core.llm_provider import stream_chat, agent_loop
 from app.core.memory import ensure_memory_manager, get_memory_manager
 from app.core.skill_context import build_skill_augmented_system_prompt
+from app.core.user_errors import user_facing_error_message
 from app.models.conversation import Conversation, Message
 
 router = APIRouter()
@@ -149,6 +150,7 @@ class MessageResponse(BaseModel):
     id: str
     role: str
     content: str | None
+    reasoning_content: str | None = None
     tool_calls: list | None
     tool_call_id: str | None = None
     created_at: str
@@ -220,6 +222,7 @@ async def get_messages(conv_id: str, db: AsyncSession = Depends(get_db)):
     return [
         MessageResponse(
             id=m.id, role=m.role, content=m.content,
+            reasoning_content=m.reasoning_content,
             tool_calls=m.tool_calls, tool_call_id=m.tool_call_id,
             created_at=m.created_at.isoformat(),
         )
@@ -281,6 +284,7 @@ async def chat(
 
     async def generate():
         full_response = ""
+        reasoning_response = ""
         tool_calls: list[dict] = []
         tool_results: list[dict] = []
 
@@ -334,6 +338,10 @@ async def chat(
                         full_response += payload
                         yield f"data: {json.dumps({'token': payload}, ensure_ascii=False)}\n\n"
 
+                    elif event_type == "reasoning_token":
+                        reasoning_response += payload
+                        yield f"data: {json.dumps({'x_reasoning_token': payload}, ensure_ascii=False)}\n\n"
+
                     elif event_type == "tool_call":
                         tool_calls.append(payload)
                         yield f"data: {json.dumps({'x_tool_call': payload}, ensure_ascii=False)}\n\n"
@@ -360,6 +368,7 @@ async def chat(
                     conversation_id=conv_id,
                     role="assistant",
                     content=full_response,
+                    reasoning_content=reasoning_response or None,
                     tool_calls=tool_calls if tool_calls else None,
                 ))
                 for tr in tool_results:
@@ -385,7 +394,8 @@ async def chat(
                 )
 
         except Exception as e:
-            yield f"data: {json.dumps({'x_error': str(e)}, ensure_ascii=False)}\n\n"
+            print(f"[SSE agent chat error] {type(e).__name__}: {e}")
+            yield f"data: {json.dumps({'x_error': user_facing_error_message(e)}, ensure_ascii=False)}\n\n"
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(

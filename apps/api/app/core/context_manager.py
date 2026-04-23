@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable
 
 from litellm import get_max_tokens, token_counter
 
@@ -29,6 +30,13 @@ _CURRENT_TOOL_RESULT_CONTEXT_LIMIT = 4000
 _SUBAGENT_TOOL_RESULT_CONTEXT_LIMIT = 1400
 _SEARCH_RESULT_SNIPPET_LIMIT = 260
 _MAX_SEARCH_RESULTS_FOR_CONTEXT = 4
+_CONTEXT_COMPRESSION_TRIGGER_RATIO = 0.62
+_CONTEXT_COMPRESSION_KEEP_RECENT_GROUPS = 8
+_COMPACTION_RENDER_MAX_CHARS = 60_000
+_COMPACTION_MESSAGE_SNIPPET_CHARS = 1800
+_COMPACTION_SUMMARY_MAX_CHARS = 8000
+
+CONTEXT_COMPRESSION_MARKER = "[ContextSummary:v1]"
 
 # Sentinel appended to truncated tool results so the model sees the cut.
 _TRUNCATION_MARKER = "\n\n…[结果已截断，仅保留关键部分]"
@@ -41,6 +49,20 @@ TOOL_USE_REMINDER = (
 )
 
 _ALLOWED_MESSAGE_ROLES = {"system", "user", "assistant", "tool", "function"}
+
+HistorySummarizer = Callable[[list[dict]], Awaitable[str]]
+
+
+@dataclass(frozen=True)
+class ContextCompactionResult:
+    messages: list[dict]
+    compacted: bool
+    before_tokens: int
+    after_tokens: int
+    summary_tokens: int = 0
+    old_message_count: int = 0
+    kept_message_count: int = 0
+    reason: str = ""
 
 
 # ── Public API ────────────────────────────────────────────────
@@ -98,6 +120,94 @@ def compact_tool_result_for_context(
     return _truncate_tool_result_to_limit(text, limit)
 
 
+async def compact_history_if_needed(
+    *,
+    model: str,
+    history: list[dict],
+    max_output_tokens: int = 4096,
+    token_budget: int | None = None,
+    trigger_ratio: float = _CONTEXT_COMPRESSION_TRIGGER_RATIO,
+    keep_recent_groups: int = _CONTEXT_COMPRESSION_KEEP_RECENT_GROUPS,
+    summarizer: HistorySummarizer | None = None,
+) -> ContextCompactionResult:
+    """Replace older conversation history with a compact summary when needed.
+
+    This is the high-level "conversation compaction" layer. It complements the
+    lighter tool-result compaction above: verbose tool payloads are already
+    shortened, and once the whole history grows too large, earlier turns are
+    summarized while the recent tail remains verbatim.
+    """
+    preserve_reasoning_content = _model_uses_reasoning_history(model)
+    processed = _sanitize_history_messages(
+        history,
+        preserve_reasoning_content=preserve_reasoning_content,
+    )
+    before_tokens = count_tokens(model, processed)
+
+    if token_budget is None:
+        context_window = get_model_context_window(model)
+        token_budget = max(2000, context_window - max_output_tokens)
+
+    trigger_tokens = max(500, int(token_budget * max(0.1, min(trigger_ratio, 0.95))))
+    if before_tokens <= trigger_tokens:
+        return ContextCompactionResult(
+            messages=processed,
+            compacted=False,
+            before_tokens=before_tokens,
+            after_tokens=before_tokens,
+            reason="under_threshold",
+        )
+
+    groups = _group_turns(processed)
+    if len(groups) <= keep_recent_groups:
+        return ContextCompactionResult(
+            messages=processed,
+            compacted=False,
+            before_tokens=before_tokens,
+            after_tokens=before_tokens,
+            reason="not_enough_history",
+        )
+
+    old_messages = [message for group in groups[:-keep_recent_groups] for message in group]
+    recent_messages = [message for group in groups[-keep_recent_groups:] for message in group]
+    if not old_messages:
+        return ContextCompactionResult(
+            messages=processed,
+            compacted=False,
+            before_tokens=before_tokens,
+            after_tokens=before_tokens,
+            reason="empty_old_history",
+        )
+
+    summary = ""
+    if summarizer is not None:
+        try:
+            summary = (await summarizer(old_messages)).strip()
+        except Exception as exc:
+            logger.warning("Context summarizer failed; using extractive fallback: %s", exc)
+
+    if not summary:
+        summary = _build_extractive_context_summary(old_messages)
+
+    summary_message = _build_context_summary_message(summary, len(old_messages))
+    summary_tokens = count_tokens(model, [summary_message])
+    recent_budget = max(500, token_budget - summary_tokens)
+    trimmed_recent = _trim_history(model, recent_messages, recent_budget)
+    compacted_messages = [summary_message] + trimmed_recent
+    after_tokens = count_tokens(model, compacted_messages)
+
+    return ContextCompactionResult(
+        messages=compacted_messages,
+        compacted=True,
+        before_tokens=before_tokens,
+        after_tokens=after_tokens,
+        summary_tokens=summary_tokens,
+        old_message_count=len(old_messages),
+        kept_message_count=len(trimmed_recent),
+        reason="threshold_exceeded",
+    )
+
+
 def prepare_messages(
     model: str,
     system_prompt: str,
@@ -135,7 +245,11 @@ def prepare_messages(
         history_budget = 500
 
     # -- Step 1: normalise externally supplied history ------------------
-    processed = _sanitize_history_messages(history)
+    preserve_reasoning_content = _model_uses_reasoning_history(model)
+    processed = _sanitize_history_messages(
+        history,
+        preserve_reasoning_content=preserve_reasoning_content,
+    )
 
     # -- Step 2: summarise old tool results -----------------------------
     processed = _summarise_old_tool_results(processed)
@@ -188,7 +302,41 @@ def _sanitize_tool_calls(raw_tool_calls: Any) -> list[dict]:
     return tool_calls
 
 
-def _sanitize_history_messages(history: list[dict]) -> list[dict]:
+def _model_uses_reasoning_history(model: str) -> bool:
+    model_id = str(model or "").split("/")[-1].lower()
+    return model_id.startswith("kimi-k2")
+
+
+def _sanitize_reasoning_content(value: Any) -> str | None:
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def _assistant_message(
+    *,
+    content: str | None,
+    reasoning_content: str | None,
+    preserve_reasoning_content: bool,
+    tool_calls: list[dict] | None = None,
+) -> dict:
+    message: dict = {"role": "assistant", "content": content}
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+        if preserve_reasoning_content:
+            # Kimi thinking mode requires assistant tool-call messages in
+            # follow-up history to carry the reasoning_content field.
+            message["reasoning_content"] = reasoning_content or ""
+    elif preserve_reasoning_content and reasoning_content:
+        message["reasoning_content"] = reasoning_content
+    return message
+
+
+def _sanitize_history_messages(
+    history: list[dict],
+    *,
+    preserve_reasoning_content: bool = False,
+) -> list[dict]:
     """Keep only provider-valid messages and preserve tool-call coherence."""
     messages = [msg for msg in history if isinstance(msg, dict)]
     sanitized: list[dict] = []
@@ -212,10 +360,17 @@ def _sanitize_history_messages(history: list[dict]) -> list[dict]:
         if role == "assistant":
             content = msg.get("content")
             assistant_content = content if isinstance(content, str) else None
+            reasoning_content = _sanitize_reasoning_content(msg.get("reasoning_content"))
             tool_calls = _sanitize_tool_calls(msg.get("tool_calls"))
             if not tool_calls:
                 if assistant_content and assistant_content.strip():
-                    sanitized.append({"role": "assistant", "content": assistant_content})
+                    sanitized.append(
+                        _assistant_message(
+                            content=assistant_content,
+                            reasoning_content=reasoning_content,
+                            preserve_reasoning_content=preserve_reasoning_content,
+                        )
+                    )
                 i += 1
                 continue
 
@@ -236,14 +391,23 @@ def _sanitize_history_messages(history: list[dict]) -> list[dict]:
             result_ids = {tool_msg["tool_call_id"] for tool_msg in tool_results}
             matched_calls = [call for call in tool_calls if call["id"] in result_ids]
             if matched_calls:
-                sanitized.append({
-                    "role": "assistant",
-                    "content": assistant_content,
-                    "tool_calls": matched_calls,
-                })
+                sanitized.append(
+                    _assistant_message(
+                        content=assistant_content,
+                        reasoning_content=reasoning_content,
+                        preserve_reasoning_content=preserve_reasoning_content,
+                        tool_calls=matched_calls,
+                    )
+                )
                 sanitized.extend(tool_msg for tool_msg in tool_results if tool_msg["tool_call_id"] in result_ids)
             elif assistant_content and assistant_content.strip():
-                sanitized.append({"role": "assistant", "content": assistant_content})
+                sanitized.append(
+                    _assistant_message(
+                        content=assistant_content,
+                        reasoning_content=reasoning_content,
+                        preserve_reasoning_content=preserve_reasoning_content,
+                    )
+                )
 
             i = j
             continue
@@ -392,6 +556,116 @@ def _compact_search_like_result(content: str, limit: int) -> str | None:
     return compacted
 
 
+def render_messages_for_compaction(
+    messages: list[dict],
+    *,
+    max_chars: int = _COMPACTION_RENDER_MAX_CHARS,
+) -> str:
+    """Render chat history into a bounded transcript for the summarizer."""
+    lines: list[str] = []
+    total = 0
+    for index, msg in enumerate(messages, start=1):
+        role = str(msg.get("role") or "unknown")
+        header = f"\n[{index}] role={role}"
+        if role == "tool":
+            header += f" tool_call_id={msg.get('tool_call_id') or ''}"
+        lines.append(header)
+        total += len(header)
+
+        tool_calls = msg.get("tool_calls")
+        if isinstance(tool_calls, list) and tool_calls:
+            call_lines: list[str] = []
+            for call in tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function") or {}
+                if not isinstance(function, dict):
+                    function = {}
+                name = function.get("name") or call.get("name") or ""
+                arguments = function.get("arguments") or call.get("args") or ""
+                call_lines.append(f"- {name}: {_compact_inline(arguments, 360)}")
+            if call_lines:
+                chunk = "\ntool_calls:\n" + "\n".join(call_lines)
+                lines.append(chunk)
+                total += len(chunk)
+
+        content = str(msg.get("content") or "").strip()
+        if content:
+            if role == "tool":
+                content = _compact_inline(content, _TOOL_RESULT_SUMMARY_THRESHOLD)
+            else:
+                content = _compact_inline(content, _COMPACTION_MESSAGE_SNIPPET_CHARS)
+            chunk = f"\ncontent:\n{content}"
+            lines.append(chunk)
+            total += len(chunk)
+
+        if total >= max_chars:
+            lines.append("\n[transcript clipped for compaction input]")
+            break
+
+    return "\n".join(lines).strip()
+
+
+def _compact_inline(value: Any, limit: int) -> str:
+    text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    compact = " ".join(str(text or "").split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: max(80, limit - 20)] + " ... [clipped]"
+
+
+def _build_context_summary_message(summary: str, old_message_count: int) -> dict:
+    clean_summary = str(summary or "").strip() or "Earlier context was compacted."
+    clean_summary = _compact_inline(clean_summary, _COMPACTION_SUMMARY_MAX_CHARS)
+    return {
+        "role": "system",
+        "content": (
+            f"{CONTEXT_COMPRESSION_MARKER}\n"
+            "The earlier conversation history has been compressed to preserve "
+            "working context. Treat this summary as authoritative background, "
+            "then rely on the recent verbatim turns below for exact wording.\n\n"
+            f"Compressed message count: {old_message_count}\n\n"
+            f"{clean_summary}"
+        ),
+    }
+
+
+def _build_extractive_context_summary(messages: list[dict]) -> str:
+    """Deterministic fallback when model-based summary is unavailable."""
+    lines = [
+        "Fallback extractive summary of earlier turns:",
+        "- Preserve explicit user requirements, decisions, unresolved tasks, file paths, "
+        "tool names, errors, and final results below.",
+    ]
+    for msg in messages[-24:]:
+        role = str(msg.get("role") or "unknown")
+        if role == "tool":
+            content = _compact_inline(msg.get("content") or "", 420)
+            if content:
+                lines.append(f"- tool[{msg.get('tool_call_id') or '?'}]: {content}")
+            continue
+
+        content = _compact_inline(msg.get("content") or "", 520)
+        if content:
+            lines.append(f"- {role}: {content}")
+
+        tool_calls = msg.get("tool_calls")
+        if isinstance(tool_calls, list) and tool_calls:
+            names: list[str] = []
+            for call in tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function") or {}
+                if not isinstance(function, dict):
+                    function = {}
+                name = str(function.get("name") or call.get("name") or "").strip()
+                if name:
+                    names.append(name)
+            if names:
+                lines.append(f"- assistant tool calls: {', '.join(names[:8])}")
+    return "\n".join(lines)
+
+
 def _inject_tool_reminder(messages: list[dict]) -> list[dict]:
     """Insert a brief system reminder right before the last user message
     so it sits in the model's recency window.
@@ -423,6 +697,7 @@ def _trim_history(
     Preserves coherence rules:
     - Never orphan a ``tool`` message from its preceding ``assistant``
       that contains the matching ``tool_calls``.
+    - Keep a leading compaction summary when present.
     - Always keep the most recent user message and the reminder.
     """
     current_tokens = count_tokens(model, messages)
@@ -431,13 +706,28 @@ def _trim_history(
 
     # Group messages into logical "turns" that must stay together.
     groups = _group_turns(messages)
+    protected_prefix: list[list[dict]] = []
+    if groups and _group_has_context_summary(groups[0]):
+        protected_prefix = [groups.pop(0)]
 
     # Drop from the front (oldest) until we fit.
     while len(groups) > 1 and current_tokens > budget_tokens:
-        dropped = groups.pop(0)
-        current_tokens = count_tokens(model, [m for g in groups for m in g])
+        groups.pop(0)
+        current_tokens = count_tokens(
+            model,
+            [m for g in [*protected_prefix, *groups] for m in g],
+        )
 
-    return [m for g in groups for m in g]
+    return [m for g in [*protected_prefix, *groups] for m in g]
+
+
+def _group_has_context_summary(group: list[dict]) -> bool:
+    for message in group:
+        if message.get("role") != "system":
+            continue
+        if CONTEXT_COMPRESSION_MARKER in str(message.get("content") or ""):
+            return True
+    return False
 
 
 def _group_turns(messages: list[dict]) -> list[list[dict]]:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
-from typing import AsyncIterator, Awaitable, Callable, Literal
+from typing import Any, AsyncIterator, Awaitable, Callable, Literal
 
 import litellm
 from litellm import acompletion
@@ -20,7 +20,12 @@ from app.core.agent_harness import (
     validation_trace_payload,
 )
 from app.core.agent_graph import AgentGraphRuntime
-from app.core.context_manager import compact_tool_result_for_context, prepare_messages
+from app.core.context_manager import (
+    compact_history_if_needed,
+    compact_tool_result_for_context,
+    prepare_messages,
+    render_messages_for_compaction,
+)
 from app.core.tool_capabilities import (
     CAPABILITY_SEARCH_DISCOVERY,
     WEB_CONTENT_CAPABILITIES,
@@ -55,6 +60,7 @@ AgentEvent = tuple[
         "tool_call",
         "tool_result",
         "status",
+        "reasoning_token",
         "subagent_token",
         "subagent_result",
     ],
@@ -181,6 +187,51 @@ def _strip_internal_model_markup(text: str) -> str:
     return cleaned.strip()
 
 
+def _dump_delta(delta: object) -> dict[str, Any]:
+    if isinstance(delta, dict):
+        return delta
+    model_dump = getattr(delta, "model_dump", None)
+    if callable(model_dump):
+        try:
+            dumped = model_dump(exclude_none=True)
+        except TypeError:
+            dumped = model_dump()
+        if isinstance(dumped, dict):
+            return dumped
+    return {}
+
+
+def _extract_delta_reasoning_content(delta: object) -> str:
+    """Read provider reasoning tokens from LiteLLM stream deltas."""
+    candidates: list[Any] = []
+    for attr in ("reasoning_content", "reasoning", "reasoningContent"):
+        candidates.append(getattr(delta, attr, None))
+
+    data = _dump_delta(delta)
+    candidates.extend(
+        [
+            data.get("reasoning_content"),
+            data.get("reasoning"),
+            data.get("reasoningContent"),
+        ]
+    )
+    for nested_key in ("provider_specific_fields", "additional_kwargs"):
+        nested = data.get(nested_key)
+        if isinstance(nested, dict):
+            candidates.extend(
+                [
+                    nested.get("reasoning_content"),
+                    nested.get("reasoning"),
+                    nested.get("reasoningContent"),
+                ]
+            )
+
+    for value in candidates:
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
 def _delegate_result_has_sufficient_search(result: str) -> bool:
     """Return True when a delegated research result already carries search evidence."""
     try:
@@ -224,6 +275,53 @@ def _delegate_result_has_sufficient_search(result: str) -> bool:
     return False
 
 
+async def _summarize_history_for_compaction(
+    messages: list[dict],
+    *,
+    litellm_model: str,
+    api_key: str,
+    api_base: str | None,
+    max_tokens: int,
+) -> str:
+    """Use the active model to write a high-recall continuation summary."""
+    transcript = render_messages_for_compaction(messages)
+    prompt = (
+        "You are compressing an AI assistant conversation so another model call "
+        "can continue safely with less context.\n\n"
+        "Write a concise but high-recall continuation summary. Preserve:\n"
+        "- user goals, constraints, preferences, and explicit instructions\n"
+        "- decisions already made and why they matter\n"
+        "- current task state, open questions, blockers, and next steps\n"
+        "- important file paths, app names, tool names, data sources, errors, and results\n"
+        "- any facts that future answers must not contradict\n\n"
+        "Discard repeated chatter, raw verbose tool payloads, and incidental wording. "
+        "Do not invent facts. Prefer bullet sections with stable labels.\n\n"
+        f"Conversation transcript to compress:\n{transcript}"
+    )
+    kwargs = build_litellm_completion_kwargs(
+        litellm_model=litellm_model,
+        api_key=api_key,
+        temperature=0.1,
+        max_tokens=min(1600, max(600, max_tokens // 2)),
+        api_base=api_base,
+    )
+    kwargs["messages"] = [
+        {
+            "role": "system",
+            "content": "You write faithful, loss-aware summaries for LLM context compaction.",
+        },
+        {"role": "user", "content": prompt},
+    ]
+    kwargs["timeout"] = 45
+
+    response = await acompletion(**kwargs)
+    try:
+        content = response.choices[0].message.content
+    except Exception:
+        content = ""
+    return str(content or "").strip()
+
+
 def build_litellm_model(provider_id: str, model_id: str, compat_type: str = "openai") -> str:
     if provider_id in PROVIDER_PREFIX:
         prefix = PROVIDER_PREFIX[provider_id]
@@ -232,6 +330,41 @@ def build_litellm_model(provider_id: str, model_id: str, compat_type: str = "ope
     else:
         prefix = "openai/"
     return f"{prefix}{model_id}"
+
+
+def _model_uses_fixed_sampling_params(litellm_model: str) -> bool:
+    """Return True when provider rejects caller-supplied sampling params."""
+    model_id = str(litellm_model or "").split("/")[-1].lower()
+    return model_id.startswith("kimi-k2")
+
+
+def _model_uses_reasoning_content(litellm_model: str) -> bool:
+    model_id = str(litellm_model or "").split("/")[-1].lower()
+    return model_id.startswith("kimi-k2")
+
+
+def build_litellm_completion_kwargs(
+    *,
+    litellm_model: str,
+    api_key: str,
+    temperature: float,
+    max_tokens: int,
+    api_base: str | None = None,
+    stream: bool | None = None,
+) -> dict:
+    """Build LiteLLM kwargs with provider-specific compatibility handling."""
+    kwargs: dict = {
+        "model": litellm_model,
+        "api_key": api_key,
+        "max_tokens": max_tokens,
+    }
+    if not _model_uses_fixed_sampling_params(litellm_model):
+        kwargs["temperature"] = temperature
+    if api_base:
+        kwargs["api_base"] = api_base
+    if stream is not None:
+        kwargs["stream"] = stream
+    return kwargs
 
 
 async def stream_chat(
@@ -259,16 +392,15 @@ async def stream_chat(
     else:
         litellm_model = model
 
-    kwargs: dict = {
-        "model": litellm_model,
-        "messages": full_messages,
-        "api_key": api_key,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-        "stream": True,
-    }
-    if api_base:
-        kwargs["api_base"] = api_base
+    kwargs = build_litellm_completion_kwargs(
+        litellm_model=litellm_model,
+        api_key=api_key,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        api_base=api_base,
+        stream=True,
+    )
+    kwargs["messages"] = full_messages
 
     response = await acompletion(**kwargs)
 
@@ -360,24 +492,51 @@ async def agent_loop(
             else build_supervisor_prompt(agent_mode)
         )
 
-    full_messages = prepare_messages(
-        model=litellm_model,
-        system_prompt=effective_system_prompt,
-        history=messages,
-        max_output_tokens=max_tokens,
+    base_kwargs = build_litellm_completion_kwargs(
+        litellm_model=litellm_model,
+        api_key=api_key,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        api_base=api_base,
     )
-
-    base_kwargs: dict = {
-        "model": litellm_model,
-        "api_key": api_key,
-        "temperature": temperature,
-        "max_tokens": max_tokens,
-    }
-    if api_base:
-        base_kwargs["api_base"] = api_base
 
     graph = AgentGraphRuntime(request_id=request_id)
     yield ("status", graph.status("build_context"))
+
+    async def _summarizer(old_messages: list[dict]) -> str:
+        return await _summarize_history_for_compaction(
+            old_messages,
+            litellm_model=litellm_model,
+            api_key=api_key,
+            api_base=api_base,
+            max_tokens=max_tokens,
+        )
+
+    compaction = await compact_history_if_needed(
+        model=litellm_model,
+        history=messages,
+        max_output_tokens=max_tokens,
+        summarizer=_summarizer,
+    )
+    if compaction.compacted:
+        yield (
+            "status",
+            {
+                "status": "context_compacted",
+                "beforeTokens": compaction.before_tokens,
+                "afterTokens": compaction.after_tokens,
+                "summaryTokens": compaction.summary_tokens,
+                "oldMessageCount": compaction.old_message_count,
+                "keptMessageCount": compaction.kept_message_count,
+            },
+        )
+
+    full_messages = prepare_messages(
+        model=litellm_model,
+        system_prompt=effective_system_prompt,
+        history=compaction.messages,
+        max_output_tokens=max_tokens,
+    )
 
     for iteration in range(max_iterations):
         yield ("status", graph.status("llm_decide"))
@@ -390,6 +549,7 @@ async def agent_loop(
         stream_response = await acompletion(**call_kwargs)
 
         content_parts: list[str] = []
+        reasoning_parts: list[str] = []
         tool_call_map: dict[int, dict[str, str]] = {}
         finish_reason: str | None = None
 
@@ -399,6 +559,11 @@ async def agent_loop(
 
             if choice.finish_reason:
                 finish_reason = choice.finish_reason
+
+            reasoning_token = _extract_delta_reasoning_content(delta)
+            if reasoning_token:
+                reasoning_parts.append(reasoning_token)
+                yield ("reasoning_token", reasoning_token)
 
             # Always stream tokens — speculative streaming
             if delta.content:
@@ -506,23 +671,24 @@ async def agent_loop(
         for parsed in parsed_calls:
             yield ("tool_call", parsed)
 
-        full_messages.append(
-            {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": parsed_call["id"],
-                        "type": "function",
-                        "function": {
-                            "name": parsed_call["name"],
-                            "arguments": json.dumps(parsed_call["args"], ensure_ascii=False),
-                        },
-                    }
-                    for parsed_call in parsed_calls
-                ],
-            }
-        )
+        assistant_tool_message = {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": parsed_call["id"],
+                    "type": "function",
+                    "function": {
+                        "name": parsed_call["name"],
+                        "arguments": json.dumps(parsed_call["args"], ensure_ascii=False),
+                    },
+                }
+                for parsed_call in parsed_calls
+            ],
+        }
+        if reasoning_parts or _model_uses_reasoning_content(litellm_model):
+            assistant_tool_message["reasoning_content"] = "".join(reasoning_parts)
+        full_messages.append(assistant_tool_message)
 
         # ── Execute each tool call ─────────────────────────────────────────────
         for parsed_call in parsed_calls:

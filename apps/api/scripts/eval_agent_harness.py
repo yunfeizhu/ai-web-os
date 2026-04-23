@@ -52,6 +52,8 @@ from app.core.tool_capabilities import (  # noqa: E402
     normalize_extract_args,
     result_has_sufficient_discovery,
     should_skip_content_fetch_after_search,
+    should_stop_search_after_sufficient_discovery,
+    task_requires_full_content,
 )
 from app.core.tools import get_tools_for_model  # noqa: E402
 
@@ -285,6 +287,44 @@ async def main() -> None:
             f"subagent tool event ids must be namespaced: {payload}",
         )
 
+    async def fake_max_tool_agent_loop(**_kwargs):
+        yield ("token", "正在搜索（已达到最大工具调用次数）")
+        yield ("status", {"node": "respond", "reason": "max_tool_calls"})
+
+    subagent_module.agent_loop = fake_max_tool_agent_loop
+    try:
+        max_events = [
+            event
+            async for event in subagent_module.run_subagent(
+                {
+                    "role": "writer",
+                    "task": "draft a short answer",
+                    "agent_name": "Writer Max Eval",
+                },
+                model="gpt-4o",
+                api_key="eval-key",
+                max_iterations=99,
+                skill_context={},
+                request_id="eval-subagent-max",
+            )
+        ]
+    finally:
+        subagent_module.agent_loop = original_agent_loop
+
+    max_result_events = [
+        payload for event_type, payload in max_events if event_type == "subagent_result"
+    ]
+    _assert(len(max_result_events) == 1, f"subagent should emit max-tool result: {max_events}")
+    _assert(
+        max_result_events[0].get("maxToolCallsReached") is True
+        and max_result_events[0].get("stopReason") == "max_tool_calls",
+        f"subagent should expose max-tool state structurally: {max_result_events[0]}",
+    )
+    _assert(
+        "已达到最大工具调用次数" not in str(max_result_events[0].get("answer") or ""),
+        f"runtime max-tool marker should not pollute answer: {max_result_events[0]}",
+    )
+
     # 16. Search/extract capabilities are inferred from generic tool schemas.
     search_schema = {
         "type": "function",
@@ -399,6 +439,36 @@ async def main() -> None:
             successful_search_count=1,
         ),
         "extract should be skipped after one sufficient weather search result",
+    )
+    _assert(
+        should_stop_search_after_sufficient_discovery(
+            tool_name="mcp_tavily_search_eval",
+            description="Search the web and return ranked results.",
+            args={"query": "美伊冲突 最新新闻 2026年4月"},
+            task_text="搜索目前美伊冲突的新闻",
+            successful_search_count=1,
+            is_subagent=True,
+        ),
+        "sub-agent should stop repeated searches once discovery evidence is sufficient",
+    )
+    _assert(
+        not should_stop_search_after_sufficient_discovery(
+            tool_name="mcp_tavily_search_eval",
+            description="Search the web and return ranked results.",
+            args={"query": "美伊冲突 最新新闻 2026年4月"},
+            task_text="搜索目前美伊冲突的新闻",
+            successful_search_count=1,
+            is_subagent=False,
+        ),
+        "top-level agent should not inherit sub-agent repeated-search stop policy",
+    )
+    _assert(
+        not task_requires_full_content("搜索目前美伊冲突的新闻"),
+        "geopolitical conflict should not be mistaken for source-conflict verification",
+    )
+    _assert(
+        task_requires_full_content("搜索结果来源冲突，请核验原文"),
+        "explicit source conflict should still require full content",
     )
     partial_extract_inner = json.dumps(
         {
@@ -685,7 +755,7 @@ async def main() -> None:
     _assert("distiller_error" in timeout_bundle,
             f"slow evidence distiller should timeout into fallback evidence: {timeout_bundle}")
 
-    print("Agent Harness eval passed: 21 cases")
+    print("Agent Harness eval passed: 25 cases")
 
 
 if __name__ == "__main__":

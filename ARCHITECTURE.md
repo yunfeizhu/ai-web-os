@@ -696,12 +696,13 @@ class SkillRegistry:
 实现补充：
 
 - `tool_capabilities.py` 将工具 schema 归一成 `search.discovery`、`web.extract`、`web.fetch` 等可迁移能力标签；Tavily、SearXNG、Reader 类 MCP 只要名称/描述/参数符合语义，都会进入同一套策略。
-- `get_tools_for_model()` 在返回 schema 前注入 `ToolUsePolicy`，提示模型先用 discovery 搜索，只有在需要原文、精确引用、全文文档、冲突核验时才抓取正文。
-- `llm_provider.py` 在当前轮已有足够搜索结果后，会对后续正文抓取做软跳过，并把原因作为工具结果回灌模型；`agent_harness.py` 将 Extract 的部分成功结果视为可用，避免个别 URL 失败导致整步失败。
+- `get_tools_for_model()` 在返回 schema 前注入 `ToolUsePolicy`，提示模型先用 discovery 搜索，只有在需要原文、精确引用、全文文档、来源冲突核验时才抓取正文；策略词避免把“美伊冲突”这类新闻实体误判为“来源冲突”。
+- `llm_provider.py` 在当前轮已有足够搜索结果后，会对后续正文抓取做软跳过，并把原因作为工具结果回灌模型；对于子 Agent，如果 search.discovery 结果已经具备标题、摘要、链接和时间证据，会硬跳过后续重复搜索，强制回到“基于已有证据回答”。`agent_harness.py` 将 Extract 的部分成功结果视为可用，避免个别 URL 失败导致整步失败。
 - `evidence_bundle.py` 在子 Agent 完成后把工具结果抽取为通用 EvidenceBundle：`facts`、`sources`、`missing_fields`、`capabilities_used`、`evidence_sufficient`、`needs_more_tools`。搜索工具返回的标题、摘要、链接、时间会被确定性提升为 `news_item` / `weather_result` / `market_result` / `search_result` 等事实，模型抽取器失败或超时时也不会丢失已搜到的内容。Lead Agent 接收这份结构化交接，而不是只依赖子 Agent 的自然语言 answer。
 - `delegate_task` 的结构化结果会把子 Agent 的 EvidenceBundle 提升到顶层；如果子 Agent 已经有充分 `search.discovery` 证据，Lead Agent 的同轮正文抓取策略也会继承这个状态，避免“子 Agent 查到了，Lead 又去 extract”的重复链路；Lead Agent 优先消费结构化 `facts`，避免子 Agent 自然语言 answer 误写“没有具体内容”时覆盖已有搜索证据。
 - 实验性合并交接：`run_subagent()` 会把每个子 Agent 已压缩的工具结果作为 `toolEvidence` 传回，`build_subagent_tool_result()` 额外生成 `mergedToolResults`，把搜索、Skill、数据 API 等原始工具输出按子任务合并后一起交给 Lead Agent。这样可验证“抽取层漏字段”问题，同时仍通过 compact 结果与 `DELEGATE_TOOL_CONTEXT_CHARS` 控制上下文上限。
-- 前端 `ToolCallDisplay` 按能力把 MCP 展示为 Search / Extract / Fetch，并默认折叠子 Agent 详情，用户需要时再展开看证据链。
+- 子 Agent 的工具预算耗尽不再作为自然语言 token 混入 answer，而是通过 `maxToolCallsReached` / `stopReason=max_tool_calls` 结构化返回；Lead Agent 和前端都把它视为状态，而不是用户可读结论。
+- 前端 `ToolCallDisplay` 按能力把 MCP 展示为 Search / Extract / Fetch，并默认折叠子 Agent 详情；展开后优先展示 EvidenceBundle 证据摘要、工具列表和预算状态，原始子 Agent answer 仅作为更深层调试输出。
 
 #### 当前运行拓扑
 

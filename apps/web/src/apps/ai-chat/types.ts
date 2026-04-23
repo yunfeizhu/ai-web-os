@@ -20,8 +20,11 @@ export interface SubagentRun {
   role?: string;
   task?: string;
   answer?: string;
+  rawAnswer?: string | null;
   failed?: boolean;
   error?: string | null;
+  maxToolCallsReached?: boolean;
+  stopReason?: string | null;
   elapsedMs?: number;
   evidence?: EvidenceBundle;
 }

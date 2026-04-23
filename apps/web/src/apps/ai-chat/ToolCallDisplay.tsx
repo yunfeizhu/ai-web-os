@@ -43,8 +43,11 @@ type AgentRunView = {
   calls: ToolCall[];
   tokenText: string;
   answer: string;
+  rawAnswer?: string | null;
   failed: boolean;
   error?: string | null;
+  maxToolCallsReached?: boolean;
+  stopReason?: string | null;
   elapsedMs?: number;
   evidence?: EvidenceBundle;
   done: boolean;
@@ -63,8 +66,11 @@ type DelegateAgentRecord = {
   role?: string;
   task?: string;
   answer?: string;
+  rawAnswer?: string | null;
   failed?: boolean;
   error?: string | null;
+  maxToolCallsReached?: boolean;
+  stopReason?: string | null;
   elapsedMs?: number;
   evidence?: EvidenceBundle;
 };
@@ -409,10 +415,45 @@ function parseJson<T>(value?: string): T | null {
   }
 }
 
+function isSyntheticToolPolicyResult(result?: string) {
+  return typeof result === "string" && result.trimStart().startsWith("ToolPolicyGuard:");
+}
+
+function isVisibleToolCall(tc: ToolCall) {
+  return !(tc.error === false && isSyntheticToolPolicyResult(tc.result));
+}
+
 function formatElapsed(ms?: number) {
   if (typeof ms !== "number" || Number.isNaN(ms)) return "";
   if (ms < 1000) return `${ms}ms`;
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function evidenceList(evidence: EvidenceBundle | undefined, key: string) {
+  const value = evidence?.[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    : [];
+}
+
+function evidenceStrings(evidence: EvidenceBundle | undefined, key: string) {
+  const value = evidence?.[key];
+  return Array.isArray(value)
+    ? value.map((item) => String(item ?? "").trim()).filter(Boolean)
+    : [];
+}
+
+function evidenceText(item: Record<string, unknown>, key: string) {
+  return String(item[key] ?? "").trim();
+}
+
+function hasEvidenceDetails(evidence?: EvidenceBundle) {
+  return (
+    !!String(evidence?.summary ?? "").trim() ||
+    evidenceList(evidence, "facts").length > 0 ||
+    evidenceList(evidence, "sources").length > 0 ||
+    evidenceStrings(evidence, "missing_fields").length > 0
+  );
 }
 
 function statusFromToolCall(tc: ToolCall): AgentStatus {
@@ -474,8 +515,12 @@ function createCollector(
     agent.role = source.role || agent.role;
     agent.task = source.task || agent.task;
     agent.answer = source.answer || agent.answer;
+    agent.rawAnswer = source.rawAnswer ?? agent.rawAnswer;
     agent.failed = source.failed ?? agent.failed;
     agent.error = source.error ?? agent.error;
+    agent.maxToolCallsReached =
+      source.maxToolCallsReached ?? agent.maxToolCallsReached;
+    agent.stopReason = source.stopReason ?? agent.stopReason;
     agent.elapsedMs = source.elapsedMs ?? agent.elapsedMs;
     agent.evidence = source.evidence ?? agent.evidence;
     agent.done = source.done ?? agent.done;
@@ -493,8 +538,11 @@ function createCollector(
       role: result.role,
       task: result.task,
       answer: result.answer,
+      rawAnswer: result.rawAnswer,
       failed: result.failed,
       error: result.error,
+      maxToolCallsReached: result.maxToolCallsReached,
+      stopReason: result.stopReason,
       elapsedMs: result.elapsedMs,
       evidence: result.evidence,
       done: true,
@@ -548,8 +596,11 @@ function mergeDelegateResult(
         role,
         task: agent.task,
         answer: agent.answer ?? results[resultKey] ?? "",
+        rawAnswer: agent.rawAnswer,
         failed: agent.failed ?? failed.has(resultKey),
         error: agent.error ?? errors[resultKey] ?? null,
+        maxToolCallsReached: agent.maxToolCallsReached,
+        stopReason: agent.stopReason,
         elapsedMs: agent.elapsedMs,
         evidence: agent.evidence ?? payload.evidence?.[resultKey],
       },
@@ -825,15 +876,119 @@ function SummaryPill({ children }: { children: ReactNode }) {
 
 function getAgentBrief(agent: AgentRunView) {
   if (agent.status === "error") return "失败，展开查看错误和工具明细";
+  if (agent.maxToolCallsReached) return "已停止继续搜索，基于已有证据交给 Lead Agent 汇总";
   if (agent.status === "running") return "执行中，结果将交给 Lead Agent 汇总";
   if (agent.status === "summarizing") return "工具已完成，正在整理结果交给 Lead Agent";
   if (agent.status === "done") return "完成，结果已交给 Lead Agent 汇总";
   return "等待执行";
 }
 
-function SubagentOutputBlock({ agent }: { agent: AgentRunView }) {
+function SubagentEvidenceBlock({ agent }: { agent: AgentRunView }) {
+  const facts = evidenceList(agent.evidence, "facts");
+  const sources = evidenceList(agent.evidence, "sources");
+  const missing = evidenceStrings(agent.evidence, "missing_fields");
+  const summary = String(agent.evidence?.summary ?? "").trim();
+  if (!summary && !facts.length && !sources.length && !missing.length) return null;
+
+  return (
+    <div
+      className="mt-3 rounded-md px-3 py-2.5"
+      style={{
+        background: "var(--panel-bg-soft)",
+        border: "0.5px solid var(--border-faint)",
+      }}
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <span className="text-[12px] font-semibold" style={{ color: "var(--t2)" }}>
+          证据摘要
+        </span>
+        {facts.length > 0 && <SummaryPill>{facts.length} facts</SummaryPill>}
+        {sources.length > 0 && <SummaryPill>{sources.length} sources</SummaryPill>}
+        {missing.length > 0 && <SummaryPill>{missing.length} missing</SummaryPill>}
+      </div>
+
+      {summary && summary !== "No natural-language summary was produced." && (
+        <div
+          className="mb-2 text-[12px] leading-relaxed"
+          style={{ color: "var(--t2)", wordBreak: "break-word" }}
+        >
+          {summary}
+        </div>
+      )}
+
+      {facts.length > 0 && (
+        <div className="grid gap-1.5">
+          {facts.slice(0, 6).map((fact, index) => {
+            const label = evidenceText(fact, "label") || evidenceText(fact, "field") || "事实";
+            const value = evidenceText(fact, "value");
+            const timeText = evidenceText(fact, "time");
+            const source =
+              evidenceText(fact, "source_title") || evidenceText(fact, "source_url");
+            return (
+              <div
+                key={`${label}:${value}:${index}`}
+                className="rounded-md px-2.5 py-1.5 text-[12px] leading-relaxed"
+                style={{
+                  background: "var(--surface-solid)",
+                  border: "0.5px solid var(--border-faint)",
+                  color: "var(--t2)",
+                }}
+              >
+                <span className="font-medium" style={{ color: "var(--t1)" }}>
+                  {label}
+                </span>
+                {value && <span>：{value}</span>}
+                {(timeText || source) && (
+                  <span style={{ color: "var(--t3)" }}>
+                    {" "}
+                    {timeText}
+                    {timeText && source ? " · " : ""}
+                    {source}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {facts.length === 0 && sources.length > 0 && (
+        <div className="grid gap-1.5">
+          {sources.slice(0, 4).map((source, index) => {
+            const title = evidenceText(source, "title") || evidenceText(source, "url");
+            const snippet = evidenceText(source, "snippet");
+            return (
+              <div
+                key={`${title}:${index}`}
+                className="rounded-md px-2.5 py-1.5 text-[12px] leading-relaxed"
+                style={{
+                  background: "var(--surface-solid)",
+                  border: "0.5px solid var(--border-faint)",
+                  color: "var(--t2)",
+                }}
+              >
+                <span className="font-medium" style={{ color: "var(--t1)" }}>
+                  {title || "来源"}
+                </span>
+                {snippet && <span>：{snippet}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {missing.length > 0 && (
+        <div className="mt-2 text-[12px]" style={{ color: "var(--t3)" }}>
+          未确认：{missing.slice(0, 6).join("、")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubagentDebugBlock({ agent }: { agent: AgentRunView }) {
   const [collapsed, setCollapsed] = useState(true);
-  const content = agent.error || agent.answer;
+  const content = agent.error || agent.rawAnswer || "";
   if (!content) return null;
 
   return (
@@ -855,9 +1010,10 @@ function SubagentOutputBlock({ agent }: { agent: AgentRunView }) {
           className="text-[12px] font-medium"
           style={{ color: agent.failed ? "var(--red)" : "var(--t2)" }}
         >
-          {agent.failed ? "失败原因" : "子 Agent 输出（调试）"}
+          {agent.failed ? "失败原因" : "原始调试输出"}
         </span>
-        <SummaryPill>{agent.failed ? "error" : "hidden"}</SummaryPill>
+        <SummaryPill>{agent.failed ? "error" : "debug"}</SummaryPill>
+        {agent.maxToolCallsReached && <SummaryPill>tool budget</SummaryPill>}
         <span className="ml-auto" style={{ color: "var(--t3)" }}>
           {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
         </span>
@@ -882,10 +1038,41 @@ function SubagentOutputBlock({ agent }: { agent: AgentRunView }) {
   );
 }
 
+function SubagentAnswerBlock({ agent }: { agent: AgentRunView }) {
+  const content = agent.answer;
+  if (!content || hasEvidenceDetails(agent.evidence)) return null;
+
+  return (
+    <div
+      className="mt-3 rounded-md px-3 py-2.5"
+      style={{
+        background: "var(--panel-bg-soft)",
+        border: "0.5px solid var(--border-faint)",
+      }}
+    >
+      <div className="mb-1 text-[12px] font-semibold" style={{ color: "var(--t2)" }}>
+        结果摘要
+      </div>
+      <div
+        className="markdown text-[13px] leading-relaxed"
+        style={{ color: "var(--t2)", wordBreak: "break-word" }}
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+      </div>
+    </div>
+  );
+}
+
 function SubagentRunItem({ agent }: { agent: AgentRunView }) {
   const [collapsed, setCollapsed] = useState(true);
   const roleMeta = getRoleMeta(agent.role);
-  const hasDetails = agent.answer || agent.error || agent.calls.length > 0;
+  const hasDetails =
+    agent.answer ||
+    agent.rawAnswer ||
+    agent.error ||
+    agent.calls.length > 0 ||
+    agent.maxToolCallsReached ||
+    hasEvidenceDetails(agent.evidence);
 
   return (
     <div
@@ -949,6 +1136,7 @@ function SubagentRunItem({ agent }: { agent: AgentRunView }) {
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {agent.calls.length > 0 && <SummaryPill>{agent.calls.length} tools</SummaryPill>}
+          {agent.maxToolCallsReached && <SummaryPill>budget</SummaryPill>}
           {agent.elapsedMs !== undefined && (
             <SummaryPill>{formatElapsed(agent.elapsedMs)}</SummaryPill>
           )}
@@ -965,7 +1153,20 @@ function SubagentRunItem({ agent }: { agent: AgentRunView }) {
           className="grid gap-2 px-3 pb-3"
           style={{ borderTop: "0.5px solid var(--border-faint)" }}
         >
-          <SubagentOutputBlock agent={agent} />
+          {agent.maxToolCallsReached && (
+            <div
+              className="mt-3 rounded-md px-3 py-2 text-[12px] leading-relaxed"
+              style={{
+                background: "rgba(245,158,11,0.12)",
+                border: "0.5px solid rgba(245,158,11,0.24)",
+                color: "#F59E0B",
+              }}
+            >
+              已停止继续调用工具，并基于已有搜索证据交给 Lead Agent 汇总。
+            </div>
+          )}
+          <SubagentEvidenceBlock agent={agent} />
+          <SubagentAnswerBlock agent={agent} />
 
           {agent.calls.length > 0 && (
             <div className="grid gap-1.5 pt-3">
@@ -974,6 +1175,7 @@ function SubagentRunItem({ agent }: { agent: AgentRunView }) {
               ))}
             </div>
           )}
+          <SubagentDebugBlock agent={agent} />
         </div>
       )}
     </div>
@@ -1112,15 +1314,19 @@ export function ToolCallDisplay({
   subagentDone = {},
   subagentResults = {},
 }: ToolCallDisplayProps) {
+  const visibleToolCalls = useMemo(
+    () => toolCalls.filter(isVisibleToolCall),
+    [toolCalls],
+  );
   const view = useMemo(
     () =>
       buildMultiAgentView(
-        toolCalls,
+        visibleToolCalls,
         subagentTokens,
         subagentDone,
         subagentResults,
       ),
-    [toolCalls, subagentTokens, subagentDone, subagentResults],
+    [visibleToolCalls, subagentTokens, subagentDone, subagentResults],
   );
 
   const hasLiveSubagents =
@@ -1132,7 +1338,7 @@ export function ToolCallDisplay({
     (tc) => tc.name !== "__subagent_placeholder__",
   );
 
-  if (!toolCalls.length && !hasLiveSubagents) return null;
+  if (!visibleToolCalls.length && !hasLiveSubagents) return null;
 
   return (
     <div className="mb-2">

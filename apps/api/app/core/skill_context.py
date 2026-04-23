@@ -89,7 +89,8 @@ async def build_skill_augmented_system_prompt(
     requested_app_id: str | None = None,
 ) -> tuple[str, dict | None]:
     """Build an augmented prompt with App context and Skill discovery metadata."""
-    sections = [base_system_prompt.rstrip(), _current_time_context()]
+    time_context = _current_time_context()
+    sections = [base_system_prompt.rstrip(), time_context]
 
     entry_app_id = await resolve_app_id(
         db,
@@ -97,7 +98,9 @@ async def build_skill_augmented_system_prompt(
         requested_app_id=requested_app_id,
     )
     if not entry_app_id:
-        return "\n\n".join(section for section in sections if section), None
+        return "\n\n".join(section for section in sections if section), {
+            "time_context": time_context,
+        }
 
     registry = get_app_registry()
 
@@ -195,6 +198,7 @@ async def build_skill_augmented_system_prompt(
     skill_context: dict[str, Any] = {
         "entry_app_id": entry_app_id,
         "user_skills": user_skill_infos,
+        "time_context": time_context,
     }
 
     return "\n\n".join(sections), skill_context

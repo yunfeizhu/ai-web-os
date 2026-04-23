@@ -24,11 +24,13 @@ from app.core.context_manager import compact_tool_result_for_context, prepare_me
 from app.core.tool_capabilities import (
     CAPABILITY_SEARCH_DISCOVERY,
     WEB_CONTENT_CAPABILITIES,
+    build_discovery_sufficient_tool_result,
     build_search_sufficient_tool_result,
     infer_tool_capability,
     normalize_extract_args,
     result_has_sufficient_discovery,
     should_skip_content_fetch_after_search,
+    should_stop_search_after_sufficient_discovery,
     tool_schema_description,
     tool_schema_name,
 )
@@ -584,6 +586,53 @@ async def agent_loop(
                 )
                 continue
 
+            if should_stop_search_after_sufficient_discovery(
+                tool_name=parsed_call["name"],
+                description=tool_description_by_name.get(parsed_call["name"]),
+                args=parsed_call["args"],
+                task_text=user_message,
+                successful_search_count=successful_search_count,
+                is_subagent=is_subagent,
+            ):
+                result = build_discovery_sufficient_tool_result(successful_search_count)
+                yield (
+                    "status",
+                    graph.status(
+                        "policy_guard",
+                        status="tool_policy",
+                        tool=parsed_call["name"],
+                        decision="skipped",
+                        reason="search_results_sufficient",
+                        hint=(
+                            "A discovery/search result already covers this sub-task; "
+                            "stop searching and answer from existing evidence."
+                        ),
+                        args=parsed_call["args"],
+                    ),
+                )
+                yield (
+                    "tool_result",
+                    {
+                        "id": parsed_call["id"],
+                        "name": parsed_call["name"],
+                        "displayName": parsed_call.get("displayName"),
+                        "result": result,
+                        "error": False,
+                    },
+                )
+                full_messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": parsed_call["id"],
+                        "content": result,
+                    }
+                )
+                full_messages.append({
+                    "role": "system",
+                    "content": "请基于已有搜索结果给出最终回答，不要继续调用搜索工具。",
+                })
+                continue
+
             if should_skip_content_fetch_after_search(
                 tool_name=parsed_call["name"],
                 description=tool_description_by_name.get(parsed_call["name"]),
@@ -776,4 +825,6 @@ async def agent_loop(
                 })
 
     yield ("status", graph.status("respond", reason="max_tool_calls"))
+    if is_subagent:
+        return
     yield ("token", _MAX_TOOL_CALLS_WARNING)

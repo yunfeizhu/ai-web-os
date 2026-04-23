@@ -1,6 +1,7 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { Plus, Trash2, Send, Square, PenSquare, Sparkles } from "lucide-react";
 import { streamChat } from "@/hooks/useStream";
 import { API_BASE } from "@/lib/backend";
@@ -207,6 +208,64 @@ function getToolEventKey(event: {
   return `${owner}::${event.id}`;
 }
 
+function isSyntheticToolPolicyResult(result?: string | null) {
+  return typeof result === "string" && result.trimStart().startsWith("ToolPolicyGuard:");
+}
+
+type MessageListProps = {
+  messages: ChatMessage[];
+  statusText: string;
+  bottomRef: RefObject<HTMLDivElement | null>;
+  onRetryMessage: (userContent: string, retryHistory: ChatMessage[]) => void;
+};
+
+const MessageList = memo(function MessageList({
+  messages,
+  statusText,
+  bottomRef,
+  onRetryMessage,
+}: MessageListProps) {
+  return (
+    <div className="py-4 mx-auto w-full" style={{ maxWidth: 720 }}>
+      <div className="relative h-7 mb-1">
+        {statusText && (
+          <div
+            className="absolute left-4 top-0 flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] pointer-events-none"
+            style={{
+              background: "var(--control-bg)",
+              color: "var(--t3)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full"
+              style={{ background: "var(--accent)" }}
+            />
+            {statusText}
+          </div>
+        )}
+      </div>
+      {messages.map((msg, idx) => {
+        const onRetry =
+          msg.role === "assistant" || msg.role === "error"
+            ? () => {
+                let userIdx = idx - 1;
+                while (userIdx >= 0 && messages[userIdx].role !== "user") {
+                  userIdx--;
+                }
+                if (userIdx < 0) return;
+                const userContent = messages[userIdx].content;
+                const retryHistory = messages.slice(0, userIdx);
+                onRetryMessage(userContent, retryHistory);
+              }
+            : undefined;
+        return <MessageBubble key={msg.id} message={msg} onRetry={onRetry} />;
+      })}
+      <div ref={bottomRef} />
+    </div>
+  );
+});
+
 export function AiChat() {
   const { providers, defaultModel, setDefaultModel, embeddingConfig } =
     useSettingsStore();
@@ -247,6 +306,16 @@ export function AiChat() {
   const pendingBrowserWindowTimersRef = useRef<Record<string, number>>({});
   const scrollBehaviorRef = useRef<"smooth" | "instant">("instant");
   const userScrolledUpRef = useRef(false);
+  const inputRef = useRef("");
+
+  useEffect(() => {
+    inputRef.current = input;
+  }, [input]);
+
+  const setInputValue = useCallback((value: string) => {
+    inputRef.current = value;
+    setInput(value);
+  }, []);
 
   const clearPendingBrowserWindowOpen = useCallback((sessionId: string) => {
     const timerId = pendingBrowserWindowTimersRef.current[sessionId];
@@ -394,6 +463,7 @@ export function AiChat() {
           const normalizedCalls = rawCalls.map((tc) => {
             const index = resultIndexById[tc.id] ?? 0;
             resultIndexById[tc.id] = index + 1;
+            const result = toolResultMap[tc.id]?.[index] ?? tc.result ?? undefined;
             return {
               id: getToolEventKey({
                 id: tc.id,
@@ -403,14 +473,14 @@ export function AiChat() {
               name: tc.name,
               displayName: tc.displayName ?? null,
               args: tc.args,
-              result: toolResultMap[tc.id]?.[index] ?? tc.result ?? undefined,
+              result,
               status: "done" as const,
               subagentId: tc.subagentId ?? undefined,
               subagentTask: tc.subagentTask ?? undefined,
               agentName: tc.agentName ?? undefined,
               role: tc.role ?? undefined,
             };
-          });
+          }).filter((tc) => !isSyntheticToolPolicyResult(tc.result));
 
           return {
             id: m.id,
@@ -468,8 +538,9 @@ export function AiChat() {
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    if (pendingConfirmation && e.target.value.trim() !== pendingConfirmation) {
+    const nextInput = e.target.value;
+    setInputValue(nextInput);
+    if (pendingConfirmation && nextInput.trim() !== pendingConfirmation) {
       setPendingConfirmation("");
     }
     e.target.style.height = "auto";
@@ -480,22 +551,22 @@ export function AiChat() {
     abortRef.current?.abort();
   };
 
-  // 鍚庣閲嶅惎鍚庤嚜鍔ㄩ噸鏂板垵濮嬪寲璁板繂绠＄悊鍣?
+  // 后端重启后会重新初始化记忆管理器。
   const sendMessage = useCallback(
     async (text?: string, historyOverride?: ChatMessage[]) => {
-      const content = (text ?? input).trim();
+      const content = (text ?? inputRef.current).trim();
       if (!content) return;
 
-      if (loading && !historyOverride) {
-        setQueuedMessage(content);
-        setInput("");
-        if (textareaRef.current) textareaRef.current.style.height = "auto";
-        setStatusText("消息已排队，上一轮完成后自动发送。");
-        return;
+    if (loading && !historyOverride) {
+      setQueuedMessage(content);
+      setInputValue("");
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      setStatusText("消息已排队，上一轮完成后自动发送。");
+      return;
       }
 
       if (isCurrentTimeIntent(content)) {
-        setInput("");
+        setInputValue("");
         if (textareaRef.current) {
           textareaRef.current.style.height = "auto";
         }
@@ -533,7 +604,7 @@ export function AiChat() {
       const appIntent = findAppIntent(content);
       if (appIntent) {
         openAppIntent(appIntent);
-        setInput("");
+        setInputValue("");
         if (textareaRef.current) {
           textareaRef.current.style.height = "auto";
         }
@@ -585,7 +656,7 @@ export function AiChat() {
         }
       }
 
-      setInput("");
+      setInputValue("");
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
       }
@@ -688,7 +759,11 @@ export function AiChat() {
                   setStatusText("正在按执行链路推进任务…");
                 }
               } else if (s === "tool_policy") {
-                setStatusText("已拦截一次不合规工具调用，正在修正…");
+                if (event?.decision === "skipped") {
+                  setStatusText("已有结果足够，已跳过不必要的补充工具…");
+                } else {
+                  setStatusText("已拦截一次不合规工具调用，正在修正…");
+                }
               }
             },
             onToken: (token) => {
@@ -784,6 +859,21 @@ export function AiChat() {
             onToolResult: (event) => {
               const toolEventKey = getToolEventKey(event);
               const toolArgs = liveToolArgsRef.current[toolEventKey] ?? {};
+              if (!event.error && isSyntheticToolPolicyResult(event.result)) {
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.id !== assistantId) return m;
+                    return {
+                      ...m,
+                      toolCalls: (m.toolCalls ?? []).filter(
+                        (tc) => tc.id !== toolEventKey,
+                      ),
+                    };
+                  }),
+                );
+                delete liveToolArgsRef.current[toolEventKey];
+                return;
+              }
               setMessages((prev) =>
                 prev.map((m) => {
                   if (m.id !== assistantId) return m;
@@ -843,8 +933,11 @@ export function AiChat() {
                             role: event.role,
                             task: event.task,
                             answer: event.answer,
+                            rawAnswer: event.rawAnswer,
                             failed: event.failed,
                             error: event.error,
+                            maxToolCallsReached: event.maxToolCallsReached,
+                            stopReason: event.stopReason,
                             elapsedMs: event.elapsedMs,
                             evidence: event.evidence,
                           },
@@ -854,8 +947,11 @@ export function AiChat() {
                             role: event.role,
                             task: event.task,
                             answer: event.answer,
+                            rawAnswer: event.rawAnswer,
                             failed: event.failed,
                             error: event.error,
+                            maxToolCallsReached: event.maxToolCallsReached,
+                            stopReason: event.stopReason,
                             elapsedMs: event.elapsedMs,
                             evidence: event.evidence,
                           },
@@ -919,7 +1015,6 @@ export function AiChat() {
       }
     },
     [
-      input,
       loading,
       activeId,
       messages,
@@ -928,8 +1023,17 @@ export function AiChat() {
       embeddingConfig,
       openAppIntent,
       pendingConfirmation,
+      setInputValue,
       syncBrowserWindowFromTool,
     ],
+  );
+
+  const handleRetryMessage = useCallback(
+    (userContent: string, retryHistory: ChatMessage[]) => {
+      setMessages(retryHistory);
+      sendMessage(userContent, retryHistory);
+    },
+    [sendMessage],
   );
 
   useEffect(() => {
@@ -1120,7 +1224,7 @@ export function AiChat() {
                     <button
                       key={q.label}
                       onClick={() => {
-                        setInput(q.prompt);
+                        setInputValue(q.prompt);
                         textareaRef.current?.focus();
                       }}
                       className="flex flex-col gap-1 px-3 py-3 rounded-xl text-left transition-all"
@@ -1155,53 +1259,12 @@ export function AiChat() {
               )}
             </div>
           ) : (
-            /* 消息列表 */
-            <div className="py-4 mx-auto w-full" style={{ maxWidth: 720 }}>
-              {/* 记忆召回提示：固定高度占位，toast 浮在内部不撑开布局 */}
-              <div className="relative h-7 mb-1">
-                {statusText && (
-                  <div
-                    className="absolute left-4 top-0 flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] pointer-events-none"
-                    style={{
-                      background: "var(--control-bg)",
-                      color: "var(--t3)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <span
-                      className="inline-block w-1.5 h-1.5 rounded-full"
-                      style={{ background: "var(--accent)" }}
-                    />
-                    {statusText}
-                  </div>
-                )}
-              </div>
-              {messages.map((msg, idx) => {
-                // 找到该 assistant 消息对应的上一条 user 消息，用于重试
-                const onRetry =
-                  msg.role === "assistant" || msg.role === "error"
-                    ? () => {
-                        // 找到紧邻的上一条 user 消息的索引
-                        let userIdx = idx - 1;
-                        while (
-                          userIdx >= 0 &&
-                          messages[userIdx].role !== "user"
-                        )
-                          userIdx--;
-                        if (userIdx < 0) return;
-                        const userContent = messages[userIdx].content;
-                        // 移除 user 消息 + 这条 assistant/error 消息（及之后所有内容）
-                        const retryHistory = messages.slice(0, userIdx);
-                        setMessages(retryHistory);
-                        sendMessage(userContent, retryHistory);
-                      }
-                    : undefined;
-                return (
-                  <MessageBubble key={msg.id} message={msg} onRetry={onRetry} />
-                );
-              })}
-              <div ref={bottomRef} />
-            </div>
+            <MessageList
+              messages={messages}
+              statusText={statusText}
+              bottomRef={bottomRef}
+              onRetryMessage={handleRetryMessage}
+            />
           )}
         </div>
 
@@ -1261,7 +1324,7 @@ export function AiChat() {
                   }}
                   onClick={() => {
                     openAppIntent(app);
-                    setInput("");
+                    setInputValue("");
                     setStatusText("");
                     setMessages((prev) => [
                       ...prev,

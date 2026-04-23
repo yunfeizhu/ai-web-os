@@ -40,7 +40,9 @@ EXACT_SOURCE_TERMS = (
     "核验",
     "核对",
     "验证",
-    "冲突",
+    "来源冲突",
+    "信息冲突",
+    "结果冲突",
     "矛盾",
     "条款",
     "PDF",
@@ -230,6 +232,34 @@ def build_search_sufficient_tool_result(successful_search_count: int) -> str:
         "fetch/extract only when the user explicitly asks for original text, exact "
         "quotes, full documents, or fact verification."
     )
+
+
+def build_discovery_sufficient_tool_result(successful_search_count: int) -> str:
+    return (
+        "ToolPolicyGuard: Previous search.discovery calls already returned usable "
+        f"title/url/snippet evidence ({successful_search_count} result set(s)). "
+        "Do not run more discovery searches for this sub-task. Produce the final "
+        "answer from the existing tool evidence, and mention uncertainty if the "
+        "snippets are insufficient."
+    )
+
+
+def should_stop_search_after_sufficient_discovery(
+    *,
+    tool_name: str,
+    description: str | None = None,
+    args: dict[str, Any] | None = None,
+    task_text: str = "",
+    successful_search_count: int = 0,
+    is_subagent: bool = False,
+) -> bool:
+    if not is_subagent or successful_search_count <= 0:
+        return False
+    capability = infer_tool_capability(tool_name, description)
+    if capability != CAPABILITY_SEARCH_DISCOVERY:
+        return False
+    args_text = json.dumps(args or {}, ensure_ascii=False)
+    return not task_requires_full_content(task_text, args_text)
 
 
 def result_has_sufficient_discovery(

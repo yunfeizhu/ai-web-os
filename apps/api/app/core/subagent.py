@@ -91,6 +91,81 @@ def _namespace_tool_event_id(payload: dict[str, Any], subagent_id: str) -> None:
     payload["id"] = f"{prefix}{raw_id}"
 
 
+def _strip_runtime_markers(text: str) -> str:
+    return str(text or "").replace("（已达到最大工具调用次数）", "").strip()
+
+
+def _evidence_handoff_summary(evidence: dict[str, Any] | None) -> str:
+    if not isinstance(evidence, dict):
+        return ""
+
+    lines: list[str] = []
+    facts = evidence.get("facts")
+    if isinstance(facts, list):
+        for fact in facts[:8]:
+            if not isinstance(fact, dict):
+                continue
+            label = str(fact.get("label") or fact.get("field") or "事实").strip()
+            value = str(fact.get("value") or "").strip()
+            if not value:
+                continue
+            time_text = str(fact.get("time") or "").strip()
+            source = str(fact.get("source_title") or fact.get("source_url") or "").strip()
+            suffix_parts = [part for part in (time_text, source) if part]
+            suffix = f"（{'；'.join(suffix_parts)}）" if suffix_parts else ""
+            lines.append(f"- {label}: {value}{suffix}")
+
+    if lines:
+        return "\n".join(lines)
+
+    sources = evidence.get("sources")
+    if isinstance(sources, list) and sources:
+        source_lines: list[str] = []
+        for source in sources[:5]:
+            if not isinstance(source, dict):
+                continue
+            title = str(source.get("title") or source.get("url") or "").strip()
+            snippet = str(source.get("snippet") or "").strip()
+            if not title and not snippet:
+                continue
+            item = title
+            if snippet:
+                item = f"{item}: {snippet}" if item else snippet
+            source_lines.append(f"- {item[:300]}")
+        if source_lines:
+            return "找到以下来源证据：\n" + "\n".join(source_lines)
+
+    summary = str(evidence.get("summary") or "").strip()
+    if summary and summary != "No natural-language summary was produced.":
+        return summary
+    return ""
+
+
+def _select_subagent_answer(
+    *,
+    role_id: str,
+    raw_answer: str,
+    evidence: dict[str, Any] | None,
+    tool_evidence: list[dict[str, Any]],
+) -> str:
+    cleaned = _strip_runtime_markers(raw_answer)
+    if role_id == "research" and tool_evidence:
+        evidence_summary = _evidence_handoff_summary(evidence)
+        if evidence_summary:
+            return evidence_summary
+    return cleaned
+
+
+def _build_subagent_system_prompt(role_system_prompt: str, time_context: str | None = None) -> str:
+    sections: list[str] = []
+    if str(time_context or "").strip():
+        sections.append(str(time_context).strip())
+    if str(role_system_prompt or "").strip():
+        sections.append(str(role_system_prompt).strip())
+    sections.append(SUBAGENT_OUTPUT_CONTRACT.strip())
+    return "\n\n".join(section for section in sections if section)
+
+
 async def run_subagent(
     spec: dict[str, Any],
     *,
@@ -138,9 +213,13 @@ async def run_subagent(
     tool_evidence: list[dict[str, Any]] = []
     failed = False
     error_msg = ""
+    max_tool_calls_reached = False
     started_at = time.perf_counter()
 
-    system_prompt = f"{role.system_prompt}{SUBAGENT_OUTPUT_CONTRACT}"
+    system_prompt = _build_subagent_system_prompt(
+        role.system_prompt,
+        ctx.get("time_context"),
+    )
     user_task = _build_task_message(spec)
 
     base_payload = {
@@ -178,6 +257,12 @@ async def run_subagent(
                 continue
 
             tagged = dict(payload) if isinstance(payload, dict) else {"content": payload}
+            if (
+                event_type == "status"
+                and tagged.get("node") == "respond"
+                and tagged.get("reason") == "max_tool_calls"
+            ):
+                max_tool_calls_reached = True
             if event_type in {"tool_call", "tool_result"}:
                 _namespace_tool_event_id(tagged, subagent_id)
             if event_type == "tool_result" and len(tool_evidence) < MAX_TOOL_EVIDENCE_ITEMS:
@@ -191,11 +276,11 @@ async def run_subagent(
         failed = True
         error_msg = f"{type(exc).__name__}: {exc}"
 
-    answer = "".join(tokens).strip()
+    raw_answer = "".join(tokens).strip()
     if failed:
         evidence = fallback_evidence_bundle(
             task=str(spec.get("task") or ""),
-            answer=answer,
+            answer=raw_answer,
             tool_evidence=tool_evidence,
             error=error_msg,
         )
@@ -213,16 +298,23 @@ async def run_subagent(
             api_key=api_key,
             api_base=api_base,
             task=str(spec.get("task") or ""),
-            answer=answer,
+            answer=raw_answer,
             tool_evidence=tool_evidence,
             max_tokens=min(max_tokens, 2400),
         )
     else:
         evidence = fallback_evidence_bundle(
             task=str(spec.get("task") or ""),
-            answer=answer,
+            answer=raw_answer,
             tool_evidence=tool_evidence,
         )
+
+    answer = _select_subagent_answer(
+        role_id=role.id,
+        raw_answer=raw_answer,
+        evidence=evidence,
+        tool_evidence=tool_evidence,
+    )
 
     yield (
         "subagent_result",
@@ -232,10 +324,13 @@ async def run_subagent(
             "role": role.id,
             "task": spec.get("task") or "",
             "answer": answer,
+            "rawAnswer": raw_answer if raw_answer and raw_answer != answer else None,
             "evidence": evidence,
             "toolEvidence": tool_evidence,
             "failed": failed,
             "error": error_msg if failed else None,
+            "maxToolCallsReached": max_tool_calls_reached,
+            "stopReason": "max_tool_calls" if max_tool_calls_reached else None,
             "elapsedMs": int((time.perf_counter() - started_at) * 1000),
         },
     )
@@ -342,6 +437,11 @@ def build_subagent_tool_result(results: list[dict[str, Any]]) -> str:
             "failed": bool(result.get("failed")),
             "elapsedMs": result.get("elapsedMs"),
         }
+        if result.get("maxToolCallsReached"):
+            agent_record["maxToolCallsReached"] = True
+            agent_record["stopReason"] = result.get("stopReason") or "max_tool_calls"
+        if result.get("rawAnswer"):
+            agent_record["rawAnswer"] = result.get("rawAnswer")
         result_tool_evidence = (
             result.get("toolEvidence")
             if isinstance(result.get("toolEvidence"), list)

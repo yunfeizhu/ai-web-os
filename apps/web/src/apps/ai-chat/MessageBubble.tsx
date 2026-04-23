@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { Check, Copy, RotateCcw, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -113,7 +113,19 @@ function CodeBlock({ lang, code }: { lang: string; code: string }) {
   );
 }
 
-export function MessageBubble({ message, onRetry }: Props) {
+const MarkdownBody = memo(function MarkdownBody({
+  content,
+}: {
+  content: string;
+}) {
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+      {content}
+    </ReactMarkdown>
+  );
+});
+
+function MessageBubbleView({ message, onRetry }: Props) {
   const isUser = message.role === "user";
   const isError = message.role === "error";
   const [copied, setCopied] = useState(false);
@@ -204,12 +216,7 @@ export function MessageBubble({ message, onRetry }: Props) {
           className="markdown text-[14px] leading-relaxed"
           style={{ color: "var(--t1)", wordBreak: "break-word" }}
         >
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={markdownComponents}
-          >
-            {message.content}
-          </ReactMarkdown>
+          <MarkdownBody content={message.content} />
           {message.streaming && <StreamingDots />}
         </div>
 
@@ -239,6 +246,13 @@ export function MessageBubble({ message, onRetry }: Props) {
     </div>
   );
 }
+
+export const MessageBubble = memo(
+  MessageBubbleView,
+  (prev, next) =>
+    prev.message === next.message &&
+    Boolean(prev.onRetry) === Boolean(next.onRetry),
+);
 
 function StreamingDots() {
   return (

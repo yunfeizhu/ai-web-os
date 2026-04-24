@@ -20,6 +20,7 @@ import { AvatarBubble } from "./AvatarBubble";
 const BUBBLE_WIDTH_ESTIMATE = 320;
 const BUBBLE_HEIGHT_ESTIMATE = 360;
 const BUBBLE_OFFSET = 8;
+const BUBBLE_MIN_HEIGHT = 160;
 const CONTROL_CLICK_MOVE_THRESHOLD = 4;
 
 function getViewport(): ViewportSize {
@@ -150,7 +151,40 @@ export function AvatarPet() {
     setVisible(false);
   };
 
-  const showBubbleBelow = position.y < BUBBLE_HEIGHT_ESTIMATE + BUBBLE_OFFSET;
+  const availableAbove =
+    viewport === null
+      ? BUBBLE_HEIGHT_ESTIMATE
+      : Math.max(0, position.y - AVATAR_CLAMP_GAP - BUBBLE_OFFSET);
+  const availableBelow =
+    viewport === null
+      ? 0
+      : Math.max(
+          0,
+          viewport.height -
+            (position.y + size.height) -
+            AVATAR_CLAMP_GAP -
+            BUBBLE_OFFSET,
+        );
+  const showBubbleBelow =
+    availableBelow >= BUBBLE_MIN_HEIGHT || availableBelow > availableAbove;
+  const selectedBubbleSpace = showBubbleBelow
+    ? availableBelow
+    : availableAbove;
+  const useViewportAnchoredBubble =
+    viewport !== null && selectedBubbleSpace < BUBBLE_MIN_HEIGHT;
+  const bubbleMaxHeight = useViewportAnchoredBubble
+    ? Math.max(96, viewport.height - AVATAR_CLAMP_GAP * 2)
+    : Math.max(
+        96,
+        Math.min(BUBBLE_HEIGHT_ESTIMATE, selectedBubbleSpace),
+      );
+  const bubblePlacementStyle = useViewportAnchoredBubble
+    ? { top: `${AVATAR_CLAMP_GAP - position.y}px` }
+    : {
+        ...(showBubbleBelow
+          ? { top: `calc(100% + ${BUBBLE_OFFSET}px)` }
+          : { bottom: `calc(100% + ${BUBBLE_OFFSET}px)` }),
+      };
   const alignBubbleRight =
     viewport !== null &&
     position.x + BUBBLE_OFFSET + BUBBLE_WIDTH_ESTIMATE >
@@ -205,13 +239,9 @@ export function AvatarPet() {
             className={`absolute z-10 ${
               alignBubbleRight ? "right-2" : "left-2"
             }`}
-            style={{
-              ...(showBubbleBelow
-                ? { top: `calc(100% + ${BUBBLE_OFFSET}px)` }
-                : { bottom: `calc(100% + ${BUBBLE_OFFSET}px)` }),
-            }}
+            style={bubblePlacementStyle}
           >
-            <AvatarBubble />
+            <AvatarBubble maxHeight={bubbleMaxHeight} />
           </div>
         )}
 

@@ -1,26 +1,48 @@
 "use client";
 
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, Send, Square } from "lucide-react";
 
 import {
   AVATAR_APP_ID,
   buildAvatarEmbeddingPayload,
   buildAvatarSystemPrompt,
+  confirmAvatarAction,
   getOrCreateAvatarConversation,
   resolveAvatarModel,
 } from "@/apps/avatar-pet/avatar-chat";
 import { parseAvatarEmotions } from "@/apps/avatar-pet/emotion-parser";
 import type { ChatMessage, ToolCall } from "@/apps/ai-chat/types";
-import { streamChat, type ToolCallEvent, type ToolResultEvent } from "@/hooks/useStream";
+import {
+  streamChat,
+  type ToolCallEvent,
+  type ToolResultEvent,
+} from "@/hooks/useStream";
 import { useAvatarStore } from "@/stores/avatarStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { useWindowStore } from "@/stores/windowStore";
 
 type BubbleMessage = ChatMessage;
 
-function toolEventKey(event: Pick<ToolCallEvent | ToolResultEvent, "id" | "subagentId" | "agentName">) {
-  return [event.subagentId, event.agentName, event.id].filter(Boolean).join(":");
+type PendingConfirmation = {
+  requestId: string;
+  toolName: string;
+  args: Record<string, unknown>;
+  deciding: boolean;
+};
+
+type AvatarBubbleProps = {
+  maxHeight?: number;
+};
+
+function toolEventKey(
+  event: Pick<ToolCallEvent | ToolResultEvent, "id" | "subagentId" | "agentName">,
+) {
+  const baseId = event.id || crypto.randomUUID();
+  const owner = event.subagentId || event.agentName;
+  if (!owner) return baseId;
+  if (baseId.startsWith(`${owner}::`)) return baseId;
+  return `${owner}::${baseId}`;
 }
 
 function buildHistory(messages: BubbleMessage[]): Record<string, unknown>[] {
@@ -48,7 +70,7 @@ function getToolStatusText(tool: ToolCall) {
   return "完成";
 }
 
-export function AvatarBubble() {
+export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
   const providers = useSettingsStore((state) => state.providers);
   const defaultModel = useSettingsStore((state) => state.defaultModel);
   const embeddingConfig = useSettingsStore((state) => state.embeddingConfig);
@@ -57,24 +79,46 @@ export function AvatarBubble() {
   const [messages, setMessages] = useState<BubbleMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [confirmNotice, setConfirmNotice] = useState<string | null>(null);
+  const [pendingConfirm, setPendingConfirm] =
+    useState<PendingConfirmation | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const assistantRawRef = useRef("");
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const mountedRef = useRef(true);
+  const streamRunIdRef = useRef<string | null>(null);
 
   const resolvedModel = useMemo(
     () => resolveAvatarModel(defaultModel, providers),
     [defaultModel, providers],
   );
 
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      streamRunIdRef.current = null;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, []);
+
   const scrollToBottom = () => {
+    if (!mountedRef.current) return;
     requestAnimationFrame(() => {
+      if (!mountedRef.current) return;
       messagesEndRef.current?.scrollIntoView({ block: "end" });
     });
   };
 
+  const safeSetMessages = (
+    updater: BubbleMessage[] | ((messages: BubbleMessage[]) => BubbleMessage[]),
+  ) => {
+    if (!mountedRef.current) return;
+    setMessages(updater);
+    scrollToBottom();
+  };
+
   const appendError = (content: string) => {
-    setMessages((prev) => [
+    safeSetMessages((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
@@ -82,19 +126,21 @@ export function AvatarBubble() {
         content,
       },
     ]);
-    scrollToBottom();
   };
 
   const updateAssistant = (
     assistantId: string,
     updater: (message: BubbleMessage) => BubbleMessage,
   ) => {
-    setMessages((prev) =>
+    safeSetMessages((prev) =>
       prev.map((message) =>
         message.id === assistantId ? updater(message) : message,
       ),
     );
-    scrollToBottom();
+  };
+
+  const isActiveRun = (runId: string) => {
+    return mountedRef.current && streamRunIdRef.current === runId;
   };
 
   const handleOpenChat = () => {
@@ -104,6 +150,27 @@ export function AvatarBubble() {
   const handleAbort = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+  };
+
+  const handleConfirm = async (approved: boolean) => {
+    const confirmation = pendingConfirm;
+    if (!confirmation) return;
+
+    setPendingConfirm({ ...confirmation, deciding: true });
+    try {
+      await confirmAvatarAction(confirmation.requestId, approved);
+      if (mountedRef.current) {
+        setPendingConfirm(null);
+      }
+    } catch (error) {
+      if (!mountedRef.current) return;
+      setPendingConfirm({ ...confirmation, deciding: false });
+      appendError(
+        error instanceof Error
+          ? `确认失败：${error.message}`
+          : "确认失败，请稍后重试。",
+      );
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -116,6 +183,7 @@ export function AvatarBubble() {
       return;
     }
 
+    const runId = crypto.randomUUID();
     const userMessage: BubbleMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -131,11 +199,11 @@ export function AvatarBubble() {
     const history = buildHistory(messages);
 
     setInput("");
-    setConfirmNotice(null);
+    setPendingConfirm(null);
     setLoading(true);
     assistantRawRef.current = "";
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
-    scrollToBottom();
+    streamRunIdRef.current = runId;
+    safeSetMessages((prev) => [...prev, userMessage, assistantMessage]);
 
     const abort = new AbortController();
     abortRef.current = abort;
@@ -144,6 +212,7 @@ export function AvatarBubble() {
       const conversation = await getOrCreateAvatarConversation(
         resolvedModel.modelId,
       );
+      if (!isActiveRun(runId)) return;
 
       await streamChat(
         {
@@ -162,6 +231,7 @@ export function AvatarBubble() {
           llmApiKey: resolvedModel.provider.apiKey,
           llmApiBase: resolvedModel.apiBase,
           onToken: (token) => {
+            if (!isActiveRun(runId)) return;
             assistantRawRef.current += token;
             const parsed = parseAvatarEmotions(assistantRawRef.current);
             if (parsed.emotions.length > 0) {
@@ -173,6 +243,7 @@ export function AvatarBubble() {
             }));
           },
           onToolCall: (tool) => {
+            if (!isActiveRun(runId)) return;
             const key = toolEventKey(tool);
             updateAssistant(assistantId, (message) => {
               const existing = message.toolCalls ?? [];
@@ -204,6 +275,7 @@ export function AvatarBubble() {
             });
           },
           onToolResult: (tool) => {
+            if (!isActiveRun(runId)) return;
             const key = toolEventKey(tool);
             updateAssistant(assistantId, (message) => ({
               ...message,
@@ -224,15 +296,21 @@ export function AvatarBubble() {
               ),
             }));
           },
-          onConfirmRequired: (_requestId, toolName) => {
-            setConfirmNotice(
-              `工具「${toolName}」需要确认。请在 AI 助手窗口中继续处理。`,
-            );
+          onConfirmRequired: (requestId, toolName, args) => {
+            if (!isActiveRun(runId)) return;
+            setPendingConfirm({
+              requestId,
+              toolName,
+              args,
+              deciding: false,
+            });
           },
         },
         abort.signal,
       );
     } catch (error) {
+      if (!isActiveRun(runId)) return;
+
       const aborted =
         error instanceof DOMException && error.name === "AbortError";
       if (aborted) {
@@ -242,15 +320,23 @@ export function AvatarBubble() {
           streaming: false,
         }));
       } else {
-        appendError(
-          error instanceof Error
-            ? `发送失败：${error.message}`
-            : "发送失败，请稍后重试。",
-        );
+        updateAssistant(assistantId, (message) => ({
+          ...message,
+          role: "error",
+          content:
+            error instanceof Error
+              ? `发送失败：${error.message}`
+              : "发送失败，请稍后重试。",
+          streaming: false,
+          toolCalls: undefined,
+        }));
       }
     } finally {
+      if (!isActiveRun(runId)) return;
       abortRef.current = null;
+      streamRunIdRef.current = null;
       setLoading(false);
+      setPendingConfirm(null);
       updateAssistant(assistantId, (message) => ({
         ...message,
         streaming: false,
@@ -261,8 +347,9 @@ export function AvatarBubble() {
   return (
     <section
       data-avatar-control="true"
-      className="flex max-h-[min(360px,calc(100vh-40px))] w-[min(320px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg text-[13px] leading-5"
+      className="flex w-[min(320px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg text-[13px] leading-5"
       style={{
+        maxHeight,
         color: "rgba(24,24,27,0.9)",
         background: "rgba(255,255,255,0.84)",
         border: "1px solid rgba(255,255,255,0.64)",
@@ -341,14 +428,31 @@ export function AvatarBubble() {
           </div>
         ))}
 
-        {confirmNotice ? (
-          <button
-            type="button"
-            onClick={handleOpenChat}
-            className="w-full rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-left text-amber-800 transition-colors hover:bg-amber-100"
-          >
-            {confirmNotice}
-          </button>
+        {pendingConfirm ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900">
+            <div className="font-medium">需要确认工具操作</div>
+            <div className="mt-0.5 break-words text-[12px]">
+              {pendingConfirm.toolName}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void handleConfirm(false)}
+                disabled={pendingConfirm.deciding}
+                className="h-7 flex-1 rounded-md bg-white/80 px-2 text-[12px] text-zinc-700 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                拒绝
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirm(true)}
+                disabled={pendingConfirm.deciding}
+                className="h-7 flex-1 rounded-md bg-zinc-900 px-2 text-[12px] text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                允许
+              </button>
+            </div>
+          </div>
         ) : null}
         <div ref={messagesEndRef} />
       </div>

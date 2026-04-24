@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfig } from "@/stores/settingsStore";
 import {
   AVATAR_APP_ID,
+  confirmAvatarAction,
   getOrCreateAvatarConversation,
   resolveAvatarModel,
 } from "./avatar-chat";
@@ -127,5 +128,45 @@ describe("getOrCreateAvatarConversation", () => {
         app_id: AVATAR_APP_ID,
       }),
     });
+  });
+});
+
+describe("confirmAvatarAction", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("posts the confirmation decision for a pending avatar stream request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await confirmAvatarAction("request-123", true);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "/agents/confirm?request_id=request-123&approved=true",
+      ),
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("URL-encodes request ids and posts rejected decisions", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await confirmAvatarAction("request with spaces", false);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "/agents/confirm?request_id=request%20with%20spaces&approved=false",
+      ),
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

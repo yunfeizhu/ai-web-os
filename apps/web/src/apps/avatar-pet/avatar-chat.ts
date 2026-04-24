@@ -60,6 +60,21 @@ export async function getOrCreateAvatarConversation(
   });
 }
 
+export async function confirmAvatarAction(
+  requestId: string,
+  approved: boolean,
+): Promise<void> {
+  const res = await fetch(
+    `${API}/confirm?request_id=${encodeURIComponent(requestId)}&approved=${approved}`,
+    {
+      method: "POST",
+    },
+  );
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+}
+
 function resolveEncodedModel(
   defaultModel: string,
   providers: Record<string, ProviderConfig>,

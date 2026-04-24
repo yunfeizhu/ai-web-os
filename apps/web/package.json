@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tiptap/extension-placeholder": "^3.22.4",
@@ -18,8 +19,12 @@
     "@univerjs/presets": "^0.20.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "idb-keyval": "^6.2.2",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.474.0",
     "next": "^15.3.0",
+    "pixi-live2d-display": "^0.4.0",
+    "pixi.js": "^8.18.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
@@ -36,10 +41,13 @@
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.2.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.3.0",
+    "jsdom": "^27.4.0",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
   }
 }

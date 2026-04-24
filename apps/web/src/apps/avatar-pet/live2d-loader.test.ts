@@ -1,12 +1,19 @@
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { get } from "idb-keyval";
 
 import {
   classifyLive2DSource,
   findModelSettingsPath,
   isLive2DZipSource,
+  loadAvatarZip,
   prepareZipModelBlob,
 } from "./live2d-loader";
+
+vi.mock("idb-keyval", () => ({
+  get: vi.fn(),
+  set: vi.fn(),
+}));
 
 const createdObjectUrls = new Map<string, Blob>();
 const revokedObjectUrls: string[] = [];
@@ -304,6 +311,62 @@ describe("prepareZipModelBlob", () => {
     });
   });
 
+  it("falls back to Cubism 2 model json settings and rewrites only file-bearing fields", async () => {
+    const zipBlob = await createZipBlob({
+      "model/avatar.model.json": JSON.stringify({
+        model: "avatar.moc",
+        textures: ["textures/texture_00.png", "https://example.com/remote.png"],
+        physics: "physics.json",
+        pose: "pose.json",
+        expressions: [
+          { name: "smile.exp.json", file: "expressions/smile.exp.json" },
+        ],
+        motions: {
+          idle: [
+            {
+              name: "idle.motion.json",
+              file: "motions/idle.motion.json",
+              sound: "sounds/idle.wav",
+            },
+          ],
+        },
+        hit_areas_custom: {
+          body: "textures/texture_00.png",
+        },
+      }),
+      "model/avatar.moc": new Uint8Array([1]),
+      "model/textures/texture_00.png": new Uint8Array([2]),
+      "model/physics.json": "{}",
+      "model/pose.json": "{}",
+      "model/expressions/smile.exp.json": "{}",
+      "model/motions/idle.motion.json": "{}",
+      "model/sounds/idle.wav": new Uint8Array([3]),
+      "model/smile.exp.json": "semantic collision",
+      "model/idle.motion.json": "semantic collision",
+    });
+
+    const prepared = await prepareZipModelBlob(zipBlob);
+
+    expect(prepared.modelSettingsPath).toBe("model/avatar.model.json");
+    expect(prepared.objectUrls).toHaveLength(8);
+
+    const rewrittenSettingsBlob = createdObjectUrls.get(prepared.objectUrl);
+    expect(rewrittenSettingsBlob).toBeInstanceOf(Blob);
+
+    const rewrittenSettings = JSON.parse(await readBlobText(rewrittenSettingsBlob!));
+    expect(rewrittenSettings.model).toMatch(/^blob:/);
+    expect(rewrittenSettings.textures[0]).toMatch(/^blob:/);
+    expect(rewrittenSettings.textures[1]).toBe("https://example.com/remote.png");
+    expect(rewrittenSettings.physics).toMatch(/^blob:/);
+    expect(rewrittenSettings.pose).toMatch(/^blob:/);
+    expect(rewrittenSettings.expressions[0].file).toMatch(/^blob:/);
+    expect(rewrittenSettings.expressions[0].name).toBe("smile.exp.json");
+    expect(rewrittenSettings.motions.idle[0].file).toMatch(/^blob:/);
+    expect(rewrittenSettings.motions.idle[0].sound).toMatch(/^blob:/);
+    expect(rewrittenSettings.motions.idle[0].name).toBe("idle.motion.json");
+    expect(rewrittenSettings.hit_areas_custom.body).toBe("textures/texture_00.png");
+  });
+
   it("revokes already-created object URLs when zip preparation fails", async () => {
     const zipBlob = await createZipBlob({
       "model/avatar.model3.json": JSON.stringify({
@@ -330,5 +393,43 @@ describe("prepareZipModelBlob", () => {
       "object URL quota exceeded",
     );
     expect(revokedObjectUrls).toEqual(["blob:live2d-test/0"]);
+  });
+});
+
+describe("loadAvatarZip", () => {
+  it("returns null when cached data is a Blob and File is unavailable", async () => {
+    const cached = new Blob(["zip"], { type: "application/zip" });
+    const originalFile = globalThis.File;
+
+    vi.mocked(get).mockResolvedValue(cached);
+    Reflect.deleteProperty(globalThis, "File");
+
+    try {
+      await expect(loadAvatarZip()).resolves.toBeNull();
+    } finally {
+      Object.defineProperty(globalThis, "File", {
+        configurable: true,
+        writable: true,
+        value: originalFile,
+      });
+    }
+  });
+
+  it("returns a cached File and wraps cached Blob data when File is available", async () => {
+    const cachedFile = new File(["zip"], "cached.zip", {
+      type: "application/zip",
+    });
+
+    vi.mocked(get).mockResolvedValue(cachedFile);
+    await expect(loadAvatarZip()).resolves.toBe(cachedFile);
+
+    const cachedBlob = new Blob(["zip"], { type: "application/x-zip-compressed" });
+    vi.mocked(get).mockResolvedValue(cachedBlob);
+
+    const loaded = await loadAvatarZip();
+
+    expect(loaded).toBeInstanceOf(File);
+    expect(loaded?.name).toBe("avatar-live2d.zip");
+    expect(loaded?.type).toBe("application/x-zip-compressed");
   });
 });

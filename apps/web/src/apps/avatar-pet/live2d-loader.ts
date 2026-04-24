@@ -135,10 +135,12 @@ async function rewriteStringArrayProperty(
     return;
   }
 
-  object[key] = await Promise.all(
-    value.map((item) =>
+  const rewrittenItems: unknown[] = [];
+
+  for (const item of value) {
+    rewrittenItems.push(
       typeof item === "string"
-        ? createAssetObjectUrl(
+        ? await createAssetObjectUrl(
             item,
             baseDirectory,
             entries,
@@ -146,24 +148,19 @@ async function rewriteStringArrayProperty(
             objectUrls,
           )
         : item,
-    ),
-  );
+    );
+  }
+
+  object[key] = rewrittenItems;
 }
 
-async function rewriteFileReferences(
-  modelSettings: unknown,
+async function rewriteModel3FileReferences(
+  fileReferences: Record<string, unknown>,
   baseDirectory: string,
   entries: Map<string, JSZipObject>,
   objectUrlByPath: Map<string, string>,
   objectUrls: string[],
-): Promise<unknown> {
-  if (!isPlainObject(modelSettings) || !isPlainObject(modelSettings.FileReferences)) {
-    return modelSettings;
-  }
-
-  const rewrittenSettings = structuredClone(modelSettings);
-  const fileReferences = rewrittenSettings.FileReferences as Record<string, unknown>;
-
+) {
   await rewriteStringProperty(
     fileReferences,
     "Moc",
@@ -193,48 +190,159 @@ async function rewriteFileReferences(
   }
 
   if (Array.isArray(fileReferences.Expressions)) {
-    await Promise.all(
-      fileReferences.Expressions.map((expression) =>
-        isPlainObject(expression)
-          ? rewriteStringProperty(
-              expression,
-              "File",
-              baseDirectory,
-              entries,
-              objectUrlByPath,
-              objectUrls,
-            )
-          : undefined,
-      ),
-    );
+    for (const expression of fileReferences.Expressions) {
+      if (!isPlainObject(expression)) continue;
+
+      await rewriteStringProperty(
+        expression,
+        "File",
+        baseDirectory,
+        entries,
+        objectUrlByPath,
+        objectUrls,
+      );
+    }
   }
 
   if (isPlainObject(fileReferences.Motions)) {
-    await Promise.all(
-      Object.values(fileReferences.Motions).flatMap((motions) =>
-        Array.isArray(motions)
-          ? motions.map(async (motion) => {
-              if (!isPlainObject(motion)) return;
+    for (const motions of Object.values(fileReferences.Motions)) {
+      if (!Array.isArray(motions)) continue;
 
-              await rewriteStringProperty(
-                motion,
-                "File",
-                baseDirectory,
-                entries,
-                objectUrlByPath,
-                objectUrls,
-              );
-              await rewriteStringProperty(
-                motion,
-                "Sound",
-                baseDirectory,
-                entries,
-                objectUrlByPath,
-                objectUrls,
-              );
-            })
-          : [],
-      ),
+      for (const motion of motions) {
+        if (!isPlainObject(motion)) continue;
+
+        await rewriteStringProperty(
+          motion,
+          "File",
+          baseDirectory,
+          entries,
+          objectUrlByPath,
+          objectUrls,
+        );
+        await rewriteStringProperty(
+          motion,
+          "Sound",
+          baseDirectory,
+          entries,
+          objectUrlByPath,
+          objectUrls,
+        );
+      }
+    }
+  }
+}
+
+async function rewriteCubism2FileReferences(
+  modelSettings: Record<string, unknown>,
+  baseDirectory: string,
+  entries: Map<string, JSZipObject>,
+  objectUrlByPath: Map<string, string>,
+  objectUrls: string[],
+) {
+  await rewriteStringProperty(
+    modelSettings,
+    "model",
+    baseDirectory,
+    entries,
+    objectUrlByPath,
+    objectUrls,
+  );
+  await rewriteStringArrayProperty(
+    modelSettings,
+    "textures",
+    baseDirectory,
+    entries,
+    objectUrlByPath,
+    objectUrls,
+  );
+  await rewriteStringProperty(
+    modelSettings,
+    "physics",
+    baseDirectory,
+    entries,
+    objectUrlByPath,
+    objectUrls,
+  );
+  await rewriteStringProperty(
+    modelSettings,
+    "pose",
+    baseDirectory,
+    entries,
+    objectUrlByPath,
+    objectUrls,
+  );
+
+  if (Array.isArray(modelSettings.expressions)) {
+    for (const expression of modelSettings.expressions) {
+      if (!isPlainObject(expression)) continue;
+
+      await rewriteStringProperty(
+        expression,
+        "file",
+        baseDirectory,
+        entries,
+        objectUrlByPath,
+        objectUrls,
+      );
+    }
+  }
+
+  if (isPlainObject(modelSettings.motions)) {
+    for (const motions of Object.values(modelSettings.motions)) {
+      if (!Array.isArray(motions)) continue;
+
+      for (const motion of motions) {
+        if (!isPlainObject(motion)) continue;
+
+        await rewriteStringProperty(
+          motion,
+          "file",
+          baseDirectory,
+          entries,
+          objectUrlByPath,
+          objectUrls,
+        );
+        await rewriteStringProperty(
+          motion,
+          "sound",
+          baseDirectory,
+          entries,
+          objectUrlByPath,
+          objectUrls,
+        );
+      }
+    }
+  }
+}
+
+async function rewriteFileReferences(
+  modelSettings: unknown,
+  baseDirectory: string,
+  entries: Map<string, JSZipObject>,
+  objectUrlByPath: Map<string, string>,
+  objectUrls: string[],
+): Promise<unknown> {
+  if (!isPlainObject(modelSettings)) {
+    return modelSettings;
+  }
+
+  const rewrittenSettings = structuredClone(modelSettings);
+
+  if (isPlainObject(rewrittenSettings.FileReferences)) {
+    await rewriteModel3FileReferences(
+      rewrittenSettings.FileReferences,
+      baseDirectory,
+      entries,
+      objectUrlByPath,
+      objectUrls,
+    );
+  } else {
+    await rewriteCubism2FileReferences(
+      rewrittenSettings,
+      baseDirectory,
+      entries,
+      objectUrlByPath,
+      objectUrls,
     );
   }
 
@@ -336,7 +444,7 @@ export async function saveAvatarZip(file: File): Promise<void> {
   await set(AVATAR_ZIP_CACHE_KEY, file);
 }
 
-export async function loadAvatarZip(): Promise<Blob | null> {
+export async function loadAvatarZip(): Promise<File | null> {
   const cached = await get<unknown>(AVATAR_ZIP_CACHE_KEY);
 
   if (!cached) {
@@ -349,7 +457,7 @@ export async function loadAvatarZip(): Promise<Blob | null> {
 
   if (typeof Blob !== "undefined" && cached instanceof Blob) {
     if (typeof File === "undefined") {
-      return cached;
+      return null;
     }
 
     return new File([cached], "avatar-live2d.zip", {

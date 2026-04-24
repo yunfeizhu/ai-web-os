@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   AVATAR_DEFAULT_SIZE,
+  AVATAR_MAX_SIZE,
   clampAvatarPlacement,
   clampAvatarDockPlacement,
   getDefaultAvatarPlacement,
@@ -12,15 +13,20 @@ describe("avatar layout", () => {
   it("places the default avatar near the desktop bottom-left above the Dock", () => {
     expect(getDefaultAvatarPlacement({ width: 1440, height: 900 })).toEqual({
       x: 24,
-      y: 488,
+      y: 288,
     });
+  });
+
+  it("uses a larger default avatar with room to scale up further", () => {
+    expect(AVATAR_DEFAULT_SIZE).toEqual({ width: 360, height: 520 });
+    expect(AVATAR_MAX_SIZE).toEqual({ width: 560, height: 800 });
   });
 
   it("uses the small-screen edge gap and keeps the avatar on screen", () => {
     const placement = getDefaultAvatarPlacement({ width: 360, height: 640 });
 
-    expect(placement.x).toBe(16);
-    expect(placement.y).toBeGreaterThanOrEqual(16);
+    expect(placement.x).toBe(8);
+    expect(placement.y).toBeGreaterThanOrEqual(8);
   });
 
   it("clamps placement inside the viewport", () => {
@@ -30,7 +36,7 @@ describe("avatar layout", () => {
         AVATAR_DEFAULT_SIZE,
         { width: 800, height: 600 },
       ),
-    ).toEqual({ x: 8, y: 272 });
+    ).toEqual({ x: 8, y: 72 });
   });
 
   it("clamps placement above the Dock when using the dock-aware helper", () => {
@@ -40,7 +46,7 @@ describe("avatar layout", () => {
         AVATAR_DEFAULT_SIZE,
         { width: 800, height: 600 },
       ),
-    ).toEqual({ x: 8, y: 204 });
+    ).toEqual({ x: 8, y: 8 });
   });
 
   it("pins oversized avatars to the clamp gap in tiny viewports", () => {
@@ -94,7 +100,7 @@ describe("avatar layout", () => {
 
       expect(isolatedAvatarStore.getInitialState().position).toEqual({
         x: 24,
-        y: 488,
+        y: 288,
       });
     } finally {
       Object.defineProperty(window, "innerWidth", {
@@ -124,7 +130,7 @@ describe("avatar layout", () => {
 
     useAvatarStore.getState().normalizePlacement({ width: 800, height: 600 });
 
-    expect(useAvatarStore.getState().position).toEqual({ x: 572, y: 204 });
+    expect(useAvatarStore.getState().position).toEqual({ x: 432, y: 8 });
   });
 
   it("clamps setSize using the resized avatar dimensions when a viewport is provided", () => {
@@ -146,5 +152,73 @@ describe("avatar layout", () => {
 
     expect(useAvatarStore.getState().size).toEqual({ width: 360, height: 520 });
     expect(useAvatarStore.getState().position).toEqual({ x: 432, y: 8 });
+  });
+
+  it("switches to URL model source when a model URL is configured", () => {
+    useAvatarStore.setState({
+      visible: true,
+      bubbleOpen: false,
+      position: { x: 24, y: 188 },
+      size: AVATAR_DEFAULT_SIZE,
+      modelSourceType: "zip",
+      modelUrl: "",
+      localModelName: "hiyori_free_en.zip",
+      live2dError: "previous error",
+      currentEmotion: "neutral",
+      personalityPreset: "default",
+    });
+
+    useAvatarStore
+      .getState()
+      .setModelUrl("/avatar/live2d/hiyori_free_en/hiyori.model3.json");
+
+    expect(useAvatarStore.getState()).toMatchObject({
+      modelSourceType: "url",
+      modelUrl: "/avatar/live2d/hiyori_free_en/hiyori.model3.json",
+      localModelName: "hiyori_free_en.zip",
+      live2dError: "",
+    });
+  });
+
+  it("switches to local ZIP source when a cached model name is configured", () => {
+    useAvatarStore.setState({
+      visible: true,
+      bubbleOpen: false,
+      position: { x: 24, y: 188 },
+      size: AVATAR_DEFAULT_SIZE,
+      modelSourceType: "url",
+      modelUrl: "/avatar/live2d/hiyori_free_en/hiyori.model3.json",
+      localModelName: "",
+      currentEmotion: "neutral",
+      personalityPreset: "default",
+    });
+
+    useAvatarStore.getState().setLocalModelName("hiyori_free_en.zip");
+
+    expect(useAvatarStore.getState()).toMatchObject({
+      modelSourceType: "zip",
+      modelUrl: "/avatar/live2d/hiyori_free_en/hiyori.model3.json",
+      localModelName: "hiyori_free_en.zip",
+    });
+  });
+
+  it("resets placement to the default size and bottom-left dock position", () => {
+    useAvatarStore.setState({
+      visible: true,
+      bubbleOpen: true,
+      position: { x: 700, y: 500 },
+      size: { width: 360, height: 520 },
+      modelSourceType: "url",
+      modelUrl: "",
+      localModelName: "",
+      currentEmotion: "happy",
+      personalityPreset: "default",
+    });
+
+    useAvatarStore.getState().resetPlacement({ width: 800, height: 600 });
+
+    expect(useAvatarStore.getState().size).toEqual(AVATAR_DEFAULT_SIZE);
+    expect(useAvatarStore.getState().position).toEqual({ x: 24, y: 8 });
+    expect(useAvatarStore.getState().bubbleOpen).toBe(true);
   });
 });

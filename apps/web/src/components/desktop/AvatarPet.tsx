@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
+import type { MouseEvent, PointerEvent } from "react";
 import { MessageCircle, X } from "lucide-react";
 import { Rnd } from "react-rnd";
 
@@ -88,18 +88,6 @@ export function AvatarPet() {
     }, 180);
   };
 
-  const handleAvatarClick = () => {
-    if (draggedRef.current) return;
-    toggleBubble();
-  };
-
-  const handleAvatarKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-
-    event.preventDefault();
-    handleAvatarClick();
-  };
-
   const handleControlPointerDown = (event: PointerEvent) => {
     controlPointerDownRef.current = {
       x: event.clientX,
@@ -153,7 +141,7 @@ export function AvatarPet() {
 
   const handleMessageClick = (event: MouseEvent) => {
     if (shouldSuppressControlClick(event)) return;
-    handleAvatarClick();
+    toggleBubble();
   };
 
   const handleClose = () => {
@@ -256,17 +244,31 @@ export function AvatarPet() {
         )}
 
         <div
-          className="flex h-full w-full flex-col overflow-hidden rounded-xl"
+          data-testid="avatar-pet-shell"
+          className="group relative flex h-full w-full flex-col overflow-hidden"
           style={{
-            background: "rgba(247,248,250,0.52)",
-            border: "1px solid rgba(255,255,255,0.5)",
-            boxShadow:
-              "0 18px 50px rgba(15,23,42,0.2), 0 1px 0 rgba(255,255,255,0.72) inset",
-            backdropFilter: "blur(30px) saturate(175%)",
-            WebkitBackdropFilter: "blur(30px) saturate(175%)",
+            background: "transparent",
+            border: "0 solid transparent",
+            boxShadow: "none",
+            backdropFilter: "none",
+            WebkitBackdropFilter: "none",
           }}
         >
-          <div className="flex items-center justify-between px-2.5 py-2">
+          <div
+            data-testid="avatar-pet-drag-frame"
+            className="pointer-events-none absolute inset-0 z-[1] rounded-lg border border-white/55 opacity-0 shadow-[0_0_0_1px_rgba(15,23,42,0.16),0_0_18px_rgba(15,23,42,0.18)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+            style={{ background: "transparent" }}
+            aria-hidden="true"
+          >
+            <span className="absolute left-0 top-0 h-5 w-5 rounded-tl-lg border-l-2 border-t-2 border-white/90 shadow-[0_0_8px_rgba(15,23,42,0.24)]" />
+            <span className="absolute right-0 top-0 h-5 w-5 rounded-tr-lg border-r-2 border-t-2 border-white/90 shadow-[0_0_8px_rgba(15,23,42,0.24)]" />
+            <span className="absolute bottom-0 left-0 h-5 w-5 rounded-bl-lg border-b-2 border-l-2 border-white/90 shadow-[0_0_8px_rgba(15,23,42,0.24)]" />
+            <span className="absolute bottom-0 right-0 h-5 w-5 rounded-br-lg border-b-2 border-r-2 border-white/90 shadow-[0_0_8px_rgba(15,23,42,0.24)]" />
+          </div>
+          <div
+            data-testid="avatar-pet-controls"
+            className="pointer-events-none absolute inset-x-0 top-2 z-10 flex items-center justify-between px-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
+          >
             <button
               type="button"
               onPointerDown={handleControlPointerDown}
@@ -275,7 +277,11 @@ export function AvatarPet() {
               onPointerCancel={handleControlPointerEnd}
               onClick={handleMessageClick}
               data-avatar-control="true"
-              className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/55 active:bg-white/70"
+              className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full text-white transition-colors hover:bg-black/55 active:bg-black/70"
+              style={{
+                background: "rgba(15,23,42,0.38)",
+                boxShadow: "0 6px 18px rgba(15,23,42,0.18)",
+              }}
               title="打开虚拟伙伴消息"
               aria-label="打开虚拟伙伴消息"
             >
@@ -292,7 +298,11 @@ export function AvatarPet() {
                 handleClose();
               }}
               data-avatar-control="true"
-              className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/55 active:bg-white/70"
+              className="pointer-events-auto flex h-8 w-8 items-center justify-center rounded-full text-white transition-colors hover:bg-black/55 active:bg-black/70"
+              style={{
+                background: "rgba(15,23,42,0.38)",
+                boxShadow: "0 6px 18px rgba(15,23,42,0.18)",
+              }}
               title="关闭虚拟伙伴"
               aria-label="关闭虚拟伙伴"
             >
@@ -301,20 +311,15 @@ export function AvatarPet() {
           </div>
 
           <div
-            role="button"
-            tabIndex={0}
-            onClick={handleAvatarClick}
-            onKeyDown={handleAvatarKeyDown}
-            className="flex min-h-0 flex-1 cursor-pointer items-center justify-center p-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-slate-500/70"
+            className="flex min-h-0 flex-1 items-center justify-center"
             title="虚拟伙伴"
-            aria-label="虚拟伙伴"
           >
             <div
+              data-testid="avatar-pet-stage"
               className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg"
               style={{
-                background:
-                  "linear-gradient(180deg, rgba(255,255,255,0.72), rgba(226,232,240,0.52))",
-                border: "1px solid rgba(255,255,255,0.55)",
+                background: "transparent",
+                border: "0 solid transparent",
               }}
             >
               <Live2DCanvas modelUrl={modelUrl} emotion={currentEmotion} />

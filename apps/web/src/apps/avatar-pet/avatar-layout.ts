@@ -13,9 +13,9 @@ export type ViewportSize = {
   height: number;
 };
 
-export const AVATAR_DEFAULT_SIZE: AvatarSize = { width: 220, height: 320 };
+export const AVATAR_DEFAULT_SIZE: AvatarSize = { width: 360, height: 520 };
 export const AVATAR_MIN_SIZE: AvatarSize = { width: 150, height: 210 };
-export const AVATAR_MAX_SIZE: AvatarSize = { width: 360, height: 520 };
+export const AVATAR_MAX_SIZE: AvatarSize = { width: 560, height: 800 };
 export const AVATAR_EDGE_GAP = 24;
 export const AVATAR_SMALL_EDGE_GAP = 16;
 export const AVATAR_DOCK_CLEARANCE = 68;

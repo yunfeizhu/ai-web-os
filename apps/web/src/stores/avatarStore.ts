@@ -22,6 +22,7 @@ export interface AvatarState {
   modelSourceType: AvatarModelSourceType;
   modelUrl: string;
   localModelName: string;
+  live2dError: string;
   currentEmotion: AvatarEmotion;
   personalityPreset: "default";
 
@@ -35,6 +36,7 @@ export interface AvatarState {
   setModelUrl: (modelUrl: string) => void;
   setLocalModelName: (localModelName: string) => void;
   setModelSourceType: (modelSourceType: AvatarModelSourceType) => void;
+  setLive2DError: (live2dError: string) => void;
   setCurrentEmotion: (currentEmotion: AvatarEmotion) => void;
 }
 
@@ -48,6 +50,7 @@ export const useAvatarStore = create<AvatarState>()(
       modelSourceType: "url",
       modelUrl: "",
       localModelName: "",
+      live2dError: "",
       currentEmotion: "neutral",
       personalityPreset: "default",
 
@@ -80,10 +83,13 @@ export const useAvatarStore = create<AvatarState>()(
           size: AVATAR_DEFAULT_SIZE,
           position: getDefaultAvatarPlacement(viewport, AVATAR_DEFAULT_SIZE),
         }),
-      setModelUrl: (modelUrl) => set({ modelUrl, modelSourceType: "url" }),
+      setModelUrl: (modelUrl) =>
+        set({ modelUrl, modelSourceType: "url", live2dError: "" }),
       setLocalModelName: (localModelName) =>
-        set({ localModelName, modelSourceType: "zip" }),
-      setModelSourceType: (modelSourceType) => set({ modelSourceType }),
+        set({ localModelName, modelSourceType: "zip", live2dError: "" }),
+      setModelSourceType: (modelSourceType) =>
+        set({ modelSourceType, live2dError: "" }),
+      setLive2DError: (live2dError) => set({ live2dError }),
       setCurrentEmotion: (currentEmotion) => set({ currentEmotion }),
     }),
     {

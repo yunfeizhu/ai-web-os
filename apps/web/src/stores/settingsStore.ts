@@ -23,6 +23,7 @@ export interface EmbeddingConfig {
 export interface SettingsState {
   providers: Record<string, ProviderConfig>;
   defaultModel: string;
+  avatarModel: string;
   language: string;
   toolKeys: Record<string, string>;
   embeddingConfig: EmbeddingConfig | null;
@@ -30,6 +31,7 @@ export interface SettingsState {
   setProvider: (id: string, cfg: Partial<ProviderConfig>) => void;
   removeProvider: (id: string) => void;
   setDefaultModel: (model: string) => void;
+  setAvatarModel: (model: string) => void;
   setLanguage: (lang: string) => void;
   setToolKey: (name: string, key: string) => void;
   removeToolKey: (name: string) => void;
@@ -41,6 +43,7 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       providers: {},
       defaultModel: "",
+      avatarModel: "",
       language: "zh-CN",
       toolKeys: {},
       embeddingConfig: null,
@@ -60,6 +63,7 @@ export const useSettingsStore = create<SettingsState>()(
         }),
 
       setDefaultModel: (model) => set({ defaultModel: model }),
+      setAvatarModel: (model) => set({ avatarModel: model }),
       setLanguage: (lang) => set({ language: lang }),
 
       setToolKey: (name, key) =>
@@ -78,6 +82,7 @@ export const useSettingsStore = create<SettingsState>()(
       partialize: (s) => ({
         providers: s.providers,
         defaultModel: s.defaultModel,
+        avatarModel: s.avatarModel,
         language: s.language,
         toolKeys: s.toolKeys,
         embeddingConfig: s.embeddingConfig,

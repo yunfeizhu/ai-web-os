@@ -22,6 +22,101 @@ export type ResolvedAvatarModel = {
   apiBase?: string;
 };
 
+export type AvatarAppLaunchIntent = {
+  appId: string;
+  title: string;
+  icon: string;
+  keywords: readonly string[];
+  appState?: Record<string, unknown>;
+  reply: string;
+};
+
+const AVATAR_APP_LAUNCH_INTENTS: readonly AvatarAppLaunchIntent[] = [
+  {
+    appId: "mail",
+    title: "邮件",
+    icon: "Mail",
+    keywords: ["邮件", "邮箱", "收件箱", "发件箱", "草稿箱", "未读", "附件"],
+    appState: { activeFolder: "inbox", source: "avatar-pet" },
+    reply: "[emotion:happy]已为你打开系统邮件。",
+  },
+  {
+    appId: "calendar",
+    title: "日历",
+    icon: "Calendar",
+    keywords: ["日历", "日程", "会议", "行程", "待办"],
+    reply: "[emotion:happy]已为你打开日历。",
+  },
+  {
+    appId: "browser",
+    title: "浏览器",
+    icon: "Globe",
+    keywords: ["浏览器", "网页"],
+    reply: "[emotion:happy]已为你打开浏览器。",
+  },
+  {
+    appId: "file-manager",
+    title: "文件管理器",
+    icon: "FolderOpen",
+    keywords: ["文件", "文件管理器", "目录"],
+    reply: "[emotion:happy]已为你打开文件管理器。",
+  },
+  {
+    appId: "notes",
+    title: "笔记",
+    icon: "FileText",
+    keywords: ["笔记", "备忘录"],
+    reply: "[emotion:happy]已为你打开笔记。",
+  },
+  {
+    appId: "document-editor",
+    title: "文档",
+    icon: "FilePenLine",
+    keywords: ["文档", "富文本"],
+    reply: "[emotion:happy]已为你打开文档。",
+  },
+  {
+    appId: "whiteboard",
+    title: "白板",
+    icon: "PenTool",
+    keywords: ["白板", "画布"],
+    reply: "[emotion:happy]已为你打开白板。",
+  },
+  {
+    appId: "terminal",
+    title: "终端",
+    icon: "Terminal",
+    keywords: ["终端", "命令行"],
+    reply: "[emotion:happy]已为你打开终端。",
+  },
+  {
+    appId: "settings",
+    title: "设置",
+    icon: "Settings",
+    keywords: ["设置", "系统设置"],
+    reply: "[emotion:happy]已为你打开设置。",
+  },
+];
+
+const APP_LAUNCH_PATTERN = /^(打开|启动|进入|切到|切换到)/;
+const RISKY_MAIL_ACTION_PATTERN = /(发|发送|寄|回复).{0,8}邮件|邮件.{0,8}(发|发送|寄|回复)/;
+
+export function resolveAvatarAppLaunchIntent(
+  input: string,
+): AvatarAppLaunchIntent | null {
+  const text = input.trim();
+  if (!APP_LAUNCH_PATTERN.test(text)) return null;
+  if (RISKY_MAIL_ACTION_PATTERN.test(text)) return null;
+
+  return (
+    AVATAR_APP_LAUNCH_INTENTS.find((intent) =>
+      [intent.title, ...intent.keywords].some((keyword) =>
+        text.includes(keyword),
+      ),
+    ) ?? null
+  );
+}
+
 async function avatarApiFetch<T>(
   path: string,
   init?: RequestInit,
@@ -92,6 +187,13 @@ function resolveEncodedModel(
   }
 
   return null;
+}
+
+export function resolveAvatarConversationModel(
+  avatarModel: string,
+  defaultModel: string,
+): string {
+  return avatarModel.trim() || defaultModel;
 }
 
 export function resolveAvatarModel(

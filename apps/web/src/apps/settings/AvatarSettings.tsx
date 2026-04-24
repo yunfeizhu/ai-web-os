@@ -1,31 +1,117 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent } from "react";
-import { Eye, EyeOff, RotateCcw, Upload } from "lucide-react";
+import { useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  AlertTriangle,
+  Eye,
+  EyeOff,
+  RotateCcw,
+  Upload,
+  Zap,
+} from "lucide-react";
 
+import { decodeModel, encodeModel, PROVIDERS } from "./providers";
 import { SectionTitle } from "./Settings";
 import {
   useAvatarStore,
   type AvatarModelSourceType,
 } from "@/stores/avatarStore";
+import {
+  useSettingsStore,
+  type ProviderConfig,
+} from "@/stores/settingsStore";
 
 const SOURCE_OPTIONS: { id: AvatarModelSourceType; label: string }[] = [
   { id: "url", label: "URL" },
   { id: "zip", label: "Local ZIP" },
 ];
 
+type AvatarModelGroup = {
+  id: string;
+  name: string;
+  models: string[];
+};
+
+function buildAvatarModelGroups(
+  providers: Record<string, ProviderConfig>,
+): AvatarModelGroup[] {
+  const builtinGroups = PROVIDERS.flatMap((providerDef) => {
+    const provider = providers[providerDef.id];
+    const models = provider?.enabledModels ?? [];
+    if (!provider?.apiKey || models.length === 0) return [];
+
+    return [
+      {
+        id: providerDef.id,
+        name: providerDef.nameCn !== providerDef.name
+          ? providerDef.nameCn
+          : providerDef.name,
+        models,
+      },
+    ];
+  });
+
+  const customGroups = Object.entries(providers).flatMap(([id, provider]) => {
+    const models = provider.enabledModels ?? [];
+    if (!provider.isCustom || !provider.apiKey || models.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        id,
+        name: provider.name ?? id,
+        models,
+      },
+    ];
+  });
+
+  return [...builtinGroups, ...customGroups];
+}
+
+function getModelLabel(
+  encodedModel: string,
+  providers: Record<string, ProviderConfig>,
+): string {
+  if (!encodedModel.trim()) return "";
+
+  const { providerId, modelId } = decodeModel(encodedModel);
+  if (!modelId) return "";
+
+  const builtin = PROVIDERS.find((provider) => provider.id === providerId);
+  const providerName =
+    providers[providerId]?.name ??
+    (builtin?.nameCn !== builtin?.name ? builtin?.nameCn : builtin?.name) ??
+    providerId;
+
+  return `${providerName} / ${modelId}`;
+}
+
 export function AvatarSettings() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [zipSaveError, setZipSaveError] = useState("");
+  const providers = useSettingsStore((state) => state.providers);
+  const defaultModel = useSettingsStore((state) => state.defaultModel);
+  const avatarModel = useSettingsStore((state) => state.avatarModel);
+  const setAvatarModel = useSettingsStore((state) => state.setAvatarModel);
   const visible = useAvatarStore((state) => state.visible);
   const modelSourceType = useAvatarStore((state) => state.modelSourceType);
   const modelUrl = useAvatarStore((state) => state.modelUrl);
   const localModelName = useAvatarStore((state) => state.localModelName);
+  const live2dError = useAvatarStore((state) => state.live2dError);
   const setVisible = useAvatarStore((state) => state.setVisible);
   const resetPlacement = useAvatarStore((state) => state.resetPlacement);
   const setModelUrl = useAvatarStore((state) => state.setModelUrl);
   const setLocalModelName = useAvatarStore((state) => state.setLocalModelName);
   const setModelSourceType = useAvatarStore((state) => state.setModelSourceType);
+  const modelGroups = useMemo(
+    () => buildAvatarModelGroups(providers),
+    [providers],
+  );
+  const defaultModelLabel = useMemo(
+    () => getModelLabel(defaultModel, providers),
+    [defaultModel, providers],
+  );
 
   const handleZipChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -105,6 +191,97 @@ export function AvatarSettings() {
             </button>
           </div>
         </div>
+      </div>
+
+      {live2dError && (
+        <div
+          className="flex items-start gap-3 rounded-xl p-4"
+          style={{
+            background: "rgba(254,242,242,0.82)",
+            border: "0.5px solid rgba(248,113,113,0.42)",
+            color: "rgba(127,29,29,0.9)",
+          }}
+          role="alert"
+        >
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="text-[13px] font-semibold">Live2D 加载失败</p>
+            <p className="mt-1 break-words text-[12px] leading-5">
+              {live2dError}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div
+        className="rounded-xl p-4"
+        style={{
+          background: "var(--panel-bg)",
+          border: "0.5px solid var(--border)",
+        }}
+      >
+        <div className="mb-3 flex items-start gap-3">
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+            style={{
+              background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+              color: "var(--accent)",
+            }}
+          >
+            <Zap size={15} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p
+              className="text-[13px] font-semibold"
+              style={{ color: "var(--t1)" }}
+            >
+              桌宠聊天模型
+            </p>
+            <p
+              className="mt-1 text-[12px] leading-5"
+              style={{ color: "var(--t3)" }}
+            >
+              建议选择不带深度思考的快速模型，让桌宠短对话更轻快；留空则跟随主助手默认模型。
+            </p>
+          </div>
+        </div>
+
+        <select
+          value={avatarModel}
+          onChange={(event) => setAvatarModel(event.target.value)}
+          className="h-9 w-full rounded-lg px-3 text-[13px] outline-none transition-colors"
+          style={{
+            background: "var(--search-field-bg)",
+            border: "0.5px solid var(--search-field-border)",
+            color: "var(--t1)",
+          }}
+        >
+          <option value="">
+            {defaultModelLabel
+              ? `跟随主助手默认模型（${defaultModelLabel}）`
+              : "跟随主助手默认模型"}
+          </option>
+          {modelGroups.map((group) => (
+            <optgroup key={group.id} label={group.name}>
+              {group.models.map((modelId) => (
+                <option
+                  key={encodeModel(group.id, modelId)}
+                  value={encodeModel(group.id, modelId)}
+                >
+                  {modelId}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        {modelGroups.length === 0 && (
+          <p
+            className="mt-2 text-[12px] leading-5"
+            style={{ color: "var(--t3)" }}
+          >
+            先在“模型与密钥”里配置 API Key 和可用模型后，就可以给桌宠单独指定快速模型。
+          </p>
+        )}
       </div>
 
       <div>

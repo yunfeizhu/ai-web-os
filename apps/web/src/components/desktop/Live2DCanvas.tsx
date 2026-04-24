@@ -1,7 +1,6 @@
 "use client";
 
-import { Bot } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import { getLive2DExpressionPlan } from "@/apps/avatar-pet/emotion-map";
 import type { AvatarEmotion } from "@/apps/avatar-pet/emotion-parser";
@@ -37,7 +36,55 @@ type Live2DCanvasProps = {
   emotion: AvatarEmotion;
 };
 
+type Live2DInteractionModel = Pick<
+  Live2DModelInstance,
+  "expression" | "motion"
+>;
+
+type Live2DPointerTapEvent = {
+  data?: {
+    global?: {
+      x: number;
+      y: number;
+    };
+  };
+};
+
+export type Live2DModelCapabilities = {
+  motionGroups: string[];
+  expressionNames: string[];
+};
+
 const CUBISM_CORE_SRC = "/vendor/live2d/live2dcubismcore.min.js";
+const MIN_RENDER_RESOLUTION = 2;
+const MAX_RENDER_RESOLUTION = 3;
+const LIVE2D_FORCE_MOTION_PRIORITY = 3;
+const LIVE2D_INTERACTION_EXPRESSIONS = ["happy", "smile", "surprised"] as const;
+const LIVE2D_DEFAULT_TAP_MOTION_GROUPS = [
+  "Tap@Body",
+  "TapBody",
+  "TapHead",
+  "Tap@Head",
+  "Tap",
+  "Flick@Body",
+  "Happy",
+  "",
+  "Idle",
+] as const;
+
+export function getLive2DRenderResolution(
+  devicePixelRatio =
+    typeof window === "undefined" ? MIN_RENDER_RESOLUTION : window.devicePixelRatio,
+) {
+  if (!Number.isFinite(devicePixelRatio) || devicePixelRatio <= 0) {
+    return MIN_RENDER_RESOLUTION;
+  }
+
+  return Math.min(
+    MAX_RENDER_RESOLUTION,
+    Math.max(MIN_RENDER_RESOLUTION, devicePixelRatio),
+  );
+}
 
 function getSourceFallbackMessage(
   modelUrl: string,
@@ -47,7 +94,7 @@ function getSourceFallbackMessage(
   if (modelSourceType === "zip") {
     if (!localModelName.trim()) {
       return {
-        message: "鏈€夋嫨 Live2D ZIP / No local Live2D ZIP selected",
+        message: "未选择 Live2D ZIP / No local Live2D ZIP selected",
         tone: "info",
       };
     }
@@ -159,9 +206,15 @@ function loadCubismCore(): Promise<void> {
   });
 }
 
-function fitModelToHost(model: Live2DModelInstance, host: HTMLDivElement) {
+export function fitModelToHost(
+  model: Live2DModelInstance,
+  host: HTMLDivElement,
+) {
   const width = host.clientWidth || host.offsetWidth || 240;
   const height = host.clientHeight || host.offsetHeight || 240;
+
+  model.scale.set(1);
+
   const modelWidth =
     Number.isFinite(model.width) && model.width > 0 ? model.width : width;
   const modelHeight =
@@ -174,6 +227,18 @@ function fitModelToHost(model: Live2DModelInstance, host: HTMLDivElement) {
   model.anchor.set(0.5, 0.5);
   model.scale.set(scale);
   model.position.set(width / 2, height * 0.56);
+}
+
+function syncLive2DViewport(
+  app: PixiApplication,
+  model: Live2DModelInstance,
+  host: HTMLDivElement,
+) {
+  const width = host.clientWidth || host.offsetWidth || 240;
+  const height = host.clientHeight || host.offsetHeight || 240;
+
+  app.renderer.resize(width, height);
+  fitModelToHost(model, host);
 }
 
 function destroyModel(model: Live2DModelInstance | null) {
@@ -217,19 +282,127 @@ async function applyEmotion(model: Live2DModelInstance, emotion: AvatarEmotion) 
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function getExpressionName(definition: unknown): string | null {
+  if (!isRecord(definition)) return null;
+  const name = definition.Name ?? definition.name;
+  return typeof name === "string" && name.trim() ? name : null;
+}
+
+export function getLive2DModelCapabilities(
+  model: Live2DModelInstance,
+): Live2DModelCapabilities {
+  const motionDefinitions =
+    model.internalModel?.motionManager?.definitions ?? {};
+  const expressionDefinitions =
+    model.internalModel?.motionManager?.expressionManager?.definitions ?? [];
+
+  return {
+    motionGroups: Object.keys(motionDefinitions),
+    expressionNames: Array.isArray(expressionDefinitions)
+      ? expressionDefinitions.flatMap((definition) => {
+          const name = getExpressionName(definition);
+          return name ? [name] : [];
+        })
+      : [],
+  };
+}
+
+export function getLive2DInteractionMotionGroups(
+  hitAreas: readonly string[],
+  capabilities?: Live2DModelCapabilities,
+): string[] {
+  const normalizedHitAreas = hitAreas.map((area) => area.toLowerCase());
+  let candidates: string[];
+
+  if (normalizedHitAreas.some((area) => area.includes("head"))) {
+    candidates = ["TapHead", "Tap@Head", "FlickHead", "Tap", "Happy", "", "Idle"];
+  } else if (
+    normalizedHitAreas.some(
+      (area) =>
+        area.includes("body") ||
+        area.includes("torso") ||
+        area.includes("bust"),
+    )
+  ) {
+    candidates = ["Tap@Body", "TapBody", "Tap", "Flick@Body", "Happy", "", "Idle"];
+  } else {
+    candidates = [...LIVE2D_DEFAULT_TAP_MOTION_GROUPS];
+  }
+
+  if (!capabilities) return candidates;
+
+  const availableGroups = new Set(capabilities.motionGroups);
+  return candidates.filter((group) => availableGroups.has(group));
+}
+
+export async function playLive2DInteraction(
+  model: Live2DInteractionModel,
+  hitAreas: readonly string[],
+  capabilities?: Live2DModelCapabilities,
+): Promise<boolean> {
+  for (const group of getLive2DInteractionMotionGroups(hitAreas, capabilities)) {
+    try {
+      if (await model.motion(group, undefined, LIVE2D_FORCE_MOTION_PRIORITY)) {
+        return true;
+      }
+    } catch {
+      // Different Live2D models expose different motion groups.
+    }
+  }
+
+  const expressionNames = [
+    ...LIVE2D_INTERACTION_EXPRESSIONS,
+    ...(capabilities?.expressionNames ?? []),
+  ];
+
+  for (const expressionName of expressionNames) {
+    try {
+      if (await model.expression(expressionName)) {
+        return true;
+      }
+    } catch {
+      // Expression names vary by model; keep trying friendly fallbacks.
+    }
+  }
+
+  return false;
+}
+
+function enableLive2DPointerInteraction(model: Live2DModelInstance) {
+  const capabilities = getLive2DModelCapabilities(model);
+  model.interactive = true;
+  model.cursor = "pointer";
+
+  const handlePointerTap = (event: Live2DPointerTapEvent) => {
+    const point = event.data?.global;
+    const hitAreas = point ? model.hitTest(point.x, point.y) : [];
+
+    if (point) {
+      model.focus(point.x, point.y);
+      model.tap(point.x, point.y);
+    }
+
+    void playLive2DInteraction(model, hitAreas, capabilities);
+  };
+
+  model.on("pointertap", handlePointerTap);
+
+  return () => {
+    model.off("pointertap", handlePointerTap);
+  };
+}
+
 export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const modelRef = useRef<Live2DModelInstance | null>(null);
   const emotionRef = useRef(emotion);
   const modelSourceType = useAvatarStore((state) => state.modelSourceType);
   const localModelName = useAvatarStore((state) => state.localModelName);
-  const [runtimeState, setRuntimeState] = useState<RuntimeState>(() =>
-    getSourceFallbackMessage(modelUrl, modelSourceType, localModelName) ?? {
-      message: "正在加载 Live2D / Loading Live2D",
-      tone: "info",
-    },
-  );
-
+  const setLive2DError = useAvatarStore((state) => state.setLive2DError);
   emotionRef.current = emotion;
 
   useEffect(() => {
@@ -237,24 +410,29 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
     let app: PixiApplication | null = null;
     let model: Live2DModelInstance | null = null;
     let preparedZip: PreparedZipModel | null = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let cleanupPointerInteraction: (() => void) | null = null;
     const host = hostRef.current;
     const sourceFallback = getSourceFallbackMessage(
       modelUrl,
       modelSourceType,
       localModelName,
     );
+    const publishRuntimeState = (state: RuntimeState | null) => {
+      setLive2DError(state?.tone === "error" ? state.message : "");
+    };
 
     modelRef.current = null;
 
     if (sourceFallback) {
-      setRuntimeState(sourceFallback);
+      publishRuntimeState(sourceFallback);
       return () => {
         disposed = true;
       };
     }
 
     if (!host) {
-      setRuntimeState({
+      publishRuntimeState({
         message: "Live2D 容器尚未准备好 / Live2D host is not ready",
         tone: "error",
       });
@@ -263,10 +441,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
       };
     }
 
-    setRuntimeState({
-      message: "正在加载 Live2D / Loading Live2D",
-      tone: "info",
-    });
+    publishRuntimeState(null);
 
     const initialize = async () => {
       try {
@@ -278,7 +453,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
           if (disposed) return;
 
           if (!zipFile) {
-            setRuntimeState({
+            publishRuntimeState({
               message:
                 "Local Live2D ZIP is no longer available. Please choose the ZIP again.",
               tone: "info",
@@ -318,7 +493,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
           backgroundAlpha: 0,
           antialias: true,
           autoDensity: true,
-          resolution: window.devicePixelRatio || 1,
+          resolution: getLive2DRenderResolution(),
         });
 
         app.view.style.display = "block";
@@ -333,12 +508,22 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
           return;
         }
 
-        fitModelToHost(model, host);
         app.stage.addChild(model);
+        cleanupPointerInteraction = enableLive2DPointerInteraction(model);
+        syncLive2DViewport(app, model, host);
+        if (typeof ResizeObserver !== "undefined") {
+          resizeObserver = new ResizeObserver(() => {
+            if (disposed || !app || !model) return;
+            syncLive2DViewport(app, model, host);
+          });
+          resizeObserver.observe(host);
+        }
         modelRef.current = model;
-        setRuntimeState({ message: "", tone: "info" });
+        publishRuntimeState(null);
         await applyEmotion(model, emotionRef.current);
       } catch {
+        resizeObserver?.disconnect();
+        cleanupPointerInteraction?.();
         destroyModel(model);
         destroyApp(app);
         revokeObjectUrls(preparedZip);
@@ -349,7 +534,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
 
         if (!disposed) {
           if (modelSourceType === "zip") {
-            setRuntimeState({
+            publishRuntimeState({
               message:
                 "Local Live2D ZIP could not be loaded. Please check the ZIP contains a valid model settings file.",
               tone: "error",
@@ -357,7 +542,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
             return;
           }
 
-          setRuntimeState({
+          publishRuntimeState({
             message:
               "Live2D 初始化失败，请检查模型地址和 Cubism Core / Live2D failed to initialize",
             tone: "error",
@@ -370,13 +555,15 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
 
     return () => {
       disposed = true;
+      resizeObserver?.disconnect();
+      cleanupPointerInteraction?.();
       modelRef.current = null;
       destroyModel(model);
       destroyApp(app);
       revokeObjectUrls(preparedZip);
       host.replaceChildren();
     };
-  }, [localModelName, modelSourceType, modelUrl]);
+  }, [localModelName, modelSourceType, modelUrl, setLive2DError]);
 
   useEffect(() => {
     const model = modelRef.current;
@@ -399,31 +586,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg">
-      <div
-        ref={hostRef}
-        className="absolute inset-0"
-        aria-hidden={Boolean(runtimeState.message)}
-      />
-      {runtimeState.message && (
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-4 text-center"
-          style={{
-            background:
-              "linear-gradient(180deg, rgba(255,255,255,0.72), rgba(226,232,240,0.52))",
-            border: "1px solid rgba(255,255,255,0.55)",
-            color:
-              runtimeState.tone === "error"
-                ? "rgba(127,29,29,0.84)"
-                : "rgba(30,41,59,0.72)",
-          }}
-          role="status"
-        >
-          <Bot size={46} strokeWidth={1.35} />
-          <span className="max-w-full text-balance text-xs font-medium leading-5">
-            {runtimeState.message}
-          </span>
-        </div>
-      )}
+      <div ref={hostRef} className="absolute inset-0" aria-hidden="true" />
     </div>
   );
 }

@@ -3,10 +3,28 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProviderConfig } from "@/stores/settingsStore";
 import {
   AVATAR_APP_ID,
+  buildAvatarEmbeddingPayload,
+  buildAvatarSystemPrompt,
   confirmAvatarAction,
   getOrCreateAvatarConversation,
+  resolveAvatarAppLaunchIntent,
+  resolveAvatarConversationModel,
   resolveAvatarModel,
 } from "./avatar-chat";
+
+describe("resolveAvatarConversationModel", () => {
+  it("uses the avatar-specific model when one is configured", () => {
+    expect(
+      resolveAvatarConversationModel("moonshot::kimi-k2.6", "openai::gpt-4.1-mini"),
+    ).toBe("moonshot::kimi-k2.6");
+  });
+
+  it("falls back to the global default model when avatar model is blank", () => {
+    expect(
+      resolveAvatarConversationModel("  ", "openai::gpt-4.1-mini"),
+    ).toBe("openai::gpt-4.1-mini");
+  });
+});
 
 describe("resolveAvatarModel", () => {
   it("falls back to the first configured provider in built-in provider order", () => {
@@ -129,6 +147,18 @@ describe("getOrCreateAvatarConversation", () => {
       }),
     });
   });
+
+  it("throws the backend response body when loading conversations fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      text: async () => "conversation list failed",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      getOrCreateAvatarConversation("gpt-4.1-mini"),
+    ).rejects.toThrow("conversation list failed");
+  });
 });
 
 describe("confirmAvatarAction", () => {
@@ -168,5 +198,78 @@ describe("confirmAvatarAction", () => {
       ),
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("throws the backend response body when confirmation fails", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      text: async () => "confirmation denied",
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(confirmAvatarAction("request-123", true)).rejects.toThrow(
+      "confirmation denied",
+    );
+  });
+});
+
+describe("buildAvatarSystemPrompt", () => {
+  it("keeps every supported emotion tag in the assistant instruction", () => {
+    const prompt = buildAvatarSystemPrompt();
+
+    for (const emotion of [
+      "happy",
+      "neutral",
+      "surprised",
+      "sad",
+      "angry",
+      "relaxed",
+    ]) {
+      expect(prompt).toContain(`[emotion:${emotion}]`);
+    }
+  });
+});
+
+describe("buildAvatarEmbeddingPayload", () => {
+  it("omits embedding config when none is configured", () => {
+    expect(buildAvatarEmbeddingPayload(null)).toBeUndefined();
+  });
+
+  it("passes configured embedding settings through unchanged", () => {
+    const embeddingConfig = {
+      provider: "openai",
+      model: "text-embedding-3-small",
+      apiKey: "embedding-key",
+      baseUrl: "https://embedding.example/v1",
+      dims: 1536,
+    };
+
+    expect(buildAvatarEmbeddingPayload(embeddingConfig)).toBe(embeddingConfig);
+  });
+});
+
+describe("resolveAvatarAppLaunchIntent", () => {
+  it("recognizes opening mail as a local app launch command", () => {
+    expect(resolveAvatarAppLaunchIntent("打开邮件")).toMatchObject({
+      appId: "mail",
+      title: "邮件",
+      icon: "Mail",
+      appState: { activeFolder: "inbox", source: "avatar-pet" },
+    });
+  });
+
+  it("recognizes other built-in app launch commands", () => {
+    expect(resolveAvatarAppLaunchIntent("启动日历")).toMatchObject({
+      appId: "calendar",
+      title: "日历",
+    });
+    expect(resolveAvatarAppLaunchIntent("进入设置")).toMatchObject({
+      appId: "settings",
+      title: "设置",
+    });
+  });
+
+  it("does not treat risky mail sending as a simple launch command", () => {
+    expect(resolveAvatarAppLaunchIntent("帮我发一封邮件给小明")).toBeNull();
   });
 });

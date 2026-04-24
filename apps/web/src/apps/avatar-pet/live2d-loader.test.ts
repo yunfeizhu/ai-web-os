@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { get } from "idb-keyval";
+import { get, set } from "idb-keyval";
 
 import {
   classifyLive2DSource,
@@ -8,6 +8,7 @@ import {
   isLive2DZipSource,
   loadAvatarZip,
   prepareZipModelBlob,
+  saveAvatarZip,
 } from "./live2d-loader";
 
 vi.mock("idb-keyval", () => ({
@@ -311,6 +312,43 @@ describe("prepareZipModelBlob", () => {
     });
   });
 
+  it("deduplicates repeated asset references and resolves relative path segments", async () => {
+    const zipBlob = await createZipBlob({
+      "bundle/models/avatar.model3.json": JSON.stringify({
+        FileReferences: {
+          Moc: "../runtime/avatar.moc3",
+          Textures: [
+            "./textures/../textures/texture_00.png",
+            "textures/texture_00.png",
+          ],
+          Physics: "missing-physics.json",
+          Expressions: [{ Name: "smile", File: "../expressions/smile.exp3.json" }],
+          Motions: {
+            Idle: [{ File: "motions/../motions/idle.motion3.json" }],
+          },
+        },
+      }),
+      "bundle/runtime/avatar.moc3": new Uint8Array([1]),
+      "bundle/models/textures/texture_00.png": new Uint8Array([2]),
+      "bundle/expressions/smile.exp3.json": "{}",
+      "bundle/models/motions/idle.motion3.json": "{}",
+    });
+
+    const prepared = await prepareZipModelBlob(zipBlob);
+    const rewrittenSettingsBlob = createdObjectUrls.get(prepared.objectUrl);
+    const rewrittenSettings = JSON.parse(await readBlobText(rewrittenSettingsBlob!));
+
+    expect(prepared.objectUrls).toHaveLength(5);
+    expect(rewrittenSettings.FileReferences.Moc).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Textures[0]).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Textures[0]).toBe(
+      rewrittenSettings.FileReferences.Textures[1],
+    );
+    expect(rewrittenSettings.FileReferences.Physics).toBe("missing-physics.json");
+    expect(rewrittenSettings.FileReferences.Expressions[0].File).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Motions.Idle[0].File).toMatch(/^blob:/);
+  });
+
   it("falls back to Cubism 2 model json settings and rewrites only file-bearing fields", async () => {
     const zipBlob = await createZipBlob({
       "model/avatar.model.json": JSON.stringify({
@@ -396,7 +434,27 @@ describe("prepareZipModelBlob", () => {
   });
 });
 
+describe("saveAvatarZip", () => {
+  it("persists the selected ZIP File in browser cache", async () => {
+    const file = new File(["zip"], "hiyori_free_en.zip", {
+      type: "application/zip",
+    });
+
+    await saveAvatarZip(file);
+
+    expect(set).toHaveBeenCalledWith("ainative-avatar-live2d-zip", file);
+  });
+});
+
 describe("loadAvatarZip", () => {
+  it("returns null when cached data is absent or not a Blob/File", async () => {
+    vi.mocked(get).mockResolvedValue(undefined);
+    await expect(loadAvatarZip()).resolves.toBeNull();
+
+    vi.mocked(get).mockResolvedValue({ name: "not-a-file" });
+    await expect(loadAvatarZip()).resolves.toBeNull();
+  });
+
   it("returns null when cached data is a Blob and File is unavailable", async () => {
     const cached = new Blob(["zip"], { type: "application/zip" });
     const originalFile = globalThis.File;

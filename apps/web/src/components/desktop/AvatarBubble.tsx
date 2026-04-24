@@ -9,6 +9,8 @@ import {
   buildAvatarSystemPrompt,
   confirmAvatarAction,
   getOrCreateAvatarConversation,
+  resolveAvatarAppLaunchIntent,
+  resolveAvatarConversationModel,
   resolveAvatarModel,
 } from "@/apps/avatar-pet/avatar-chat";
 import { parseAvatarEmotions } from "@/apps/avatar-pet/emotion-parser";
@@ -73,9 +75,11 @@ function getToolStatusText(tool: ToolCall) {
 export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
   const providers = useSettingsStore((state) => state.providers);
   const defaultModel = useSettingsStore((state) => state.defaultModel);
+  const avatarModel = useSettingsStore((state) => state.avatarModel);
   const embeddingConfig = useSettingsStore((state) => state.embeddingConfig);
   const setCurrentEmotion = useAvatarStore((state) => state.setCurrentEmotion);
   const openWindow = useWindowStore((state) => state.openWindow);
+  const updateAppState = useWindowStore((state) => state.updateAppState);
   const [messages, setMessages] = useState<BubbleMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -88,8 +92,12 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
   const streamRunIdRef = useRef<string | null>(null);
 
   const resolvedModel = useMemo(
-    () => resolveAvatarModel(defaultModel, providers),
-    [defaultModel, providers],
+    () =>
+      resolveAvatarModel(
+        resolveAvatarConversationModel(avatarModel, defaultModel),
+        providers,
+      ),
+    [avatarModel, defaultModel, providers],
   );
 
   useEffect(() => {
@@ -177,6 +185,42 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
     event.preventDefault();
     const content = input.trim();
     if (!content || loading) return;
+
+    const appLaunchIntent = resolveAvatarAppLaunchIntent(content);
+    if (appLaunchIntent) {
+      const userMessage: BubbleMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content,
+      };
+      const parsed = parseAvatarEmotions(appLaunchIntent.reply);
+      const assistantMessage: BubbleMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: parsed.text,
+      };
+      const windowId = openWindow(
+        appLaunchIntent.appId,
+        appLaunchIntent.title,
+        appLaunchIntent.icon,
+        {
+          singleton: true,
+          appState: appLaunchIntent.appState,
+        },
+      );
+
+      if (appLaunchIntent.appState) {
+        updateAppState(windowId, appLaunchIntent.appState);
+      }
+      if (parsed.emotions.length > 0) {
+        setCurrentEmotion(parsed.currentEmotion);
+      }
+
+      setInput("");
+      setPendingConfirm(null);
+      safeSetMessages((prev) => [...prev, userMessage, assistantMessage]);
+      return;
+    }
 
     if (!resolvedModel) {
       appendError("请先在设置中配置可用模型和 API Key。");

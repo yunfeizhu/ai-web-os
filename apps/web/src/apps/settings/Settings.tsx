@@ -9,11 +9,13 @@ import {
   Info,
   KeyRound,
   Palette,
+  SmilePlus,
   Upload,
 } from "lucide-react";
 
 import { AppManager } from "./AppManager";
 import { ApiKeyConfig } from "./ApiKeyConfig";
+import { AvatarSettings } from "./AvatarSettings";
 import { KnowledgeBase } from "./KnowledgeBase";
 import { MemoryManager } from "./MemoryManager";
 import { ThemeConfig } from "./ThemeConfig";
@@ -21,6 +23,7 @@ import { ThemeConfig } from "./ThemeConfig";
 type Tab =
   | "api-keys"
   | "appearance"
+  | "avatar"
   | "memory"
   | "knowledge"
   | "extensions"
@@ -29,6 +32,7 @@ type Tab =
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "api-keys", label: "模型与密钥", icon: <KeyRound size={15} /> },
   { id: "appearance", label: "外观", icon: <Palette size={15} /> },
+  { id: "avatar", label: "虚拟伙伴", icon: <SmilePlus size={15} /> },
   { id: "memory", label: "记忆", icon: <Brain size={15} /> },
   { id: "knowledge", label: "知识库", icon: <BookOpen size={15} /> },
   { id: "extensions", label: "扩展能力", icon: <Boxes size={15} /> },
@@ -119,6 +123,7 @@ export function Settings() {
       <div className="flex-1 overflow-y-auto p-5">
         {tab === "api-keys" && <ApiKeyConfig />}
         {tab === "appearance" && <ThemeConfig />}
+        {tab === "avatar" && <AvatarSettings />}
         {tab === "memory" && <MemoryManager />}
         {tab === "knowledge" && <KnowledgeBase />}
         {tab === "extensions" && <AppManager />}

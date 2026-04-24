@@ -22,3 +22,9 @@ minio_data/
 .agents/
 *.swp
 *.swo
+
+# Local Live2D avatar assets
+apps/web/public/avatar/live2d/*
+!apps/web/public/avatar/live2d/.gitkeep
+!apps/web/public/avatar/live2d/README.md
+apps/web/public/vendor/live2d/live2dcubismcore.min.js

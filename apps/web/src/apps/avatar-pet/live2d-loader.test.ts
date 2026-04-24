@@ -16,12 +16,34 @@ describe("classifyLive2DSource", () => {
     });
   });
 
+  it("classifies model3 json sources with query or hash fragments", () => {
+    expect(classifyLive2DSource("/avatar/live2d/hiyori.model3.json?v=1")).toEqual({
+      kind: "model3-json",
+      source: "/avatar/live2d/hiyori.model3.json?v=1",
+    });
+    expect(classifyLive2DSource("/avatar/live2d/hiyori.model3.json#cache")).toEqual({
+      kind: "model3-json",
+      source: "/avatar/live2d/hiyori.model3.json#cache",
+    });
+  });
+
   it("classifies zip sources", () => {
     const source = "/avatar/live2d/hiyori.zip";
 
     expect(classifyLive2DSource(source)).toEqual({
       kind: "zip",
       source,
+    });
+  });
+
+  it("classifies zip sources with query or hash fragments", () => {
+    expect(classifyLive2DSource("/avatar/live2d/hiyori.zip?v=1")).toEqual({
+      kind: "zip",
+      source: "/avatar/live2d/hiyori.zip?v=1",
+    });
+    expect(classifyLive2DSource("/avatar/live2d/hiyori.zip#cache")).toEqual({
+      kind: "zip",
+      source: "/avatar/live2d/hiyori.zip#cache",
     });
   });
 
@@ -58,6 +80,11 @@ describe("isLive2DZipSource", () => {
 
   it("matches zip extensions case-insensitively after trimming", () => {
     expect(isLive2DZipSource("  /x/y.ZIP  ")).toBe(true);
+  });
+
+  it("returns true for zip sources with query or hash fragments", () => {
+    expect(isLive2DZipSource("/x/y.zip?cache=1")).toBe(true);
+    expect(isLive2DZipSource("/x/y.zip#cache")).toBe(true);
   });
 });
 

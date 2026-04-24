@@ -10,7 +10,11 @@ const MODEL_JSON_EXTENSION = ".model.json";
 const ZIP_EXTENSION = ".zip";
 
 function hasExtension(source: string, extension: string): boolean {
-  return source.toLowerCase().endsWith(extension);
+  const fragmentStart = source.search(/[?#]/);
+  const sourcePath =
+    fragmentStart === -1 ? source : source.slice(0, fragmentStart);
+
+  return sourcePath.toLowerCase().endsWith(extension);
 }
 
 function normalizePath(path: string): string {

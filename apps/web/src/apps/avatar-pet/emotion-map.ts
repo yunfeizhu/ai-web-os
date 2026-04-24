@@ -1,8 +1,8 @@
 import type { AvatarEmotion } from "./emotion-parser";
 
 export type Live2DExpressionPlan = {
-  expressionNames: string[];
-  motionGroups: string[];
+  expressionNames: readonly string[];
+  motionGroups: readonly string[];
 };
 
 export const EMOTION_TO_LIVE2D: Record<AvatarEmotion, Live2DExpressionPlan> = {

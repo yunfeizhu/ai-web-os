@@ -16,7 +16,7 @@ export type ParsedAvatarEmotionText = {
 };
 
 const AVATAR_EMOTION_SET = new Set<string>(AVATAR_EMOTIONS);
-const EMOTION_TAG_PATTERN = /\[emotion:([^\]]+)\]/gi;
+const EMOTION_TAG_PATTERN = /\[\s*emotion\s*:\s*([^\]]*)\]/gi;
 
 export function isAvatarEmotion(value: string): value is AvatarEmotion {
   return AVATAR_EMOTION_SET.has(value);
@@ -30,7 +30,7 @@ export function parseAvatarEmotions(input: string): ParsedAvatarEmotionText {
   const emotions: AvatarEmotion[] = [];
 
   const text = input.replace(EMOTION_TAG_PATTERN, (_match, rawEmotion: string) => {
-    const emotion = rawEmotion.toLowerCase();
+    const emotion = rawEmotion.trim().toLowerCase();
 
     if (isAvatarEmotion(emotion)) {
       emotions.push(emotion);

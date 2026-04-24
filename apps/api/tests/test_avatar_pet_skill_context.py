@@ -1,4 +1,8 @@
+import asyncio
+from types import SimpleNamespace
+
 from app.core.app_registry import AppRegistry
+from app.core import skill_context
 from app.core.app_manifest import normalize_manifest
 from app.core.skill_context import _build_entry_app_context, _should_inject_full_skill
 
@@ -21,6 +25,58 @@ def test_skill_descriptor_preserves_full_skill_prompt_flag(tmp_path):
 
     assert descriptor is not None
     assert descriptor["inject_full_prompt"] is True
+
+
+def test_prompt_uses_synced_manifest_for_full_skill_injection(monkeypatch):
+    class FakeRegistry:
+        async def get_app(self, db, app_id):
+            return SimpleNamespace(
+                id=app_id,
+                name="虚拟伙伴",
+                enabled=True,
+                manifest={"description": "Live2D companion", "skill": {}},
+            )
+
+        async def get_skill(self, db, app_id):
+            return {
+                "metadata": {
+                    "name": "虚拟伙伴",
+                    "description": "Live2D companion",
+                },
+                "content": "## 人设\n你叫「小月」。",
+            }
+
+        async def list_apps(self, db):
+            return [
+                SimpleNamespace(
+                    id="avatar-pet",
+                    name="虚拟伙伴",
+                    enabled=True,
+                    manifest={
+                        "description": "Live2D companion",
+                        "skill": {"inject_full_prompt": True},
+                        "tools": [],
+                    },
+                )
+            ]
+
+        def list_user_skills(self, *, enabled_only=False):
+            return []
+
+    monkeypatch.setattr(skill_context, "get_app_registry", lambda: FakeRegistry())
+
+    prompt, context = asyncio.run(
+        skill_context.build_skill_augmented_system_prompt(
+            None,
+            "Base prompt",
+            "你好",
+            requested_app_id="avatar-pet",
+        )
+    )
+
+    assert context["entry_app_id"] == "avatar-pet"
+    assert "## 当前 App 完整行为规则" in prompt
+    assert "你叫「小月」。" in prompt
 
 
 def test_normalize_manifest_preserves_full_skill_prompt_flag():

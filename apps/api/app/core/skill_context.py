@@ -169,13 +169,14 @@ async def build_skill_augmented_system_prompt(
         }
 
     registry = get_app_registry()
+    apps = await registry.list_apps(db)
 
     # ── 1. Load only entry app Skill metadata ─────────────────
     entry_app_name = entry_app_id
     entry_skill_desc = ""
     entry_manifest: dict[str, Any] | None = None
     entry_skill_content = ""
-    entry_app = await registry.get_app(db, entry_app_id)
+    entry_app = next((app for app in apps if getattr(app, "id", None) == entry_app_id), None)
     if entry_app is not None:
         entry_manifest = entry_app.manifest or {}
     try:
@@ -188,7 +189,6 @@ async def build_skill_augmented_system_prompt(
         pass
 
     # ── 2. Build brief app catalog ────────────────────────────
-    apps = await registry.list_apps(db)
     catalog_lines: list[str] = []
     for app in apps:
         if not getattr(app, "enabled", True):

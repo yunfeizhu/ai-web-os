@@ -40,7 +40,11 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 ];
 
 // ── 本地配置 localStorage 键列表（需随 store 同步更新）
-const LOCAL_STORAGE_KEYS = ["ai-os-settings", "ainative-desktop"] as const;
+const LOCAL_STORAGE_KEYS = [
+  "ai-os-settings",
+  "ainative-desktop",
+  "ainative-avatar",
+] as const;
 
 const CONFIG_VERSION = "1";
 

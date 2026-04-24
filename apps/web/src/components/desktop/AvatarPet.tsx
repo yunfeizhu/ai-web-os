@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { MouseEvent, PointerEvent } from "react";
+import type { KeyboardEvent, MouseEvent, PointerEvent } from "react";
 import { MessageCircle, X } from "lucide-react";
 import { Rnd } from "react-rnd";
 
@@ -91,6 +91,13 @@ export function AvatarPet() {
   const handleAvatarClick = () => {
     if (draggedRef.current) return;
     toggleBubble();
+  };
+
+  const handleAvatarKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+
+    event.preventDefault();
+    handleAvatarClick();
   };
 
   const handleControlPointerDown = (event: PointerEvent) => {
@@ -293,10 +300,12 @@ export function AvatarPet() {
             </button>
           </div>
 
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onClick={handleAvatarClick}
-            className="flex min-h-0 flex-1 items-center justify-center p-3"
+            onKeyDown={handleAvatarKeyDown}
+            className="flex min-h-0 flex-1 cursor-pointer items-center justify-center p-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-slate-500/70"
             title="虚拟伙伴"
             aria-label="虚拟伙伴"
           >
@@ -310,7 +319,7 @@ export function AvatarPet() {
             >
               <Live2DCanvas modelUrl={modelUrl} emotion={currentEmotion} />
             </span>
-          </button>
+          </div>
         </div>
       </div>
     </Rnd>

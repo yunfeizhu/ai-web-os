@@ -65,12 +65,13 @@ function loadCubismCore(): Promise<void> {
     return Promise.resolve();
   }
 
-  const existingScript = document.querySelector<HTMLScriptElement>(
+  let existingScript = document.querySelector<HTMLScriptElement>(
     `script[src="${CUBISM_CORE_SRC}"]`,
   );
 
   if (existingScript?.dataset.live2dCoreStatus === "failed") {
-    return Promise.reject(new Error("Cubism Core script previously failed"));
+    existingScript.remove();
+    existingScript = null;
   }
 
   if (existingScript?.dataset.live2dCoreStatus === "loaded") {
@@ -86,25 +87,46 @@ function loadCubismCore(): Promise<void> {
   }
 
   return new Promise((resolve, reject) => {
+    let settled = false;
     const timeoutId = window.setTimeout(() => {
-      script.dataset.live2dCoreStatus = "failed";
-      reject(new Error("Cubism Core script load timed out"));
+      settleFailed(new Error("Cubism Core script load timed out"));
     }, 15000);
 
-    const settleLoaded = () => {
+    const cleanup = () => {
       window.clearTimeout(timeoutId);
-      script.dataset.live2dCoreStatus = "loaded";
-      if (window.Live2DCubismCore) {
-        resolve();
-        return;
-      }
-      reject(new Error("Cubism Core loaded without window.Live2DCubismCore"));
+      script.removeEventListener("load", settleLoaded);
+      script.removeEventListener("error", settleFailed);
     };
 
-    const settleFailed = () => {
-      window.clearTimeout(timeoutId);
-      script.dataset.live2dCoreStatus = "failed";
-      reject(new Error("Cubism Core script failed to load"));
+    const settle = (handler: () => void) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      handler();
+    };
+
+    const settleLoaded = () => {
+      settle(() => {
+        script.dataset.live2dCoreStatus = "loaded";
+        if (window.Live2DCubismCore) {
+          resolve();
+          return;
+        }
+        reject(new Error("Cubism Core loaded without window.Live2DCubismCore"));
+      });
+    };
+
+    const settleFailed = (
+      error: Error | Event = new Error("Cubism Core script failed to load"),
+    ) => {
+      settle(() => {
+        script.dataset.live2dCoreStatus = "failed";
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Cubism Core script failed to load"),
+        );
+      });
     };
 
     script.addEventListener("load", settleLoaded, { once: true });

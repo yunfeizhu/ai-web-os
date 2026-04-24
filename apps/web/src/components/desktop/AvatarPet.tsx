@@ -309,7 +309,7 @@ export function AvatarPet() {
             title="虚拟伙伴"
             aria-label="虚拟伙伴"
           >
-            <span
+            <div
               className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg"
               style={{
                 background:
@@ -318,7 +318,7 @@ export function AvatarPet() {
               }}
             >
               <Live2DCanvas modelUrl={modelUrl} emotion={currentEmotion} />
-            </span>
+            </div>
           </div>
         </div>
       </div>

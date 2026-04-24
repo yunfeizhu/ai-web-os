@@ -65,6 +65,23 @@ def _normalize_non_empty_string(value: Any, field_name: str, *, fallback: str | 
     return normalized
 
 
+def _normalize_bool(value: Any, *, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if not normalized:
+            return default
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off"}:
+            return False
+        return default
+    return bool(value)
+
+
 def _normalize_permissions(raw_permissions: Any) -> list[str]:
     if raw_permissions is None:
         return []
@@ -174,6 +191,8 @@ def _normalize_skill(raw_skill: Any) -> dict[str, Any]:
     skill_format = str(raw_skill.get("format") or "").strip()
     if skill_format:
         normalized["format"] = skill_format
+    if "inject_full_prompt" in raw_skill:
+        normalized["inject_full_prompt"] = _normalize_bool(raw_skill.get("inject_full_prompt"))
     return normalized
 
 

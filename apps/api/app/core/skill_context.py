@@ -81,6 +81,72 @@ def _has_executable_script(skill: dict) -> bool:
     return False
 
 
+def _should_inject_full_skill(manifest: dict[str, Any] | None) -> bool:
+    skill = (manifest or {}).get("skill")
+    if not isinstance(skill, dict):
+        return False
+    return skill.get("inject_full_prompt") is True
+
+
+def _build_entry_app_context(
+    *,
+    entry_app_name: str,
+    entry_app_id: str,
+    entry_skill_desc: str,
+    catalog_lines: list[str],
+    user_skill_catalog: list[str],
+    entry_skill_content: str | None,
+    inject_full_prompt: bool,
+) -> str:
+    lines: list[str] = [
+        "## 当前上下文",
+        f"用户当前所在 App: **{entry_app_name}** ({entry_app_id})",
+        f"当前 App 描述: {entry_skill_desc or '暂无描述'}",
+    ]
+
+    full_skill_content = str(entry_skill_content or "").strip()
+    if inject_full_prompt and full_skill_content:
+        lines.extend([
+            "",
+            "## 当前 App 完整行为规则",
+            full_skill_content,
+        ])
+
+    lines.extend([
+        "",
+        "## 可用 App 一览",
+        *catalog_lines,
+        "",
+        (
+            "你拥有上述 App 对应的内置工具（function calling），"
+            "请根据用户的实际需求自主选择最合适的工具来完成任务。"
+        ),
+        "",
+        "## 工具调用规则",
+        (
+            "- 只有当用户请求与某个工具的名称、描述和参数明显匹配时，才通过 function calling 调用工具。\n"
+            "- 如果没有合适工具，不要为了调用工具而调用无关工具；请直接回答、说明无法执行，或向用户澄清。\n"
+            "- 文件工具只能用于文件管理器虚拟路径，不能读取 Skill、本地运行时或系统内部路径。\n"
+            "- **严禁** 根据之前对话中的工具返回结果来仿写或编造新的结果。\n"
+            "- 如果用户明确要求查询最新数据，并且存在匹配工具，必须重新调用工具获取最新数据。\n"
+            "- 不同的查询参数会返回不同的结果，不能复用旧结果。"
+        ),
+    ])
+
+    if user_skill_catalog:
+        lines.extend([
+            "",
+            "## 用户自定义 Skills",
+            (
+                "以下脚本型 Skill 已作为独立工具暴露，可直接调用（无需先调用 load_skill_context）。\n"
+                "知识型 Skill 可通过 load_skill_context 加载详细说明。"
+            ),
+            *user_skill_catalog,
+        ])
+
+    return "\n".join(lines)
+
+
 async def build_skill_augmented_system_prompt(
     db: AsyncSession,
     base_system_prompt: str,
@@ -107,11 +173,17 @@ async def build_skill_augmented_system_prompt(
     # ── 1. Load only entry app Skill metadata ─────────────────
     entry_app_name = entry_app_id
     entry_skill_desc = ""
+    entry_manifest: dict[str, Any] | None = None
+    entry_skill_content = ""
+    entry_app = await registry.get_app(db, entry_app_id)
+    if entry_app is not None:
+        entry_manifest = entry_app.manifest or {}
     try:
         skill_payload = await registry.get_skill(db, entry_app_id)
         metadata = skill_payload.get("metadata") or {}
         entry_app_name = metadata.get("name") or entry_app_id
         entry_skill_desc = str(metadata.get("description") or "").strip()
+        entry_skill_content = str(skill_payload.get("content") or "").strip()
     except ValueError:
         pass
 
@@ -158,42 +230,17 @@ async def build_skill_augmented_system_prompt(
         })
 
     # ── 4. Assemble augmented system prompt ───────────────────
-    lines: list[str] = [
-        "## 当前上下文",
-        f"用户当前所在 App: **{entry_app_name}** ({entry_app_id})",
-        f"当前 App 描述: {entry_skill_desc or '暂无描述'}",
-        "",
-        "## 可用 App 一览",
-        *catalog_lines,
-        "",
-        (
-            "你拥有上述 App 对应的内置工具（function calling），"
-            "请根据用户的实际需求自主选择最合适的工具来完成任务。"
-        ),
-        "",
-        "## 工具调用规则",
-        (
-            "- 只有当用户请求与某个工具的名称、描述和参数明显匹配时，才通过 function calling 调用工具。\n"
-            "- 如果没有合适工具，不要为了调用工具而调用无关工具；请直接回答、说明无法执行，或向用户澄清。\n"
-            "- 文件工具只能用于文件管理器虚拟路径，不能读取 Skill、本地运行时或系统内部路径。\n"
-            "- **严禁** 根据之前对话中的工具返回结果来仿写或编造新的结果。\n"
-            "- 如果用户明确要求查询最新数据，并且存在匹配工具，必须重新调用工具获取最新数据。\n"
-            "- 不同的查询参数会返回不同的结果，不能复用旧结果。"
-        ),
-    ]
-
-    if user_skill_catalog:
-        lines.extend([
-            "",
-            "## 用户自定义 Skills",
-            (
-                "以下脚本型 Skill 已作为独立工具暴露，可直接调用（无需先调用 load_skill_context）。\n"
-                "知识型 Skill 可通过 load_skill_context 加载详细说明。"
-            ),
-            *user_skill_catalog,
-        ])
-
-    sections.append("\n".join(lines))
+    sections.append(
+        _build_entry_app_context(
+            entry_app_name=entry_app_name,
+            entry_app_id=entry_app_id,
+            entry_skill_desc=entry_skill_desc,
+            catalog_lines=catalog_lines,
+            user_skill_catalog=user_skill_catalog,
+            entry_skill_content=entry_skill_content,
+            inject_full_prompt=_should_inject_full_skill(entry_manifest),
+        )
+    )
 
     skill_context: dict[str, Any] = {
         "entry_app_id": entry_app_id,

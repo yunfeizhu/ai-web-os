@@ -1,0 +1,19 @@
+{
+  "id": "avatar-pet",
+  "name": "虚拟伙伴",
+  "version": "1.0.0",
+  "description": "常驻桌面的 Live2D 虚拟伙伴，与 AI-Native OS 助手共享记忆、工具和 App 能力。",
+  "category": "companion",
+  "permissions": [
+    "network"
+  ],
+  "tools": [],
+  "mcp": {
+    "transport": "builtin"
+  },
+  "skill": {
+    "entrypoint": "SKILL.md",
+    "format": "skill-md",
+    "inject_full_prompt": true
+  }
+}

@@ -1,4 +1,6 @@
 import asyncio
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.core.app_registry import AppRegistry
@@ -173,3 +175,36 @@ def test_entry_app_context_omits_full_skill_when_disabled():
 
     assert "## 当前 App 完整行为规则" not in rendered
     assert "你叫「小月」。" not in rendered
+
+
+def _avatar_pet_registry_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "apps_registry" / "avatar-pet"
+
+
+def test_avatar_pet_manifest_exists_and_normalizes_for_builtin_registry():
+    manifest_path = _avatar_pet_registry_dir() / "manifest.json"
+
+    assert manifest_path.exists(), f"missing builtin manifest: {manifest_path}"
+
+    manifest = normalize_manifest(
+        json.loads(manifest_path.read_text(encoding="utf-8")),
+        builtin=True,
+    )
+
+    assert manifest["id"] == "avatar-pet"
+    assert manifest["name"] == "虚拟伙伴"
+    assert manifest["mcp"]["transport"] == "builtin"
+    assert manifest["skill"]["entrypoint"] == "SKILL.md"
+    assert manifest["skill"]["inject_full_prompt"] is True
+
+
+def test_avatar_pet_skill_file_exists_with_expected_prompt_contract():
+    skill_path = _avatar_pet_registry_dir() / "SKILL.md"
+
+    assert skill_path.exists(), f"missing builtin skill file: {skill_path}"
+
+    content = skill_path.read_text(encoding="utf-8")
+
+    assert "你叫「小月」" in content
+    assert "[emotion:happy]" in content
+    assert "不要解释标签" in content

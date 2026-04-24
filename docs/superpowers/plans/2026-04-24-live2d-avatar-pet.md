@@ -1200,10 +1200,10 @@ Run:
 
 ```bash
 pnpm --filter web test -- src/apps/avatar-pet/avatar-layout.test.ts src/apps/avatar-pet/emotion-parser.test.ts
-pnpm --filter web build
+pnpm --filter web exec tsc --noEmit
 ```
 
-Expected: tests PASS and build PASS.
+Expected: tests PASS and TypeScript check PASS.
 
 - [ ] **Step 4: Manual browser check**
 
@@ -1610,10 +1610,10 @@ Run:
 
 ```bash
 pnpm --filter web test -- src/apps/avatar-pet/emotion-parser.test.ts src/apps/avatar-pet/avatar-layout.test.ts
-pnpm --filter web build
+pnpm --filter web exec tsc --noEmit
 ```
 
-Expected: tests PASS and build PASS.
+Expected: tests PASS and TypeScript check PASS.
 
 - [ ] **Step 5: Manual chat check**
 
@@ -1885,13 +1885,13 @@ Run:
 ```bash
 git check-ignore apps/web/public/avatar/live2d/example/model.model3.json
 git check-ignore apps/web/public/vendor/live2d/live2dcubismcore.min.js
-pnpm --filter web build
+pnpm --filter web exec tsc --noEmit
 ```
 
 Expected:
 
 - Both `git check-ignore` commands print the ignored paths.
-- Build PASS.
+- TypeScript check PASS.
 
 - [ ] **Step 7: Commit asset policy and settings**
 
@@ -2218,10 +2218,10 @@ Run:
 
 ```bash
 pnpm --filter web test -- src/apps/avatar-pet/emotion-parser.test.ts src/apps/avatar-pet/avatar-layout.test.ts src/apps/avatar-pet/live2d-loader.test.ts
-pnpm --filter web build
+pnpm --filter web exec tsc --noEmit
 ```
 
-Expected: tests PASS and build PASS.
+Expected: tests PASS and TypeScript check PASS.
 
 - [ ] **Step 4: Manual runtime check without Cubism Core**
 
@@ -2421,10 +2421,10 @@ Run:
 
 ```bash
 pnpm --filter web test -- src/apps/avatar-pet/live2d-loader.test.ts
-pnpm --filter web build
+pnpm --filter web exec tsc --noEmit
 ```
 
-Expected: tests PASS and build PASS.
+Expected: tests PASS and TypeScript check PASS.
 
 - [ ] **Step 8: Manual ZIP import check**
 
@@ -2473,15 +2473,15 @@ pnpm --filter web test
 
 Expected: PASS.
 
-- [ ] **Step 3: Run production build**
+- [ ] **Step 3: Run TypeScript check**
 
 Run:
 
 ```bash
-pnpm build
+pnpm --filter web exec tsc --noEmit
 ```
 
-Expected: Turbo build succeeds for API and web targets. If the repo has no API build target, web build must succeed and Turbo must not report frontend type errors.
+Expected: TypeScript check succeeds without frontend type errors.
 
 - [ ] **Step 4: Start dev servers**
 

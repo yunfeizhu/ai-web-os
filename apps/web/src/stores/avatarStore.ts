@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 import {
   AVATAR_DEFAULT_SIZE,
+  clampAvatarPlacement,
   getDefaultAvatarPlacement,
   type AvatarPosition,
   type AvatarSize,
@@ -26,8 +27,9 @@ export interface AvatarState {
   setVisible: (visible: boolean) => void;
   setBubbleOpen: (bubbleOpen: boolean) => void;
   toggleBubble: () => void;
-  setPosition: (position: AvatarPosition) => void;
-  setSize: (size: AvatarSize) => void;
+  setPosition: (position: AvatarPosition, viewport?: ViewportSize) => void;
+  setSize: (size: AvatarSize, viewport?: ViewportSize) => void;
+  normalizePlacement: (viewport?: ViewportSize) => void;
   resetPlacement: (viewport?: ViewportSize) => void;
   setModelUrl: (modelUrl: string) => void;
   setLocalModelName: (localModelName: string) => void;
@@ -37,7 +39,7 @@ export interface AvatarState {
 
 export const useAvatarStore = create<AvatarState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       visible: true,
       bubbleOpen: false,
       position: getDefaultAvatarPlacement(),
@@ -51,12 +53,28 @@ export const useAvatarStore = create<AvatarState>()(
       setVisible: (visible) => set({ visible }),
       setBubbleOpen: (bubbleOpen) => set({ bubbleOpen }),
       toggleBubble: () => set((state) => ({ bubbleOpen: !state.bubbleOpen })),
-      setPosition: (position) => set({ position }),
-      setSize: (size) => set({ size }),
-      resetPlacement: (viewport) =>
+      setPosition: (position, viewport) =>
         set((state) => ({
-          position: getDefaultAvatarPlacement(viewport, state.size),
+          position: viewport
+            ? clampAvatarPlacement(position, state.size, viewport)
+            : position,
         })),
+      setSize: (size, viewport) =>
+        set((state) => ({
+          size,
+          position: viewport
+            ? clampAvatarPlacement(state.position, size, viewport)
+            : state.position,
+        })),
+      normalizePlacement: (viewport) =>
+        set((state) => ({
+          position: clampAvatarPlacement(state.position, state.size, viewport),
+        })),
+      resetPlacement: (viewport) =>
+        set({
+          size: AVATAR_DEFAULT_SIZE,
+          position: getDefaultAvatarPlacement(viewport, AVATAR_DEFAULT_SIZE),
+        }),
       setModelUrl: (modelUrl) => set({ modelUrl, modelSourceType: "url" }),
       setLocalModelName: (localModelName) =>
         set({ localModelName, modelSourceType: "zip" }),

@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 
 import {
   AVATAR_DEFAULT_SIZE,
+  AVATAR_FALLBACK_VIEWPORT,
   clampAvatarDockPlacement,
   getDefaultAvatarPlacement,
   type AvatarPosition,
@@ -42,7 +43,7 @@ export const useAvatarStore = create<AvatarState>()(
     (set) => ({
       visible: true,
       bubbleOpen: false,
-      position: getDefaultAvatarPlacement(),
+      position: getDefaultAvatarPlacement(AVATAR_FALLBACK_VIEWPORT),
       size: AVATAR_DEFAULT_SIZE,
       modelSourceType: "url",
       modelUrl: "",

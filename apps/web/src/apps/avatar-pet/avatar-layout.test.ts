@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   AVATAR_DEFAULT_SIZE,
@@ -70,6 +70,43 @@ describe("avatar layout", () => {
         { width: 150, height: 210 },
       ),
     ).toEqual({ x: 24, y: 598 });
+  });
+
+  it("uses deterministic store placement until the desktop viewport is available", async () => {
+    const originalInnerWidth = window.innerWidth;
+    const originalInnerHeight = window.innerHeight;
+
+    try {
+      window.localStorage.removeItem("ainative-avatar");
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: 360,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: 640,
+      });
+
+      vi.resetModules();
+      const { useAvatarStore: isolatedAvatarStore } = await import(
+        "@/stores/avatarStore"
+      );
+
+      expect(isolatedAvatarStore.getInitialState().position).toEqual({
+        x: 24,
+        y: 488,
+      });
+    } finally {
+      Object.defineProperty(window, "innerWidth", {
+        configurable: true,
+        value: originalInnerWidth,
+      });
+      Object.defineProperty(window, "innerHeight", {
+        configurable: true,
+        value: originalInnerHeight,
+      });
+      vi.resetModules();
+    }
   });
 
   it("normalizes persisted placement when the viewport shrinks", () => {

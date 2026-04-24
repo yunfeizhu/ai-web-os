@@ -21,7 +21,10 @@ export const AVATAR_SMALL_EDGE_GAP = 16;
 export const AVATAR_DOCK_CLEARANCE = 68;
 export const AVATAR_CLAMP_GAP = 8;
 
-const FALLBACK_VIEWPORT: ViewportSize = { width: 1440, height: 900 };
+export const AVATAR_FALLBACK_VIEWPORT: ViewportSize = {
+  width: 1440,
+  height: 900,
+};
 const SMALL_VIEWPORT_WIDTH = 480;
 
 function getViewportSize(viewport?: ViewportSize): ViewportSize {
@@ -36,7 +39,7 @@ function getViewportSize(viewport?: ViewportSize): ViewportSize {
     };
   }
 
-  return FALLBACK_VIEWPORT;
+  return AVATAR_FALLBACK_VIEWPORT;
 }
 
 function clamp(value: number, min: number, max: number): number {

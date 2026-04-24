@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
-import { Bot, MessageCircle, X } from "lucide-react";
+import { MessageCircle, X } from "lucide-react";
 import { Rnd } from "react-rnd";
 
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/apps/avatar-pet/avatar-layout";
 import { useAvatarStore } from "@/stores/avatarStore";
 import { AvatarBubble } from "./AvatarBubble";
+import { Live2DCanvas } from "./Live2DCanvas";
 
 const BUBBLE_WIDTH_ESTIMATE = 320;
 const BUBBLE_HEIGHT_ESTIMATE = 360;
@@ -42,6 +43,8 @@ export function AvatarPet() {
   const bubbleOpen = useAvatarStore((state) => state.bubbleOpen);
   const position = useAvatarStore((state) => state.position);
   const size = useAvatarStore((state) => state.size);
+  const modelUrl = useAvatarStore((state) => state.modelUrl);
+  const currentEmotion = useAvatarStore((state) => state.currentEmotion);
   const setVisible = useAvatarStore((state) => state.setVisible);
   const setBubbleOpen = useAvatarStore((state) => state.setBubbleOpen);
   const toggleBubble = useAvatarStore((state) => state.toggleBubble);
@@ -298,18 +301,14 @@ export function AvatarPet() {
             aria-label="虚拟伙伴"
           >
             <span
-              className="flex h-full w-full items-center justify-center rounded-lg"
+              className="flex h-full w-full items-center justify-center overflow-hidden rounded-lg"
               style={{
                 background:
                   "linear-gradient(180deg, rgba(255,255,255,0.72), rgba(226,232,240,0.52))",
                 border: "1px solid rgba(255,255,255,0.55)",
-                color: "rgba(30,41,59,0.72)",
               }}
             >
-              <Bot
-                size={Math.max(48, Math.min(size.width, size.height) * 0.32)}
-                strokeWidth={1.35}
-              />
+              <Live2DCanvas modelUrl={modelUrl} emotion={currentEmotion} />
             </span>
           </button>
         </div>

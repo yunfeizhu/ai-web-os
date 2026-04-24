@@ -990,7 +990,7 @@ class AppRegistry:
 
         metadata, _ = _parse_skill_frontmatter(skill_path.read_text(encoding="utf-8"))
         entrypoint = skill_path.name
-        return {
+        descriptor = {
             "format": (configured or {}).get("format", "skill-md"),
             "entrypoint": entrypoint,
             "path": str(skill_path),
@@ -998,6 +998,9 @@ class AppRegistry:
             "description": metadata.get("description", ""),
             "legacy": entrypoint == "workflow.md",
         }
+        if (configured or {}).get("inject_full_prompt") is True:
+            descriptor["inject_full_prompt"] = True
+        return descriptor
 
     def _resolve_skill_path(self, manifest: dict) -> Path | None:
         configured = manifest.get("skill") or {}

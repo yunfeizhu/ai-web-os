@@ -1,5 +1,26 @@
+from app.core.app_registry import AppRegistry
 from app.core.app_manifest import normalize_manifest
 from app.core.skill_context import _build_entry_app_context, _should_inject_full_skill
+
+
+def test_skill_descriptor_preserves_full_skill_prompt_flag(tmp_path):
+    app_dir = tmp_path / "avatar-pet"
+    app_dir.mkdir()
+    manifest_path = app_dir / "manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    (app_dir / "SKILL.md").write_text(
+        "---\nname: 虚拟伙伴\ndescription: Live2D companion\n---\n## 人设\n",
+        encoding="utf-8",
+    )
+    registry = AppRegistry(tmp_path)
+
+    descriptor = registry._build_skill_descriptor(
+        manifest_path,
+        {"entrypoint": "SKILL.md", "inject_full_prompt": True},
+    )
+
+    assert descriptor is not None
+    assert descriptor["inject_full_prompt"] is True
 
 
 def test_normalize_manifest_preserves_full_skill_prompt_flag():

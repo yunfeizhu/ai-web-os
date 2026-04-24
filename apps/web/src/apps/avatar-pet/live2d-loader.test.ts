@@ -9,6 +9,7 @@ import {
 } from "./live2d-loader";
 
 const createdObjectUrls = new Map<string, Blob>();
+const revokedObjectUrls: string[] = [];
 let nextObjectUrlId = 0;
 
 async function createZipBlob(entries: Record<string, string | Uint8Array>) {
@@ -34,6 +35,7 @@ async function readBlobText(blob: Blob) {
 
 beforeEach(() => {
   createdObjectUrls.clear();
+  revokedObjectUrls.length = 0;
   nextObjectUrlId = 0;
   if (!("createObjectURL" in URL)) {
     Object.defineProperty(URL, "createObjectURL", {
@@ -41,10 +43,19 @@ beforeEach(() => {
       value: () => "",
     });
   }
+  if (!("revokeObjectURL" in URL)) {
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: () => undefined,
+    });
+  }
   vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
     const url = `blob:live2d-test/${nextObjectUrlId++}`;
     createdObjectUrls.set(url, blob as Blob);
     return url;
+  });
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation((url) => {
+    revokedObjectUrls.push(url);
   });
 });
 
@@ -235,5 +246,89 @@ describe("prepareZipModelBlob", () => {
     await expect(prepareZipModelBlob(zipBlob)).rejects.toThrow(
       "No Live2D model settings file found in ZIP",
     );
+  });
+
+  it("does not rewrite semantic Cubism strings when they collide with zip entries", async () => {
+    const zipBlob = await createZipBlob({
+      "model/avatar.model3.json": JSON.stringify({
+        FileReferences: {
+          Moc: "avatar.moc3",
+          Textures: ["texture.png"],
+          Expressions: [{ Name: "smile.exp3.json", File: "smile.exp3.json" }],
+          Motions: {
+            Idle: [
+              {
+                Name: "idle.motion3.json",
+                File: "idle.motion3.json",
+                Sound: "idle.wav",
+              },
+            ],
+          },
+        },
+        Groups: [
+          {
+            Target: "Parameter",
+            Name: "EyeBlink",
+            Ids: ["ParamEyeLOpen"],
+          },
+        ],
+      }),
+      "model/avatar.moc3": new Uint8Array([1]),
+      "model/texture.png": new Uint8Array([2]),
+      "model/smile.exp3.json": "{}",
+      "model/idle.motion3.json": "{}",
+      "model/idle.wav": new Uint8Array([3]),
+      "model/Parameter": "semantic collision",
+      "model/EyeBlink": "semantic collision",
+      "model/ParamEyeLOpen": "semantic collision",
+    });
+
+    const prepared = await prepareZipModelBlob(zipBlob);
+    const rewrittenSettingsBlob = createdObjectUrls.get(prepared.objectUrl);
+    const rewrittenSettings = JSON.parse(await readBlobText(rewrittenSettingsBlob!));
+
+    expect(rewrittenSettings.FileReferences.Moc).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Expressions[0].File).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Expressions[0].Name).toBe(
+      "smile.exp3.json",
+    );
+    expect(rewrittenSettings.FileReferences.Motions.Idle[0].File).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Motions.Idle[0].Sound).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Motions.Idle[0].Name).toBe(
+      "idle.motion3.json",
+    );
+    expect(rewrittenSettings.Groups[0]).toEqual({
+      Target: "Parameter",
+      Name: "EyeBlink",
+      Ids: ["ParamEyeLOpen"],
+    });
+  });
+
+  it("revokes already-created object URLs when zip preparation fails", async () => {
+    const zipBlob = await createZipBlob({
+      "model/avatar.model3.json": JSON.stringify({
+        FileReferences: {
+          Moc: "avatar.moc3",
+          Textures: ["texture.png"],
+        },
+      }),
+      "model/avatar.moc3": new Uint8Array([1]),
+      "model/texture.png": new Uint8Array([2]),
+    });
+    const createObjectUrl = vi.mocked(URL.createObjectURL);
+    createObjectUrl
+      .mockImplementationOnce((blob) => {
+        const url = `blob:live2d-test/${nextObjectUrlId++}`;
+        createdObjectUrls.set(url, blob as Blob);
+        return url;
+      })
+      .mockImplementationOnce(() => {
+        throw new Error("object URL quota exceeded");
+      });
+
+    await expect(prepareZipModelBlob(zipBlob)).rejects.toThrow(
+      "object URL quota exceeded",
+    );
+    expect(revokedObjectUrls).toEqual(["blob:live2d-test/0"]);
   });
 });

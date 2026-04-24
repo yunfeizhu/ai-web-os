@@ -287,6 +287,12 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
           }
 
           preparedZip = await prepareZipModelBlob(zipFile);
+          if (disposed) {
+            revokeObjectUrls(preparedZip);
+            preparedZip = null;
+            return;
+          }
+
           modelSource = preparedZip.objectUrl;
         } else {
           const classified = classifyLive2DSource(modelUrl);

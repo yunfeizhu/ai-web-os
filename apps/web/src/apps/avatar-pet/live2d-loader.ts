@@ -36,6 +36,10 @@ function dirname(path: string): string {
   return lastSlash === -1 ? "" : path.slice(0, lastSlash);
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function isExternalReference(value: string): boolean {
   return (
     /^[a-z][a-z\d+.-]*:/i.test(value) ||
@@ -63,70 +67,184 @@ function resolveZipReference(baseDirectory: string, reference: string): string {
   return parts.join("/");
 }
 
-async function rewriteZipReferences(
-  value: unknown,
+async function createAssetObjectUrl(
+  reference: string,
   baseDirectory: string,
   entries: Map<string, JSZipObject>,
   objectUrlByPath: Map<string, string>,
   objectUrls: string[],
-): Promise<unknown> {
-  if (typeof value === "string") {
-    if (value.trim() === "" || isExternalReference(value)) {
-      return value;
-    }
-
-    const assetPath = resolveZipReference(baseDirectory, value);
-    const entry = entries.get(assetPath);
-
-    if (!entry) {
-      return value;
-    }
-
-    const existingObjectUrl = objectUrlByPath.get(assetPath);
-    if (existingObjectUrl) {
-      return existingObjectUrl;
-    }
-
-    const assetBlob = await entry.async("blob");
-    const assetObjectUrl = URL.createObjectURL(assetBlob);
-    objectUrlByPath.set(assetPath, assetObjectUrl);
-    objectUrls.push(assetObjectUrl);
-
-    return assetObjectUrl;
+): Promise<string> {
+  if (reference.trim() === "" || isExternalReference(reference)) {
+    return reference;
   }
 
-  if (Array.isArray(value)) {
-    return Promise.all(
-      value.map((item) =>
-        rewriteZipReferences(
-          item,
-          baseDirectory,
-          entries,
-          objectUrlByPath,
-          objectUrls,
-        ),
-      ),
-    );
+  const assetPath = resolveZipReference(baseDirectory, reference);
+  const entry = entries.get(assetPath);
+
+  if (!entry) {
+    return reference;
   }
 
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      await Promise.all(
-        Object.entries(value).map(async ([key, item]) => [
-          key,
-          await rewriteZipReferences(
+  const existingObjectUrl = objectUrlByPath.get(assetPath);
+  if (existingObjectUrl) {
+    return existingObjectUrl;
+  }
+
+  const assetBlob = await entry.async("blob");
+  const assetObjectUrl = URL.createObjectURL(assetBlob);
+  objectUrlByPath.set(assetPath, assetObjectUrl);
+  objectUrls.push(assetObjectUrl);
+
+  return assetObjectUrl;
+}
+
+async function rewriteStringProperty(
+  object: Record<string, unknown>,
+  key: string,
+  baseDirectory: string,
+  entries: Map<string, JSZipObject>,
+  objectUrlByPath: Map<string, string>,
+  objectUrls: string[],
+) {
+  const value = object[key];
+
+  if (typeof value !== "string") {
+    return;
+  }
+
+  object[key] = await createAssetObjectUrl(
+    value,
+    baseDirectory,
+    entries,
+    objectUrlByPath,
+    objectUrls,
+  );
+}
+
+async function rewriteStringArrayProperty(
+  object: Record<string, unknown>,
+  key: string,
+  baseDirectory: string,
+  entries: Map<string, JSZipObject>,
+  objectUrlByPath: Map<string, string>,
+  objectUrls: string[],
+) {
+  const value = object[key];
+
+  if (!Array.isArray(value)) {
+    return;
+  }
+
+  object[key] = await Promise.all(
+    value.map((item) =>
+      typeof item === "string"
+        ? createAssetObjectUrl(
             item,
             baseDirectory,
             entries,
             objectUrlByPath,
             objectUrls,
-          ),
-        ]),
+          )
+        : item,
+    ),
+  );
+}
+
+async function rewriteFileReferences(
+  modelSettings: unknown,
+  baseDirectory: string,
+  entries: Map<string, JSZipObject>,
+  objectUrlByPath: Map<string, string>,
+  objectUrls: string[],
+): Promise<unknown> {
+  if (!isPlainObject(modelSettings) || !isPlainObject(modelSettings.FileReferences)) {
+    return modelSettings;
+  }
+
+  const rewrittenSettings = structuredClone(modelSettings);
+  const fileReferences = rewrittenSettings.FileReferences as Record<string, unknown>;
+
+  await rewriteStringProperty(
+    fileReferences,
+    "Moc",
+    baseDirectory,
+    entries,
+    objectUrlByPath,
+    objectUrls,
+  );
+  await rewriteStringArrayProperty(
+    fileReferences,
+    "Textures",
+    baseDirectory,
+    entries,
+    objectUrlByPath,
+    objectUrls,
+  );
+
+  for (const key of ["Physics", "Pose", "DisplayInfo", "UserData"]) {
+    await rewriteStringProperty(
+      fileReferences,
+      key,
+      baseDirectory,
+      entries,
+      objectUrlByPath,
+      objectUrls,
+    );
+  }
+
+  if (Array.isArray(fileReferences.Expressions)) {
+    await Promise.all(
+      fileReferences.Expressions.map((expression) =>
+        isPlainObject(expression)
+          ? rewriteStringProperty(
+              expression,
+              "File",
+              baseDirectory,
+              entries,
+              objectUrlByPath,
+              objectUrls,
+            )
+          : undefined,
       ),
     );
   }
 
-  return value;
+  if (isPlainObject(fileReferences.Motions)) {
+    await Promise.all(
+      Object.values(fileReferences.Motions).flatMap((motions) =>
+        Array.isArray(motions)
+          ? motions.map(async (motion) => {
+              if (!isPlainObject(motion)) return;
+
+              await rewriteStringProperty(
+                motion,
+                "File",
+                baseDirectory,
+                entries,
+                objectUrlByPath,
+                objectUrls,
+              );
+              await rewriteStringProperty(
+                motion,
+                "Sound",
+                baseDirectory,
+                entries,
+                objectUrlByPath,
+                objectUrls,
+              );
+            })
+          : [],
+      ),
+    );
+  }
+
+  return rewrittenSettings;
+}
+
+function revokeObjectUrls(objectUrls: string[]) {
+  for (const objectUrl of objectUrls) {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 export function isLive2DZipSource(source: string): boolean {
@@ -188,43 +306,52 @@ export async function prepareZipModelBlob(blob: Blob): Promise<PreparedZipModel>
   const objectUrls: string[] = [];
   const objectUrlByPath = new Map<string, string>();
 
-  const rewrittenSettings = await rewriteZipReferences(
-    modelSettings,
-    baseDirectory,
-    entries,
-    objectUrlByPath,
-    objectUrls,
-  );
-  const rewrittenSettingsBlob = new Blob([JSON.stringify(rewrittenSettings)], {
-    type: "application/json",
-  });
-  const objectUrl = URL.createObjectURL(rewrittenSettingsBlob);
+  try {
+    const rewrittenSettings = await rewriteFileReferences(
+      modelSettings,
+      baseDirectory,
+      entries,
+      objectUrlByPath,
+      objectUrls,
+    );
+    const rewrittenSettingsBlob = new Blob([JSON.stringify(rewrittenSettings)], {
+      type: "application/json",
+    });
+    const objectUrl = URL.createObjectURL(rewrittenSettingsBlob);
 
-  objectUrls.push(objectUrl);
+    objectUrls.push(objectUrl);
 
-  return {
-    objectUrl,
-    modelSettingsPath,
-    objectUrls,
-  };
+    return {
+      objectUrl,
+      modelSettingsPath,
+      objectUrls,
+    };
+  } catch (error) {
+    revokeObjectUrls(objectUrls);
+    throw error;
+  }
 }
 
 export async function saveAvatarZip(file: File): Promise<void> {
   await set(AVATAR_ZIP_CACHE_KEY, file);
 }
 
-export async function loadAvatarZip(): Promise<File | null> {
+export async function loadAvatarZip(): Promise<Blob | null> {
   const cached = await get<unknown>(AVATAR_ZIP_CACHE_KEY);
 
   if (!cached) {
     return null;
   }
 
-  if (cached instanceof File) {
+  if (typeof File !== "undefined" && cached instanceof File) {
     return cached;
   }
 
-  if (cached instanceof Blob) {
+  if (typeof Blob !== "undefined" && cached instanceof Blob) {
+    if (typeof File === "undefined") {
+      return cached;
+    }
+
     return new File([cached], "avatar-live2d.zip", {
       type: cached.type || "application/zip",
     });

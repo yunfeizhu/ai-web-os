@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { WindowManager } from "@/components/window/WindowManager";
+import { AvatarPet } from "./AvatarPet";
 import { Dock } from "./Dock";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { DesktopIcon } from "./DesktopIcon";
@@ -161,6 +162,8 @@ export function Desktop() {
 
       {/* Window layer */}
       <WindowManager />
+
+      <AvatarPet />
 
       {/* Dock — 全屏时隐藏 */}
       {!hasMaximized && <Dock />}

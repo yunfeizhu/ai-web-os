@@ -15,9 +15,10 @@ import {
   type ViewportSize,
 } from "@/apps/avatar-pet/avatar-layout";
 import { useAvatarStore } from "@/stores/avatarStore";
+import { AvatarBubble } from "./AvatarBubble";
 
-const BUBBLE_WIDTH_ESTIMATE = 240;
-const BUBBLE_HEIGHT_ESTIMATE = 76;
+const BUBBLE_WIDTH_ESTIMATE = 320;
+const BUBBLE_HEIGHT_ESTIMATE = 360;
 const BUBBLE_OFFSET = 8;
 const CONTROL_CLICK_MOVE_THRESHOLD = 4;
 
@@ -201,23 +202,16 @@ export function AvatarPet() {
       <div className="relative flex h-full w-full select-none flex-col overflow-visible">
         {bubbleOpen && (
           <div
-            className={`absolute z-10 max-w-[min(240px,calc(100vw-32px))] rounded-lg px-3 py-2 text-[13px] leading-5 shadow-lg ${
+            className={`absolute z-10 ${
               alignBubbleRight ? "right-2" : "left-2"
             }`}
             style={{
               ...(showBubbleBelow
                 ? { top: `calc(100% + ${BUBBLE_OFFSET}px)` }
                 : { bottom: `calc(100% + ${BUBBLE_OFFSET}px)` }),
-              color: "rgba(24,24,27,0.88)",
-              background: "rgba(255,255,255,0.82)",
-              border: "1px solid rgba(255,255,255,0.62)",
-              backdropFilter: "blur(24px) saturate(170%)",
-              WebkitBackdropFilter: "blur(24px) saturate(170%)",
-              boxShadow:
-                "0 14px 34px rgba(15,23,42,0.18), 0 1px 0 rgba(255,255,255,0.75) inset",
             }}
           >
-            我在这里，需要时叫我。
+            <AvatarBubble />
           </div>
         )}
 
@@ -242,8 +236,8 @@ export function AvatarPet() {
               onClick={handleMessageClick}
               data-avatar-control="true"
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/55 active:bg-white/70"
-              title="打开小月消息"
-              aria-label="打开小月消息"
+              title="打开虚拟伙伴消息"
+              aria-label="打开虚拟伙伴消息"
             >
               <MessageCircle size={17} strokeWidth={1.9} />
             </button>
@@ -259,8 +253,8 @@ export function AvatarPet() {
               }}
               data-avatar-control="true"
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/55 active:bg-white/70"
-              title="关闭小月"
-              aria-label="关闭小月"
+              title="关闭虚拟伙伴"
+              aria-label="关闭虚拟伙伴"
             >
               <X size={17} strokeWidth={1.9} />
             </button>
@@ -270,8 +264,8 @@ export function AvatarPet() {
             type="button"
             onClick={handleAvatarClick}
             className="flex min-h-0 flex-1 items-center justify-center p-3"
-            title="小月"
-            aria-label="小月"
+            title="虚拟伙伴"
+            aria-label="虚拟伙伴"
           >
             <span
               className="flex h-full w-full items-center justify-center rounded-lg"

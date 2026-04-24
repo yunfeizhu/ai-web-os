@@ -1,10 +1,56 @@
-import { describe, expect, it } from "vitest";
+import JSZip from "jszip";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   classifyLive2DSource,
   findModelSettingsPath,
   isLive2DZipSource,
+  prepareZipModelBlob,
 } from "./live2d-loader";
+
+const createdObjectUrls = new Map<string, Blob>();
+let nextObjectUrlId = 0;
+
+async function createZipBlob(entries: Record<string, string | Uint8Array>) {
+  const zip = new JSZip();
+
+  for (const [path, contents] of Object.entries(entries)) {
+    zip.file(path, contents);
+  }
+
+  return zip.generateAsync({ type: "blob" });
+}
+
+async function readBlobText(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () =>
+      reject(reader.error ?? new Error("Failed to read blob")),
+    );
+    reader.readAsText(blob);
+  });
+}
+
+beforeEach(() => {
+  createdObjectUrls.clear();
+  nextObjectUrlId = 0;
+  if (!("createObjectURL" in URL)) {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: () => "",
+    });
+  }
+  vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
+    const url = `blob:live2d-test/${nextObjectUrlId++}`;
+    createdObjectUrls.set(url, blob as Blob);
+    return url;
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("classifyLive2DSource", () => {
   it("classifies model3 json sources", () => {
@@ -109,5 +155,85 @@ describe("findModelSettingsPath", () => {
 
   it("returns null when no model settings path is present", () => {
     expect(findModelSettingsPath(["foo/readme.txt", "foo/texture.png"])).toBeNull();
+  });
+});
+
+describe("prepareZipModelBlob", () => {
+  it("returns a blob URL for rewritten model3 settings and referenced assets", async () => {
+    const zipBlob = await createZipBlob({
+      "model\\legacy.model.json": JSON.stringify({
+        FileReferences: {
+          Moc: "legacy.moc",
+        },
+      }),
+      "model\\avatar.model3.json": JSON.stringify({
+        FileReferences: {
+          Moc: "avatar.moc3",
+          Textures: ["textures\\texture_00.png"],
+          Physics: "physics.json",
+          Pose: "pose.json",
+          DisplayInfo: "display-info.json",
+          Expressions: [
+            { Name: "smile", File: "expressions/smile.exp3.json" },
+            { Name: "remote", File: "https://example.com/remote.exp3.json" },
+          ],
+          Motions: {
+            Idle: [
+              { File: "motions/idle.motion3.json", Sound: "sounds/idle.wav" },
+            ],
+          },
+        },
+        Groups: [{ Target: "Parameter", Name: "EyeBlink", Ids: ["ParamEyeLOpen"] }],
+        ExternalData: "data:application/json;base64,e30=",
+        AlreadyPrepared: "blob:existing-model-asset",
+        Label: "textures/not-in-zip.png",
+      }),
+      "model\\avatar.moc3": new Uint8Array([1]),
+      "model\\textures\\texture_00.png": new Uint8Array([2]),
+      "model\\physics.json": "{}",
+      "model\\pose.json": "{}",
+      "model\\display-info.json": "{}",
+      "model\\expressions\\smile.exp3.json": "{}",
+      "model\\motions\\idle.motion3.json": "{}",
+      "model\\sounds\\idle.wav": new Uint8Array([3]),
+    });
+
+    const prepared = await prepareZipModelBlob(zipBlob);
+
+    expect(prepared.modelSettingsPath).toBe("model/avatar.model3.json");
+    expect(prepared.objectUrl).toMatch(/^blob:/);
+    expect(prepared.objectUrls).toContain(prepared.objectUrl);
+    expect(prepared.objectUrls).toHaveLength(9);
+
+    const rewrittenSettingsBlob = createdObjectUrls.get(prepared.objectUrl);
+    expect(rewrittenSettingsBlob).toBeInstanceOf(Blob);
+
+    const rewrittenSettings = JSON.parse(await readBlobText(rewrittenSettingsBlob!));
+    expect(rewrittenSettings.FileReferences.Moc).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Textures[0]).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Physics).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Pose).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.DisplayInfo).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Expressions[0].File).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Expressions[1].File).toBe(
+      "https://example.com/remote.exp3.json",
+    );
+    expect(rewrittenSettings.FileReferences.Motions.Idle[0].File).toMatch(/^blob:/);
+    expect(rewrittenSettings.FileReferences.Motions.Idle[0].Sound).toMatch(/^blob:/);
+    expect(rewrittenSettings.Groups[0].Ids[0]).toBe("ParamEyeLOpen");
+    expect(rewrittenSettings.ExternalData).toBe("data:application/json;base64,e30=");
+    expect(rewrittenSettings.AlreadyPrepared).toBe("blob:existing-model-asset");
+    expect(rewrittenSettings.Label).toBe("textures/not-in-zip.png");
+  });
+
+  it("throws a readable error when the zip has no model settings file", async () => {
+    const zipBlob = await createZipBlob({
+      "model/readme.txt": "not a model",
+      "model/texture.png": new Uint8Array([1]),
+    });
+
+    await expect(prepareZipModelBlob(zipBlob)).rejects.toThrow(
+      "No Live2D model settings file found in ZIP",
+    );
   });
 });

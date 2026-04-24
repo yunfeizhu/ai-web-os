@@ -5,7 +5,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { getLive2DExpressionPlan } from "@/apps/avatar-pet/emotion-map";
 import type { AvatarEmotion } from "@/apps/avatar-pet/emotion-parser";
-import { classifyLive2DSource } from "@/apps/avatar-pet/live2d-loader";
+import {
+  classifyLive2DSource,
+  loadAvatarZip,
+  prepareZipModelBlob,
+  type PreparedZipModel,
+} from "@/apps/avatar-pet/live2d-loader";
+import { useAvatarStore } from "@/stores/avatarStore";
 
 type PixiModule = typeof import("pixi.js");
 type Live2DModule = typeof import("pixi-live2d-display/cubism4");
@@ -33,7 +39,22 @@ type Live2DCanvasProps = {
 
 const CUBISM_CORE_SRC = "/vendor/live2d/live2dcubismcore.min.js";
 
-function getSourceFallbackMessage(modelUrl: string): RuntimeState | null {
+function getSourceFallbackMessage(
+  modelUrl: string,
+  modelSourceType: "url" | "zip",
+  localModelName: string,
+): RuntimeState | null {
+  if (modelSourceType === "zip") {
+    if (!localModelName.trim()) {
+      return {
+        message: "鏈€夋嫨 Live2D ZIP / No local Live2D ZIP selected",
+        tone: "info",
+      };
+    }
+
+    return null;
+  }
+
   const classified = classifyLive2DSource(modelUrl);
 
   if (classified.kind === "missing") {
@@ -175,6 +196,14 @@ function destroyApp(app: PixiApplication | null) {
   }
 }
 
+function revokeObjectUrls(preparedZip: PreparedZipModel | null) {
+  if (!preparedZip) return;
+
+  for (const objectUrl of preparedZip.objectUrls) {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 async function applyEmotion(model: Live2DModelInstance, emotion: AvatarEmotion) {
   const plan = getLive2DExpressionPlan(emotion);
 
@@ -192,8 +221,10 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const modelRef = useRef<Live2DModelInstance | null>(null);
   const emotionRef = useRef(emotion);
+  const modelSourceType = useAvatarStore((state) => state.modelSourceType);
+  const localModelName = useAvatarStore((state) => state.localModelName);
   const [runtimeState, setRuntimeState] = useState<RuntimeState>(() =>
-    getSourceFallbackMessage(modelUrl) ?? {
+    getSourceFallbackMessage(modelUrl, modelSourceType, localModelName) ?? {
       message: "正在加载 Live2D / Loading Live2D",
       tone: "info",
     },
@@ -205,8 +236,13 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
     let disposed = false;
     let app: PixiApplication | null = null;
     let model: Live2DModelInstance | null = null;
+    let preparedZip: PreparedZipModel | null = null;
     const host = hostRef.current;
-    const sourceFallback = getSourceFallbackMessage(modelUrl);
+    const sourceFallback = getSourceFallbackMessage(
+      modelUrl,
+      modelSourceType,
+      localModelName,
+    );
 
     modelRef.current = null;
 
@@ -234,7 +270,28 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
 
     const initialize = async () => {
       try {
-        const classified = classifyLive2DSource(modelUrl);
+        let modelSource = modelUrl;
+
+        if (modelSourceType === "zip") {
+          const zipFile = await loadAvatarZip();
+
+          if (disposed) return;
+
+          if (!zipFile) {
+            setRuntimeState({
+              message:
+                "Local Live2D ZIP is no longer available. Please choose the ZIP again.",
+              tone: "info",
+            });
+            return;
+          }
+
+          preparedZip = await prepareZipModelBlob(zipFile);
+          modelSource = preparedZip.objectUrl;
+        } else {
+          const classified = classifyLive2DSource(modelUrl);
+          modelSource = classified.source;
+        }
 
         await loadCubismCore();
 
@@ -263,7 +320,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
         app.view.style.width = "100%";
         host.replaceChildren(app.view);
 
-        model = await Live2DModel.from(classified.source);
+        model = await Live2DModel.from(modelSource);
 
         if (disposed) {
           destroyModel(model);
@@ -278,11 +335,22 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
       } catch {
         destroyModel(model);
         destroyApp(app);
+        revokeObjectUrls(preparedZip);
+        preparedZip = null;
         app = null;
         model = null;
         modelRef.current = null;
 
         if (!disposed) {
+          if (modelSourceType === "zip") {
+            setRuntimeState({
+              message:
+                "Local Live2D ZIP could not be loaded. Please check the ZIP contains a valid model settings file.",
+              tone: "error",
+            });
+            return;
+          }
+
           setRuntimeState({
             message:
               "Live2D 初始化失败，请检查模型地址和 Cubism Core / Live2D failed to initialize",
@@ -299,9 +367,10 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
       modelRef.current = null;
       destroyModel(model);
       destroyApp(app);
+      revokeObjectUrls(preparedZip);
       host.replaceChildren();
     };
-  }, [modelUrl]);
+  }, [localModelName, modelSourceType, modelUrl]);
 
   useEffect(() => {
     const model = modelRef.current;

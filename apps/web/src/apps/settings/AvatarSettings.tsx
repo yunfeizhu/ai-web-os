@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { Eye, EyeOff, RotateCcw, Upload } from "lucide-react";
 
 import { SectionTitle } from "./Settings";
@@ -16,6 +16,7 @@ const SOURCE_OPTIONS: { id: AvatarModelSourceType; label: string }[] = [
 
 export function AvatarSettings() {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [zipSaveError, setZipSaveError] = useState("");
   const visible = useAvatarStore((state) => state.visible);
   const modelSourceType = useAvatarStore((state) => state.modelSourceType);
   const modelUrl = useAvatarStore((state) => state.modelUrl);
@@ -26,12 +27,27 @@ export function AvatarSettings() {
   const setLocalModelName = useAvatarStore((state) => state.setLocalModelName);
   const setModelSourceType = useAvatarStore((state) => state.setModelSourceType);
 
-  const handleZipChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleZipChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      setLocalModelName(file.name);
+
+    if (!file) {
+      event.target.value = "";
+      return;
     }
-    event.target.value = "";
+
+    setZipSaveError("");
+
+    try {
+      const { saveAvatarZip } = await import("@/apps/avatar-pet/live2d-loader");
+      await saveAvatarZip(file);
+      setLocalModelName(file.name);
+    } catch {
+      setZipSaveError(
+        "Failed to save local ZIP. Please try again or choose a smaller file.",
+      );
+    } finally {
+      event.target.value = "";
+    }
   };
 
   return (
@@ -187,8 +203,17 @@ export function AvatarSettings() {
             className="hidden"
             onChange={handleZipChange}
           />
+          {zipSaveError && (
+            <p
+              className="mt-2 text-[12px] leading-5"
+              style={{ color: "rgba(185,28,28,0.88)" }}
+              role="alert"
+            >
+              {zipSaveError}
+            </p>
+          )}
           <p className="mt-2 text-[12px]" style={{ color: "var(--t3)" }}>
-            ZIP 暂只记录文件名；持久化将在后续任务中启用。
+            Local ZIP is saved in this browser and loaded directly on the desktop.
           </p>
         </div>
       </div>

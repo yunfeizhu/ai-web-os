@@ -90,32 +90,13 @@ The spec covers one feature with several connected slices: backend prompt contex
 
 - [ ] **Step 1: Add backend test dependency**
 
-Add `pytest>=8.0.0` to `apps/api/pyproject.toml` dependencies:
+Add `pytest>=8.0.0` to a dev/test-only dependency group in `apps/api/pyproject.toml`.
+Do not add it to `[project].dependencies`, because the API Dockerfile installs runtime
+dependencies with `uv sync --frozen --no-dev`.
 
 ```toml
-dependencies = [
-    "fastapi>=0.115.0",
-    "uvicorn[standard]>=0.34.0",
-    "sqlalchemy[asyncio]>=2.0.0",
-    "asyncpg>=0.30.0",
-    "alembic>=1.14.0",
-    "redis>=5.0.0",
-    "pydantic>=2.0.0",
-    "pydantic-settings>=2.0.0",
-    "python-dotenv>=1.0.0",
-    "python-multipart>=0.0.9",
-    "cryptography>=44.0.0",
-    "litellm>=1.55.0",
-    "websockets>=13.0",
-    "httpx>=0.27.0",
-    "RestrictedPython>=7.0",
-    "mem0ai>=0.1.0",
-    "pypdf>=4.0.0",
-    "minio>=7.2.0",
-    "python-docx>=1.2.0",
-    "langgraph>=1.1.8",
-    "langgraph-checkpoint-postgres>=2.0.0",
-    "psycopg[binary,pool]>=3.1.0",
+[dependency-groups]
+dev = [
     "pytest>=8.0.0",
 ]
 ```

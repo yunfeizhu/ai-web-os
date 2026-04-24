@@ -998,8 +998,9 @@ class AppRegistry:
             "description": metadata.get("description", ""),
             "legacy": entrypoint == "workflow.md",
         }
-        if (configured or {}).get("inject_full_prompt") is True:
-            descriptor["inject_full_prompt"] = True
+        configured_skill = configured or {}
+        if "inject_full_prompt" in configured_skill:
+            descriptor["inject_full_prompt"] = configured_skill["inject_full_prompt"]
         return descriptor
 
     def _resolve_skill_path(self, manifest: dict) -> Path | None:

@@ -27,6 +27,26 @@ def test_skill_descriptor_preserves_full_skill_prompt_flag(tmp_path):
     assert descriptor["inject_full_prompt"] is True
 
 
+def test_skill_descriptor_preserves_explicit_false_full_skill_prompt_flag(tmp_path):
+    app_dir = tmp_path / "notes"
+    app_dir.mkdir()
+    manifest_path = app_dir / "manifest.json"
+    manifest_path.write_text("{}", encoding="utf-8")
+    (app_dir / "SKILL.md").write_text(
+        "---\nname: 笔记\ndescription: Notes\n---\n## 规则\n",
+        encoding="utf-8",
+    )
+    registry = AppRegistry(tmp_path)
+
+    descriptor = registry._build_skill_descriptor(
+        manifest_path,
+        {"entrypoint": "SKILL.md", "inject_full_prompt": False},
+    )
+
+    assert descriptor is not None
+    assert descriptor["inject_full_prompt"] is False
+
+
 def test_prompt_uses_synced_manifest_for_full_skill_injection(monkeypatch):
     class FakeRegistry:
         async def get_app(self, db, app_id):

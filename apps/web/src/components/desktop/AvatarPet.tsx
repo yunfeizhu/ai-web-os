@@ -5,16 +5,28 @@ import { Bot, MessageCircle, X } from "lucide-react";
 import { Rnd } from "react-rnd";
 
 import {
+  AVATAR_CLAMP_GAP,
   AVATAR_MAX_SIZE,
   AVATAR_MIN_SIZE,
-  clampAvatarPlacement,
+  clampAvatarDockPlacement,
   type AvatarPosition,
   type AvatarSize,
   type ViewportSize,
 } from "@/apps/avatar-pet/avatar-layout";
 import { useAvatarStore } from "@/stores/avatarStore";
 
+const BUBBLE_WIDTH_ESTIMATE = 240;
+const BUBBLE_HEIGHT_ESTIMATE = 76;
+const BUBBLE_OFFSET = 8;
+
 function getViewport(): ViewportSize {
+  if (typeof window === "undefined") {
+    return {
+      width: 1440,
+      height: 900,
+    };
+  }
+
   return {
     width: window.innerWidth,
     height: window.innerHeight,
@@ -72,10 +84,17 @@ export function AvatarPet() {
     setVisible(false);
   };
 
+  const viewport = getViewport();
+  const showBubbleBelow = position.y < BUBBLE_HEIGHT_ESTIMATE + BUBBLE_OFFSET;
+  const alignBubbleRight =
+    position.x + BUBBLE_OFFSET + BUBBLE_WIDTH_ESTIMATE >
+    viewport.width - AVATAR_CLAMP_GAP;
+
   return (
     <Rnd
       data-desktop-blocker="true"
       bounds="window"
+      cancel="[data-avatar-control='true']"
       minWidth={AVATAR_MIN_SIZE.width}
       minHeight={AVATAR_MIN_SIZE.height}
       maxWidth={AVATAR_MAX_SIZE.width}
@@ -103,7 +122,7 @@ export function AvatarPet() {
           width: ref.offsetWidth,
           height: ref.offsetHeight,
         };
-        const clampedPosition: AvatarPosition = clampAvatarPlacement(
+        const clampedPosition: AvatarPosition = clampAvatarDockPlacement(
           nextPosition,
           nextSize,
           viewport,
@@ -117,8 +136,13 @@ export function AvatarPet() {
       <div className="relative flex h-full w-full select-none flex-col overflow-visible">
         {bubbleOpen && (
           <div
-            className="absolute bottom-full left-2 mb-2 max-w-[min(240px,calc(100vw-32px))] rounded-lg px-3 py-2 text-[13px] leading-5 shadow-lg"
+            className={`absolute z-10 max-w-[min(240px,calc(100vw-32px))] rounded-lg px-3 py-2 text-[13px] leading-5 shadow-lg ${
+              alignBubbleRight ? "right-2" : "left-2"
+            }`}
             style={{
+              ...(showBubbleBelow
+                ? { top: `calc(100% + ${BUBBLE_OFFSET}px)` }
+                : { bottom: `calc(100% + ${BUBBLE_OFFSET}px)` }),
               color: "rgba(24,24,27,0.88)",
               background: "rgba(255,255,255,0.82)",
               border: "1px solid rgba(255,255,255,0.62)",
@@ -147,6 +171,7 @@ export function AvatarPet() {
             <button
               type="button"
               onClick={handleAvatarClick}
+              data-avatar-control="true"
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/55 active:bg-white/70"
               title="打开小月消息"
               aria-label="打开小月消息"
@@ -156,6 +181,7 @@ export function AvatarPet() {
             <button
               type="button"
               onClick={handleClose}
+              data-avatar-control="true"
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/55 active:bg-white/70"
               title="关闭小月"
               aria-label="关闭小月"

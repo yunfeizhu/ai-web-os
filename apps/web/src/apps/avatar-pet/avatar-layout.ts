@@ -43,10 +43,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-export function clampAvatarPlacement(
+function clampAvatarPlacementWithBottomClearance(
   position: AvatarPosition,
   size: AvatarSize,
   viewport?: ViewportSize,
+  bottomClearance = 0,
 ): AvatarPosition {
   const resolvedViewport = getViewportSize(viewport);
   const maxX = Math.max(
@@ -55,13 +56,37 @@ export function clampAvatarPlacement(
   );
   const maxY = Math.max(
     AVATAR_CLAMP_GAP,
-    resolvedViewport.height - size.height - AVATAR_CLAMP_GAP,
+    resolvedViewport.height -
+      size.height -
+      bottomClearance -
+      AVATAR_CLAMP_GAP,
   );
 
   return {
     x: clamp(Math.round(position.x), AVATAR_CLAMP_GAP, maxX),
     y: clamp(Math.round(position.y), AVATAR_CLAMP_GAP, maxY),
   };
+}
+
+export function clampAvatarPlacement(
+  position: AvatarPosition,
+  size: AvatarSize,
+  viewport?: ViewportSize,
+): AvatarPosition {
+  return clampAvatarPlacementWithBottomClearance(position, size, viewport);
+}
+
+export function clampAvatarDockPlacement(
+  position: AvatarPosition,
+  size: AvatarSize,
+  viewport?: ViewportSize,
+): AvatarPosition {
+  return clampAvatarPlacementWithBottomClearance(
+    position,
+    size,
+    viewport,
+    AVATAR_DOCK_CLEARANCE,
+  );
 }
 
 export function getDefaultAvatarPlacement(
@@ -74,7 +99,7 @@ export function getDefaultAvatarPlacement(
       ? AVATAR_SMALL_EDGE_GAP
       : AVATAR_EDGE_GAP;
 
-  return clampAvatarPlacement(
+  return clampAvatarDockPlacement(
     {
       x: edgeGap,
       y: resolvedViewport.height - size.height - edgeGap - AVATAR_DOCK_CLEARANCE,

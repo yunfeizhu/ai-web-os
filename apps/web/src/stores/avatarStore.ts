@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 
 import {
   AVATAR_DEFAULT_SIZE,
-  clampAvatarPlacement,
+  clampAvatarDockPlacement,
   getDefaultAvatarPlacement,
   type AvatarPosition,
   type AvatarSize,
@@ -56,19 +56,23 @@ export const useAvatarStore = create<AvatarState>()(
       setPosition: (position, viewport) =>
         set((state) => ({
           position: viewport
-            ? clampAvatarPlacement(position, state.size, viewport)
+            ? clampAvatarDockPlacement(position, state.size, viewport)
             : position,
         })),
       setSize: (size, viewport) =>
         set((state) => ({
           size,
           position: viewport
-            ? clampAvatarPlacement(state.position, size, viewport)
+            ? clampAvatarDockPlacement(state.position, size, viewport)
             : state.position,
         })),
       normalizePlacement: (viewport) =>
         set((state) => ({
-          position: clampAvatarPlacement(state.position, state.size, viewport),
+          position: clampAvatarDockPlacement(
+            state.position,
+            state.size,
+            viewport,
+          ),
         })),
       resetPlacement: (viewport) =>
         set({

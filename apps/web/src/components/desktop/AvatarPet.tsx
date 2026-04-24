@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { MouseEvent, PointerEvent } from "react";
 import { Bot, MessageCircle, X } from "lucide-react";
 import { Rnd } from "react-rnd";
 
@@ -18,6 +19,7 @@ import { useAvatarStore } from "@/stores/avatarStore";
 const BUBBLE_WIDTH_ESTIMATE = 240;
 const BUBBLE_HEIGHT_ESTIMATE = 76;
 const BUBBLE_OFFSET = 8;
+const CONTROL_CLICK_MOVE_THRESHOLD = 4;
 
 function getViewport(): ViewportSize {
   if (typeof window === "undefined") {
@@ -44,17 +46,24 @@ export function AvatarPet() {
   const setPosition = useAvatarStore((state) => state.setPosition);
   const setSize = useAvatarStore((state) => state.setSize);
   const normalizePlacement = useAvatarStore((state) => state.normalizePlacement);
+  const [viewport, setViewport] = useState<ViewportSize | null>(null);
   const dragGuardRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragStartPositionRef = useRef<AvatarPosition | null>(null);
+  const controlPointerDownRef = useRef<AvatarPosition | null>(null);
+  const suppressControlClickRef = useRef(false);
   const draggedRef = useRef(false);
 
   useEffect(() => {
-    const normalize = () => normalizePlacement(getViewport());
+    const updateViewport = () => {
+      const nextViewport = getViewport();
+      setViewport(nextViewport);
+      normalizePlacement(nextViewport);
+    };
 
-    normalize();
-    window.addEventListener("resize", normalize);
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
     return () => {
-      window.removeEventListener("resize", normalize);
+      window.removeEventListener("resize", updateViewport);
       if (dragGuardRef.current) {
         clearTimeout(dragGuardRef.current);
       }
@@ -79,16 +88,72 @@ export function AvatarPet() {
     toggleBubble();
   };
 
+  const handleControlPointerDown = (event: PointerEvent) => {
+    controlPointerDownRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+    };
+    suppressControlClickRef.current = false;
+  };
+
+  const handleControlPointerMove = (event: PointerEvent) => {
+    const pointerDown = controlPointerDownRef.current;
+    if (!pointerDown) return;
+
+    const deltaX = event.clientX - pointerDown.x;
+    const deltaY = event.clientY - pointerDown.y;
+    if (Math.hypot(deltaX, deltaY) > CONTROL_CLICK_MOVE_THRESHOLD) {
+      suppressControlClickRef.current = true;
+    }
+  };
+
+  const handleControlPointerEnd = (event: PointerEvent) => {
+    const pointerDown = controlPointerDownRef.current;
+    if (pointerDown) {
+      const deltaX = event.clientX - pointerDown.x;
+      const deltaY = event.clientY - pointerDown.y;
+      if (Math.hypot(deltaX, deltaY) > CONTROL_CLICK_MOVE_THRESHOLD) {
+        suppressControlClickRef.current = true;
+      }
+    }
+
+    controlPointerDownRef.current = null;
+  };
+
+  const shouldSuppressControlClick = (event: MouseEvent) => {
+    const pointerDown = controlPointerDownRef.current;
+    if (pointerDown) {
+      const deltaX = event.clientX - pointerDown.x;
+      const deltaY = event.clientY - pointerDown.y;
+      if (Math.hypot(deltaX, deltaY) > CONTROL_CLICK_MOVE_THRESHOLD) {
+        suppressControlClickRef.current = true;
+      }
+    }
+
+    if (!suppressControlClickRef.current) return false;
+
+    event.preventDefault();
+    event.stopPropagation();
+    suppressControlClickRef.current = false;
+    controlPointerDownRef.current = null;
+    return true;
+  };
+
+  const handleMessageClick = (event: MouseEvent) => {
+    if (shouldSuppressControlClick(event)) return;
+    handleAvatarClick();
+  };
+
   const handleClose = () => {
     setBubbleOpen(false);
     setVisible(false);
   };
 
-  const viewport = getViewport();
   const showBubbleBelow = position.y < BUBBLE_HEIGHT_ESTIMATE + BUBBLE_OFFSET;
   const alignBubbleRight =
+    viewport !== null &&
     position.x + BUBBLE_OFFSET + BUBBLE_WIDTH_ESTIMATE >
-    viewport.width - AVATAR_CLAMP_GAP;
+      viewport.width - AVATAR_CLAMP_GAP;
 
   return (
     <Rnd
@@ -170,7 +235,11 @@ export function AvatarPet() {
           <div className="flex items-center justify-between px-2.5 py-2">
             <button
               type="button"
-              onClick={handleAvatarClick}
+              onPointerDown={handleControlPointerDown}
+              onPointerMove={handleControlPointerMove}
+              onPointerUp={handleControlPointerEnd}
+              onPointerCancel={handleControlPointerEnd}
+              onClick={handleMessageClick}
               data-avatar-control="true"
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/55 active:bg-white/70"
               title="打开小月消息"
@@ -180,7 +249,14 @@ export function AvatarPet() {
             </button>
             <button
               type="button"
-              onClick={handleClose}
+              onPointerDown={handleControlPointerDown}
+              onPointerMove={handleControlPointerMove}
+              onPointerUp={handleControlPointerEnd}
+              onPointerCancel={handleControlPointerEnd}
+              onClick={(event) => {
+                if (shouldSuppressControlClick(event)) return;
+                handleClose();
+              }}
               data-avatar-control="true"
               className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-white/55 active:bg-white/70"
               title="关闭小月"

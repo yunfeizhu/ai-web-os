@@ -9,6 +9,7 @@ from sqlalchemy import select, delete, func
 from pydantic import BaseModel, Field
 
 from app.core.app_registry import get_app_registry
+from app.core.agent_traffic_metrics import get_agent_traffic_metrics_store
 from app.core.database import get_db
 from app.core.llm_provider import stream_chat, agent_loop
 from app.core.memory import ensure_memory_manager, get_memory_manager
@@ -125,6 +126,12 @@ async def confirm_tool_execution(request_id: str, approved: bool = True):
             detail="No pending confirmation found for this request_id. It may have expired.",
         )
     return {"ok": True, "approved": approved}
+
+
+@router.get("/metrics/traffic")
+async def get_agent_traffic_metrics(recent_limit: int = Query(default=20, ge=0, le=100)):
+    """Return rolling real-traffic Agent metrics collected from WebSocket runs."""
+    return get_agent_traffic_metrics_store().summary(recent_limit=recent_limit)
 
 
 # ── Schemas ──────────────────────────────────────────

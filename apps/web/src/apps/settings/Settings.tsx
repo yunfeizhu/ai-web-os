@@ -13,9 +13,9 @@ import {
   Upload,
 } from "lucide-react";
 
-import { AppManager } from "./AppManager";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import { AvatarSettings } from "./AvatarSettings";
+import { ExtensionCenter } from "./ExtensionCenter";
 import { KnowledgeBase } from "./KnowledgeBase";
 import { MemoryManager } from "./MemoryManager";
 import { ThemeConfig } from "./ThemeConfig";
@@ -130,7 +130,7 @@ export function Settings() {
         {tab === "avatar" && <AvatarSettings />}
         {tab === "memory" && <MemoryManager />}
         {tab === "knowledge" && <KnowledgeBase />}
-        {tab === "extensions" && <AppManager />}
+        {tab === "extensions" && <ExtensionCenter />}
         {tab === "about" && <AboutPanel />}
       </div>
     </div>

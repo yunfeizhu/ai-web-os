@@ -10,7 +10,8 @@ import { useWindowStore } from "@/stores/windowStore";
 import { decodeModel, PROVIDERS } from "@/apps/settings/providers";
 import { MessageBubble } from "./MessageBubble";
 import { ModelPicker } from "./ModelPicker";
-import type { ChatMessage, Conversation } from "./types";
+import { shouldSuppressDuplicateSubmit } from "./chatSendGate";
+import type { AppWorkflowSummary, ChatMessage, Conversation } from "./types";
 
 const API = `${API_BASE}/agents`;
 
@@ -302,6 +303,8 @@ export function AiChat() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const inFlightContentRef = useRef<string | null>(null);
+  const queuedMessageRef = useRef<string | null>(null);
   const liveToolArgsRef = useRef<Record<string, Record<string, unknown>>>({});
   const pendingBrowserWindowTimersRef = useRef<Record<string, number>>({});
   const scrollBehaviorRef = useRef<"smooth" | "instant">("instant");
@@ -559,12 +562,25 @@ export function AiChat() {
       const content = (text ?? inputRef.current).trim();
       if (!content) return;
 
-    if (loading && !historyOverride) {
-      setQueuedMessage(content);
-      setInputValue("");
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
-      setStatusText("消息已排队，上一轮完成后自动发送。");
-      return;
+      const hasActiveRequest = Boolean(inFlightContentRef.current) || loading;
+      if (hasActiveRequest && !historyOverride) {
+        if (
+          shouldSuppressDuplicateSubmit({
+            content,
+            inFlightContent: inFlightContentRef.current,
+            queuedContent: queuedMessageRef.current,
+          })
+        ) {
+          setStatusText("已忽略重复发送的相同消息。");
+          return;
+        }
+
+        queuedMessageRef.current = content;
+        setQueuedMessage(content);
+        setInputValue("");
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        setStatusText("消息已排队，上一轮完成后自动发送。");
+        return;
       }
 
       if (isCurrentTimeIntent(content)) {
@@ -642,6 +658,7 @@ export function AiChat() {
 
       const apiKey = providerCfg.apiKey;
       const apiBase = providerCfg.baseUrl || providerDef?.defaultBaseUrl;
+      inFlightContentRef.current = content;
 
       let convId = activeId;
       if (!convId) {
@@ -654,6 +671,7 @@ export function AiChat() {
           setActiveId(conv.id);
           convId = conv.id;
         } catch {
+          inFlightContentRef.current = null;
           return;
         }
       }
@@ -743,7 +761,7 @@ export function AiChat() {
       abortRef.current = abort;
 
       try {
-        const { title } = await streamChat(
+        const { title, usageEstimate } = await streamChat(
           {
             conversationId: convId,
             appId: "ai-chat",
@@ -761,7 +779,34 @@ export function AiChat() {
             llmApiKey: apiKey,
             llmApiBase: apiBase,
             onStatus: (s, event) => {
-              if (s === "recalled") {
+              if (s === "plan_preview") {
+                const steps = Array.isArray(event?.steps) ? event.steps.length : 0;
+                setStatusText(
+                  steps > 0
+                    ? `已生成执行计划预览（${steps} 步），风险操作会先请求确认。`
+                    : "已生成执行计划预览，风险操作会先请求确认。",
+                );
+              } else if (s === "workflow_plan" || s === "workflow_summary") {
+                if (!event) return;
+                const summary = event as unknown as AppWorkflowSummary;
+                if (s === "workflow_plan") {
+                  setStatusText(
+                    `已生成多 App 工作流计划（${summary.appCount ?? 0} 个 App）。`,
+                  );
+                } else {
+                  setStatusText("已生成多 App 执行结果汇总。");
+                }
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? {
+                          ...m,
+                          workflowSummary: summary,
+                        }
+                      : m,
+                  ),
+                );
+              } else if (s === "recalled") {
                 setStatusText("已召回相关记忆，正在组织回答…");
               } else if (s === "context_compacted") {
                 setStatusText("已压缩较早上下文，正在继续回答…");
@@ -779,6 +824,8 @@ export function AiChat() {
                 } else {
                   setStatusText("已拦截一次不合规工具调用，正在修正…");
                 }
+              } else if (s === "usage_estimate") {
+                setStatusText("已完成 Token 估算，正在收尾…");
               }
             },
             onReasoningToken: (token) => {
@@ -1000,6 +1047,7 @@ export function AiChat() {
               ? {
                   ...m,
                   streaming: false,
+                  usageEstimate,
                 }
               : m,
           ),
@@ -1038,6 +1086,7 @@ export function AiChat() {
         );
       } finally {
         setLoading(false);
+        inFlightContentRef.current = null;
         abortRef.current = null;
         liveToolArgsRef.current = {};
       }
@@ -1067,6 +1116,7 @@ export function AiChat() {
   useEffect(() => {
     if (!loading && queuedMessage) {
       const msg = queuedMessage;
+      queuedMessageRef.current = null;
       setQueuedMessage(null);
       sendMessage(msg);
     }

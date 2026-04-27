@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -23,7 +24,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# Keep deterministic control-plane evals fully offline; LiteLLM otherwise tries
+# to refresh pricing metadata during import and can pollute eval output.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
 from app.core.agent_harness import (  # noqa: E402
+    ToolResultValidation,
+    decide_fallback_policy,
     guard_tool_call,
     normalize_temporal_tool_args,
     tool_call_signature,
@@ -82,7 +89,11 @@ def _assert(condition: bool, message: str) -> None:
 
 async def main() -> None:
     # 1. All core tools always available (no scope gating)
-    tools = await get_tools_for_model("gpt-4o", user_message="计算2+3")
+    tools = await get_tools_for_model(
+        "gpt-4o",
+        user_message="计算2+3",
+        include_external_mcp=False,
+    )
     names = _tool_names(tools)
     _assert("calculator" in names, f"calculator must always be available, got {names}")
     _assert("fetch_url" in names, f"fetch_url must always be available, got {names}")
@@ -294,6 +305,7 @@ async def main() -> None:
         "gpt-4o",
         user_message="查资料",
         skill_context={"agent_depth": 1, "agent_role": "research"},
+        include_external_mcp=False,
     )
     research_names = _tool_names(research_tools)
     _assert("fetch_url" in research_names, f"research role needs fetch_url: {research_names}")
@@ -304,6 +316,7 @@ async def main() -> None:
         "gpt-4o",
         user_message="算一下",
         skill_context={"agent_depth": 1, "agent_role": "coder"},
+        include_external_mcp=False,
     )
     coder_names = _tool_names(coder_tools)
     _assert("python_exec" in coder_names, f"coder role needs python_exec: {coder_names}")
@@ -929,7 +942,19 @@ async def main() -> None:
     _assert("distiller_error" in timeout_bundle,
             f"slow evidence distiller should timeout into fallback evidence: {timeout_bundle}")
 
-    print("Agent Harness eval passed: 29 cases")
+    # 30. FallbackPolicy sends failed Skill tools to the realtime research lane.
+    fallback_decision = decide_fallback_policy(
+        tool_name="skill_stock_quote",
+        validation=ToolResultValidation(ok=False, reason="tool_failure", retryable=True),
+    )
+    _assert(
+        fallback_decision.action == "switch_to_realtime_research"
+        and not fallback_decision.retry_original_tool
+        and "search.discovery" in fallback_decision.system_hint,
+        f"Skill failures must switch to realtime research: {fallback_decision}",
+    )
+
+    print("Agent Harness eval passed: 30 cases")
 
 
 if __name__ == "__main__":

@@ -228,23 +228,23 @@
   - [x] 工具执行后增加 validation 状态事件，模型可基于校验提示继续 ReAct 修正
   - [x] 抑制工具调用前的表格 / 数据类臆测输出，只允许短前置说明，避免先编造再调用工具
   - [x] Skill 路径改为展示信息，禁止作为文件管理器虚拟路径读取
-  - [ ] 确定性 `FallbackPolicy` 状态机（如 Skill 失败后强制切换实时研究工具）
+  - [x] 确定性 `FallbackPolicy` 状态机（如 Skill 失败后强制切换实时研究工具）
 - [x] Human-in-the-loop 与执行确认
-  - [ ] 复杂任务先展示计划
+  - [x] 复杂任务先展示计划（多 App / 多步骤 / 写操作触发轻量计划预览）
   - [x] 危险操作二次确认（`CONFIRM_REQUIRED_TOOLS` 配置，`confirmation_store` asyncio.Future 暂停 Agent 循环）
   - [x] 前端 `agent_confirm_required` WebSocket 事件 + `POST /api/v1/agents/confirm` REST 解决 Future
   - [x] 执行中断 / 取消（用户拒绝 → 注入 "用户已拒绝该操作"，Agent 可继续）
 - [x] Agent 状态可视化 1.0
   - [x] 基于现有 token / tool_call / tool_result 的执行时间线
   - [x] 步骤状态、耗时、失败点展示
-  - [ ] Token / 成本展示
+  - [x] Token 展示（本地估算；成本展示已取消，避免不同 provider / 计费模式误导）
 - [x] 轻量 Orchestrator / Graph Checkpoint Runtime
   - [x] 基于现有 App / Skill 路由的串行工作流编排
   - [x] ReAct 链路状态：LLM 决策 / 策略守卫 / 执行工具 / 校验结果
   - [x] 引入真实 LangGraph `StateGraph` 作为 checkpoint facade
   - [x] `InMemorySaver` → `AsyncPostgresSaver` 自动升级（`langgraph-checkpoint-postgres`），fallback 到 InMemorySaver
   - [x] interrupt / resume 运行时接口落地（Human-in-the-loop 实际使用）
-  - [ ] 多 App 任务计划与结果汇总
+  - [x] 多 App 任务计划与结果汇总（多 App 请求生成 workflow_plan，工具执行后汇总 workflow_summary 并在 AI 助手消息中展示）
 - [x] Manager Subagents 1.0（多 Agent 初版）
   - [x] 参考 OpenAI agents-as-tools / Anthropic orchestrator-workers / LangChain subagents，确定“Lead Agent 保留对话所有权，specialist 作为工具执行”的主模式
   - [x] `agent_types.py` 注册 `research` / `coder` / `system` / `writer` 四类角色与独立系统提示词
@@ -258,23 +258,27 @@
   - [x] EvidenceBundle 增加搜索结果确定性事实抽取：搜索标题、摘要、链接、时间会提升为 `news_item` / `weather_result` / `market_result` / `search_result`，避免模型摘要或超时 fallback 丢掉已搜到的数据
   - [x] 实验性开启 `toolEvidence` / `mergedToolResults`：子 Agent 的 compact 工具结果会合并进入 `delegate_task` 返回，Lead Agent 可直接看到 Skill/API 原始输出，验证结构化抽取漏字段问题
   - [x] 子 Agent 工具预算耗尽改为结构化状态 `maxToolCallsReached` / `stopReason`，不再把“已达到最大工具调用次数”混入自然语言 answer；前端默认展示证据摘要和预算状态，原始 answer 仅作为深层调试输出
-  - [x] Harness eval 增至 25 个用例，覆盖子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 search/extract capability policy、EvidenceBundle 结构化交接、搜索结果确定性 facts、merged tool results、重复搜索硬停止、max-tool 结构化状态与“冲突”策略词回归
+  - [x] Harness eval 增至 30 个用例，覆盖子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 search/extract capability policy、EvidenceBundle 结构化交接、搜索结果确定性 facts、merged tool results、重复搜索硬停止、max-tool 结构化状态、“冲突”策略词回归与 FallbackPolicy
 - [x] 可观测性与评测
   - [x] 基础 Trace / 调用链状态事件
-  - [x] Harness eval 扩展至 25 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程、子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 Search/Extract 能力推断、部分成功校验、EvidenceBundle 交接、搜索结果事实抽取与 merged tool results、重复搜索硬停止、max-tool 结构化状态、“冲突”策略词回归）
+  - [x] Harness eval 扩展至 30 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程、子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 Search/Extract 能力推断、部分成功校验、EvidenceBundle 交接、搜索结果事实抽取与 merged tool results、重复搜索硬停止、max-tool 结构化状态、“冲突”策略词回归、FallbackPolicy）
   - [x] Trace 后端集成：Arize Phoenix（`TRACE_PHOENIX_ENDPOINT`）+ LangSmith（`TRACE_LANGSMITH_API_KEY`），零配置零开销
-  - [ ] 工具调用成功率 / 路由准确率 / 端到端任务完成率（需真实流量积累）
-  - [ ] Token / 成本统计
-- [ ] 扩展中心 2.0
-  - [ ] 基于现有 MCP / Skill / App 管理页演进
-  - [ ] 本地安装、来源、版本、更新与权限说明
+  - [x] 工具调用成功率 / 路由准确率 / 端到端任务完成率离线指标基线
+  - [x] 工具调用成功率 / 路由准确率 / 端到端任务完成率真实流量统计（WebSocket 实际请求滚动统计首版，`/api/v1/agents/metrics/traffic` 查询）
+  - [x] Token 本地估算统计
+  - [x] Provider 精确成本统计已取消（各 provider 与同模型不同计费模式差异过大，不在产品内展示成本）
+- [x] 扩展中心 2.0（本地控制台首版）
+  - [x] 基于现有 MCP / Skill / App 管理页演进
+  - [x] 统一扩展目录：Apps / Skills / MCP 的来源、版本、权限、工具与运行状态
+  - [x] MCP 本地接入 / 编辑 / 启停 / 健康检查沿用现有管理页
+  - [ ] Skill / App 的本地安装、版本更新与权限声明校验深化
 - [ ] 多 Agent 2.0（评估中）
   - [x] Lead Agent + Sub-Agent 初版：角色化任务拆解、并行执行、结果汇总
   - [x] 基础检查点：Harness 节点状态已进入 LangGraph checkpoint
   - [x] PostgresSaver 持久化检查点（`langgraph-checkpoint-postgres` + `psycopg[binary,pool]`）
   - [ ] Conversation Handoff：active_agent、上下文过滤、ToolMessage 配对、跨轮记忆归属
   - [ ] 完整 LangGraph StateGraph：route / delegate / synthesize / evaluate 节点显式化
-  - [ ] 委派准确率、工具成功率、端到端任务完成率 eval
+  - [x] 委派准确率、工具成功率、端到端任务完成率 eval（`scripts/eval_multi_agent_metrics.py`：delegationAccuracy / subagentToolSuccessRate / taskCompletionRate）
 - [x] 性能与产品打磨
   - [x] WebSocket 重连：指数退避重试（1s→2s→4s→8s→16s）+ 30 秒心跳 ping
   - [x] Light / Dark 主题系统：`[data-theme]` CSS 变量集、`ThemeProvider` 同步到 `<html>`、desktopStore 持久化、Settings 外观页可视化切换

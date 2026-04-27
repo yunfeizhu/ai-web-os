@@ -11,6 +11,8 @@ import litellm
 from litellm import acompletion
 
 from app.core.agent_harness import (
+    decide_fallback_policy,
+    fallback_trace_payload,
     guard_tool_call,
     normalize_temporal_tool_args,
     policy_trace_payload,
@@ -431,8 +433,8 @@ async def agent_loop(
     Follows the OpenAI/Anthropic tool-calling paradigm:
     - Available tools are exposed together; descriptions guide the LLM.
     - Tokens are always streamed (speculative streaming), no post-tool buffering.
-    - No deterministic fallback state machine; validation failures are fed back
-      as tool/system messages so the model can correct itself in the next turn.
+    - Deterministic fallback policy constrains recovery after failed tools while
+      leaving concrete tool choice to the model.
     - MCP routes use a 30-second TTL cache.
     """
     from app.core.tools import (
@@ -441,6 +443,11 @@ async def agent_loop(
         get_tools_for_model,
     )
     from app.core.agent_types import build_supervisor_prompt
+    from app.core.agent_plan import (
+        build_multi_app_workflow_plan,
+        build_plan_preview,
+        build_workflow_summary,
+    )
     from app.core.subagent import (
         DELEGATE_TOOL_CONTEXT_CHARS,
         build_subagent_tool_result,
@@ -466,6 +473,17 @@ async def agent_loop(
     agent_depth = int(ctx.get("agent_depth", 0))
     agent_mode = str(ctx.get("agent_mode") or "auto").lower()
     is_subagent = bool(ctx.get("is_subagent")) or agent_depth > 0
+
+    workflow_plan: dict | None = None
+    workflow_tool_results: list[dict] = []
+
+    if not is_subagent:
+        plan_preview = build_plan_preview(user_message)
+        if plan_preview:
+            yield ("status", plan_preview)
+        workflow_plan = build_multi_app_workflow_plan(user_message)
+        if workflow_plan:
+            yield ("status", workflow_plan)
     tools = await get_tools_for_model(
         model,
         user_message=user_message,
@@ -502,6 +520,24 @@ async def agent_loop(
 
     graph = AgentGraphRuntime(request_id=request_id)
     yield ("status", graph.status("build_context"))
+
+    def _workflow_tool_event(parsed_call: dict, result: str, error: bool) -> dict:
+        event = {
+            "id": parsed_call["id"],
+            "name": parsed_call["name"],
+            "displayName": parsed_call.get("displayName"),
+            "args": parsed_call.get("args") or {},
+            "result": result,
+            "error": error,
+        }
+        if workflow_plan:
+            workflow_tool_results.append(event)
+        return event
+
+    def _workflow_summary_event() -> dict | None:
+        if not workflow_plan or not workflow_tool_results:
+            return None
+        return build_workflow_summary(workflow_plan, workflow_tool_results)
 
     async def _summarizer(old_messages: list[dict]) -> str:
         return await _summarize_history_for_compaction(
@@ -611,6 +647,9 @@ async def agent_loop(
         if not has_tool_calls:
             # Model decided not to call any tools — final answer already streamed
             yield ("status", graph.status("respond"))
+            workflow_summary = _workflow_summary_event()
+            if workflow_summary:
+                yield ("status", workflow_summary)
             return
 
         # ── Parse and deduplicate tool calls ──────────────────────────────────
@@ -733,16 +772,9 @@ async def agent_loop(
                     max_chars=DELEGATE_TOOL_CONTEXT_CHARS,
                 )
 
-                yield (
-                    "tool_result",
-                    {
-                        "id": parsed_call["id"],
-                        "name": parsed_call["name"],
-                        "displayName": parsed_call.get("displayName") or "多 Agent 委托",
-                        "result": result,
-                        "error": False,
-                    },
-                )
+                tool_event = _workflow_tool_event(parsed_call, result, False)
+                tool_event["displayName"] = tool_event.get("displayName") or "多 Agent 委托"
+                yield ("tool_result", tool_event)
                 full_messages.append(
                     {
                         "role": "tool",
@@ -776,16 +808,7 @@ async def agent_loop(
                         args=parsed_call["args"],
                     ),
                 )
-                yield (
-                    "tool_result",
-                    {
-                        "id": parsed_call["id"],
-                        "name": parsed_call["name"],
-                        "displayName": parsed_call.get("displayName"),
-                        "result": result,
-                        "error": False,
-                    },
-                )
+                yield ("tool_result", _workflow_tool_event(parsed_call, result, False))
                 full_messages.append(
                     {
                         "role": "tool",
@@ -822,16 +845,7 @@ async def agent_loop(
                         args=parsed_call["args"],
                     ),
                 )
-                yield (
-                    "tool_result",
-                    {
-                        "id": parsed_call["id"],
-                        "name": parsed_call["name"],
-                        "displayName": parsed_call.get("displayName"),
-                        "result": result,
-                        "error": False,
-                    },
-                )
+                yield ("tool_result", _workflow_tool_event(parsed_call, result, False))
                 full_messages.append(
                     {
                         "role": "tool",
@@ -931,6 +945,10 @@ async def agent_loop(
                 result=result,
                 error=error,
             )
+            fallback_decision = decide_fallback_policy(
+                tool_name=parsed_call["name"],
+                validation=validation,
+            )
             display_error = error or not validation.ok
             if (
                 not display_error
@@ -953,19 +971,11 @@ async def agent_loop(
                         tool_name=parsed_call["name"],
                         validation=validation,
                     ),
+                    **fallback_trace_payload(fallback_decision),
                 ),
             )
 
-            yield (
-                "tool_result",
-                {
-                    "id": parsed_call["id"],
-                    "name": parsed_call["name"],
-                    "displayName": parsed_call.get("displayName"),
-                    "result": result,
-                    "error": display_error,
-                },
-            )
+            yield ("tool_result", _workflow_tool_event(parsed_call, result, display_error))
 
             context_result = compact_tool_result_for_context(
                 tool_name=parsed_call["name"],
@@ -986,11 +996,16 @@ async def agent_loop(
                     "role": "system",
                     "content": (
                         f"ToolResultValidation: 工具结果未通过校验（{validation.reason}）。"
-                        f"{validation.fallback_hint}"
+                        f"{validation.fallback_hint}\n"
+                        f"FallbackPolicy: action={fallback_decision.action}. "
+                        f"{fallback_decision.system_hint}"
                     ),
                 })
 
     yield ("status", graph.status("respond", reason="max_tool_calls"))
     if is_subagent:
         return
+    workflow_summary = _workflow_summary_event()
+    if workflow_summary:
+        yield ("status", workflow_summary)
     yield ("token", _MAX_TOOL_CALLS_WARNING)

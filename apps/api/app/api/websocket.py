@@ -10,10 +10,15 @@ from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
 
 from app.config import get_settings
+from app.core.agent_traffic_metrics import (
+    build_agent_traffic_record,
+    get_agent_traffic_metrics_store,
+)
 from app.core.app_registry import get_app_registry
 from app.core.confirmation_store import create_confirmation, discard_confirmation
 from app.core.database import AsyncSessionLocal
 from app.core.llm_provider import agent_loop
+from app.core.agent_usage import estimate_agent_usage
 from app.core.skill_context import build_skill_augmented_system_prompt
 from app.core.user_errors import user_facing_error_message
 from app.models.conversation import Conversation, Message
@@ -173,6 +178,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 enable_memory: bool = payload.get("enableMemory", True)
                 user_id: str = payload.get("userId", DEFAULT_USER_ID)
                 compat_type: str = payload.get("compatType", "openai")
+                traffic_recorded = False
 
                 if not api_key:
                     await websocket.send_json(
@@ -237,6 +243,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     reasoning_response = ""
                     tool_calls: list[dict] = []
                     tool_results: list[dict] = []
+                    status_events: list[dict] = []
 
                     _settings = get_settings()
                     _confirm_tools = (
@@ -250,9 +257,11 @@ async def websocket_endpoint(websocket: WebSocket):
                         else None
                     )
 
+                    input_messages = [*history, {"role": "user", "content": user_message}]
+
                     async for event_type, event_payload in agent_loop(
                         model=model,
-                        messages=[*history, {"role": "user", "content": user_message}],
+                        messages=input_messages,
                         api_key=api_key,
                         provider_id=provider_id,
                         compat_type=compat_type,
@@ -293,6 +302,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 }
                             )
                         elif event_type == "status":
+                            if isinstance(event_payload, dict):
+                                status_events.append(event_payload)
                             await websocket.send_json(
                                 {
                                     "type": "status",
@@ -328,13 +339,48 @@ async def websocket_endpoint(websocket: WebSocket):
                         tool_results,
                     )
 
+                usage_estimate = estimate_agent_usage(
+                    model=model,
+                    input_messages=input_messages,
+                    output_text=full_response,
+                    reasoning_text=reasoning_response,
+                )
+                await websocket.send_json(
+                    {
+                        "type": "status",
+                        "requestId": request_id,
+                        "payload": {"status": "usage_estimate", **usage_estimate},
+                    }
+                )
+
                 await websocket.send_json(
                     {
                         "type": "agent_done",
                         "requestId": request_id,
-                        "payload": {"content": full_response, "title": title or ""},
+                        "payload": {
+                            "content": full_response,
+                            "title": title or "",
+                            "usageEstimate": usage_estimate,
+                        },
                     }
                 )
+
+                get_agent_traffic_metrics_store().record(
+                    build_agent_traffic_record(
+                        request_id=request_id,
+                        conversation_id=conv_id,
+                        app_id=app_id,
+                        provider_id=provider_id,
+                        model=model,
+                        user_message=user_message,
+                        response_text=full_response,
+                        tool_calls=tool_calls,
+                        tool_results=tool_results,
+                        status_events=status_events,
+                        succeeded=True,
+                    )
+                )
+                traffic_recorded = True
 
                 if enable_memory and memory_mgr and full_response:
                     await memory_mgr.add_async(
@@ -347,6 +393,26 @@ async def websocket_endpoint(websocket: WebSocket):
 
             except Exception as exc:
                 print(f"[WebSocket agent_invoke error] {type(exc).__name__}: {exc}")
+                try:
+                    if not bool(locals().get("traffic_recorded")):
+                        get_agent_traffic_metrics_store().record(
+                            build_agent_traffic_record(
+                                request_id=request_id,
+                                conversation_id=str(locals().get("conv_id") or ""),
+                                app_id=locals().get("app_id"),
+                                provider_id=str(locals().get("provider_id") or ""),
+                                model=str(locals().get("model") or ""),
+                                user_message=str(locals().get("user_message") or ""),
+                                response_text=str(locals().get("full_response") or ""),
+                                tool_calls=locals().get("tool_calls") or [],
+                                tool_results=locals().get("tool_results") or [],
+                                status_events=locals().get("status_events") or [],
+                                succeeded=False,
+                                error=f"{type(exc).__name__}: {exc}",
+                            )
+                        )
+                except Exception:
+                    pass
                 await websocket.send_json(
                     {
                         "type": "agent_error",

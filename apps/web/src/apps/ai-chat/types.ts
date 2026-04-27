@@ -29,6 +29,48 @@ export interface SubagentRun {
   evidence?: EvidenceBundle;
 }
 
+export interface AgentUsageEstimate {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
+
+export interface AppWorkflowApp {
+  appId: string;
+  appName: string;
+}
+
+export interface AppWorkflowStep {
+  id: string;
+  appId: string;
+  appName: string;
+  title: string;
+  status: "pending" | "completed" | "failed";
+}
+
+export interface AppWorkflowResult {
+  id?: string;
+  appId: string;
+  appName: string;
+  tool?: string;
+  status: "completed" | "failed";
+  preview?: string;
+}
+
+export interface AppWorkflowSummary {
+  status: "workflow_plan" | "workflow_summary";
+  workflowId: string;
+  appCount: number;
+  completedSteps: number;
+  failedSteps: number;
+  pendingSteps: number;
+  hasFailures: boolean;
+  apps: AppWorkflowApp[];
+  steps: AppWorkflowStep[];
+  results: AppWorkflowResult[];
+}
+
 export interface SkillActivity {
   app_id: string;
   name: string;
@@ -49,6 +91,8 @@ export interface ChatMessage {
   subagentTokens?: Record<string, string>; // agentName → accumulated token text
   subagentDone?: Record<string, boolean>; // agentName → finished flag
   subagentResults?: Record<string, SubagentRun>;
+  usageEstimate?: AgentUsageEstimate;
+  workflowSummary?: AppWorkflowSummary;
 }
 
 export interface Conversation {

@@ -75,6 +75,13 @@ export interface SubagentResultEvent {
   evidence?: Record<string, unknown>;
 }
 
+export interface AgentUsageEstimate {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+}
+
 export interface EmbeddingParams {
   model: string;
   apiKey: string;
@@ -119,7 +126,7 @@ type PendingHandler = {
   onSubagentResult?: (event: SubagentResultEvent) => void;
   onSubagentToken?: (event: SubagentTokenEvent) => void;
   touch: () => void;
-  resolve: (result: { title: string }) => void;
+  resolve: (result: { title: string; usageEstimate?: AgentUsageEstimate }) => void;
   reject: (err: Error) => void;
   aborted: () => boolean;
 };
@@ -196,7 +203,10 @@ class WsManager {
       case "agent_done":
         handler.touch();
         this.pending.delete(requestId);
-        handler.resolve({ title: (payload.title as string) ?? "" });
+        handler.resolve({
+          title: (payload.title as string) ?? "",
+          usageEstimate: payload.usageEstimate as AgentUsageEstimate | undefined,
+        });
         break;
       case "agent_error":
         handler.touch();
@@ -314,7 +324,7 @@ const wsManager = new WsManager();
 export async function streamChat(
   params: ChatParams,
   signal?: AbortSignal,
-): Promise<{ title: string }> {
+): Promise<{ title: string; usageEstimate?: AgentUsageEstimate }> {
   const requestId = crypto.randomUUID();
 
   return new Promise((resolve, reject) => {

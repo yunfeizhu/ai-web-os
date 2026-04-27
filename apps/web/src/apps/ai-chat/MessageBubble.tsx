@@ -7,8 +7,10 @@ import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { Components } from "react-markdown";
-import type { ChatMessage } from "./types";
+import type { AppWorkflowSummary, ChatMessage } from "./types";
+import { buildUsageEstimateLabels } from "./usageEstimate";
 import { ToolCallDisplay } from "./ToolCallDisplay";
+import { summarizeWorkflowForDisplay } from "./workflowSummary";
 
 interface Props {
   message: ChatMessage;
@@ -125,6 +127,109 @@ const MarkdownBody = memo(function MarkdownBody({
   );
 });
 
+function UsageEstimate({ message }: { message: ChatMessage }) {
+  const usage = message.usageEstimate;
+  if (!usage) return null;
+  const labels = buildUsageEstimateLabels(usage);
+
+  return (
+    <div
+      className="mt-3 inline-flex flex-wrap items-center gap-2 rounded-full px-3 py-1 text-[11px]"
+      style={{
+        color: "var(--t3)",
+        background: "var(--control-bg)",
+        border: "0.5px solid var(--border)",
+      }}
+    >
+      {labels.map((label) => (
+        <span key={label}>{label}</span>
+      ))}
+    </div>
+  );
+}
+
+function WorkflowSummary({ summary }: { summary?: AppWorkflowSummary }) {
+  if (!summary) return null;
+
+  const title = summarizeWorkflowForDisplay(summary);
+  if (!title) return null;
+
+  return (
+    <div
+      className="mb-3 mt-2 rounded-2xl p-3"
+      style={{
+        background: "var(--panel-bg)",
+        border: "0.5px solid var(--border)",
+      }}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p
+            className="text-[12px] font-semibold"
+            style={{ color: "var(--t1)" }}
+          >
+            {title}
+          </p>
+          <p className="mt-0.5 text-[11px]" style={{ color: "var(--t3)" }}>
+            {summary.appCount} 个系统 App 参与，按执行结果自动归类。
+          </p>
+        </div>
+        <span
+          className="rounded-full px-2 py-1 text-[11px]"
+          style={{
+            color: summary.hasFailures ? "var(--red)" : "var(--accent)",
+            background: "var(--control-bg)",
+          }}
+        >
+          {summary.hasFailures ? "需要关注" : "执行汇总"}
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {summary.steps.map((step) => (
+          <span
+            key={step.id}
+            className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px]"
+            style={{
+              color:
+                step.status === "failed"
+                  ? "var(--red)"
+                  : step.status === "completed"
+                    ? "var(--accent)"
+                    : "var(--t3)",
+              background: "var(--control-bg)",
+            }}
+          >
+            {step.status === "completed" && <Check size={10} />}
+            {step.status === "failed" && "!"}
+            {step.appName}
+          </span>
+        ))}
+      </div>
+
+      {summary.results.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {summary.results.slice(0, 4).map((result, index) => (
+            <div
+              key={`${result.appId}:${result.id ?? index}`}
+              className="rounded-xl px-2.5 py-2 text-[11px]"
+              style={{ background: "var(--control-bg)", color: "var(--t2)" }}
+            >
+              <span className="font-medium" style={{ color: "var(--t1)" }}>
+                {result.appName}
+              </span>
+              {result.tool && <span> · {result.tool}</span>}
+              {result.preview && (
+                <span style={{ color: "var(--t3)" }}> · {result.preview}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function MessageBubbleView({ message, onRetry }: Props) {
   const isUser = message.role === "user";
   const isError = message.role === "error";
@@ -213,6 +318,7 @@ function MessageBubbleView({ message, onRetry }: Props) {
           subagentDone={message.subagentDone}
           subagentResults={message.subagentResults}
         />
+        <WorkflowSummary summary={message.workflowSummary} />
         <div
           className="markdown text-[14px] leading-relaxed"
           style={{ color: "var(--t1)", wordBreak: "break-word" }}
@@ -220,6 +326,7 @@ function MessageBubbleView({ message, onRetry }: Props) {
           <MarkdownBody content={message.content} />
           {message.streaming && <StreamingDots />}
         </div>
+        {!message.streaming && <UsageEstimate message={message} />}
 
         {!message.streaming && hovered && (
           <div

@@ -1,8 +1,9 @@
-"""Agent policy engine — tool call guards, result validation, dedup detection.
+"""Agent policy engine — tool call guards, result validation, fallback decisions.
 
-This module is intentionally narrow. It does NOT perform routing, scope
-inference, or fallback decisions. Those responsibilities belong to the LLM and
-tool descriptions. This module only enforces hard safety invariants:
+This module is intentionally narrow. It does NOT perform routing or scope
+inference. Those responsibilities belong to the LLM and tool descriptions.
+This module enforces hard safety invariants and returns deterministic fallback
+instructions when a tool result cannot be trusted:
 
   - File tools must not access skill-internal or non-virtual paths.
   - Calculator must not be used for non-math expressions.
@@ -47,6 +48,13 @@ class ToolResultValidation:
     reason: str = ""
     retryable: bool = False
     fallback_hint: str = ""
+
+
+@dataclass(frozen=True)
+class FallbackPolicyDecision:
+    action: str
+    retry_original_tool: bool = False
+    system_hint: str = ""
 
 
 # ── Tool name predicates ──────────────────────────────────────────────────────
@@ -331,6 +339,83 @@ def validate_tool_result(
     return ToolResultValidation(ok=True)
 
 
+# ── Fallback policy ───────────────────────────────────────────────────────────
+
+
+def decide_fallback_policy(
+    *,
+    tool_name: str,
+    validation: ToolResultValidation,
+) -> FallbackPolicyDecision:
+    """Return a deterministic recovery instruction for failed tool results.
+
+    This does not choose a concrete next tool for the model. It constrains the
+    recovery lane so the ReAct loop avoids repeating known-bad calls.
+    """
+    if validation.ok:
+        return FallbackPolicyDecision(action="none")
+
+    name = str(tool_name or "")
+    reason = str(validation.reason or "")
+
+    if reason == "policy_blocked":
+        return FallbackPolicyDecision(
+            action="revise_arguments",
+            retry_original_tool=False,
+            system_hint=(
+                "不要重复调用刚才被策略拦截的工具参数。"
+                "请根据策略提示修正参数；如果无法修正，向用户说明限制。"
+            ),
+        )
+
+    if is_skill_tool(name) and reason in {"tool_failure", "empty_result"}:
+        return FallbackPolicyDecision(
+            action="switch_to_realtime_research",
+            retry_original_tool=False,
+            system_hint=(
+                "Skill 工具失败后不要继续重试同一个 Skill。"
+                "请切换到具备 search.discovery / web.fetch 能力的实时研究工具，"
+                "或在已有 URL 时使用 fetch_url；若没有可用研究工具，请说明失败原因。"
+            ),
+        )
+
+    if is_mcp_tool(name) and reason == "no_search_results":
+        return FallbackPolicyDecision(
+            action="reformulate_search",
+            retry_original_tool=False,
+            system_hint=(
+                "搜索没有有效结果，不要用同一查询重复搜索。"
+                "请改写查询词、降低限定条件，或基于已有证据说明未找到数据。"
+            ),
+        )
+
+    if reason == "empty_result":
+        return FallbackPolicyDecision(
+            action="try_alternative_tool",
+            retry_original_tool=False,
+            system_hint=(
+                "工具返回空结果，不要原样重试。"
+                "请尝试其他可用工具、换一种参数，或向用户说明无法取得结果。"
+            ),
+        )
+
+    if validation.retryable:
+        return FallbackPolicyDecision(
+            action="retry_with_revised_arguments",
+            retry_original_tool=False,
+            system_hint=(
+                "工具失败但可能可恢复。请先修正参数或选择更合适的工具，"
+                "不要用完全相同的参数重复调用。"
+            ),
+        )
+
+    return FallbackPolicyDecision(
+        action="explain_limitation",
+        retry_original_tool=False,
+        system_hint="当前失败不可自动恢复，请向用户说明限制和已尝试的路径。",
+    )
+
+
 # ── Temporal argument normalisation ──────────────────────────────────────────
 
 
@@ -423,5 +508,13 @@ def validation_trace_payload(
         "reason": validation.reason,
         "retryable": validation.retryable,
         "hint": validation.fallback_hint,
+    }
+
+
+def fallback_trace_payload(decision: FallbackPolicyDecision) -> dict[str, Any]:
+    return {
+        "fallbackAction": decision.action,
+        "fallbackRetryOriginalTool": decision.retry_original_tool,
+        "fallbackHint": decision.system_hint,
     }
 

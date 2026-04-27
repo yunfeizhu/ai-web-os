@@ -1155,6 +1155,7 @@ async def get_tools_for_model(
     model: str,
     user_message: str | None = None,
     skill_context: dict | None = None,
+    include_external_mcp: bool = True,
 ) -> list[dict]:
     """Return all tools applicable for this model and context.
 
@@ -1188,21 +1189,22 @@ async def get_tools_for_model(
         tools.append(RETRIEVE_KNOWLEDGE_SCHEMA)
 
     # ── MCP tools (cached) ─────────────────────────────────────
-    for route in await _list_external_mcp_tool_routes():
-        tools.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": route["alias"],
-                    "description": _format_mcp_tool_description(
-                        route["app_name"],
-                        route["tool_name"],
-                        route["description"],
-                    ),
-                    "parameters": route["input_schema"],
-                },
-            }
-        )
+    if include_external_mcp:
+        for route in await _list_external_mcp_tool_routes():
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": route["alias"],
+                        "description": _format_mcp_tool_description(
+                            route["app_name"],
+                            route["tool_name"],
+                            route["description"],
+                        ),
+                        "parameters": route["input_schema"],
+                    },
+                }
+            )
 
     # ── User skill tools ───────────────────────────────────────
     # Script-backed skills: direct tools; first call may return guide text.

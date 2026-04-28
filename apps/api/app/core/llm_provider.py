@@ -520,6 +520,16 @@ async def agent_loop(
 
     graph = AgentGraphRuntime(request_id=request_id)
     yield ("status", graph.status("build_context"))
+    yield (
+        "status",
+        graph.status(
+            "route",
+            agentMode="subagent" if is_subagent else agent_mode,
+            activeAgent=str(ctx.get("active_agent") or ("subagent" if is_subagent else "lead")),
+            toolCount=len(tools),
+            workflowPlanned=bool(workflow_plan),
+        ),
+    )
 
     def _workflow_tool_event(parsed_call: dict, result: str, error: bool) -> dict:
         event = {
@@ -646,6 +656,15 @@ async def agent_loop(
         )
         if not has_tool_calls:
             # Model decided not to call any tools — final answer already streamed
+            yield (
+                "status",
+                graph.status(
+                    "synthesize",
+                    source="model_final",
+                    toolCalls=0,
+                    delegated=False,
+                ),
+            )
             yield ("status", graph.status("respond"))
             workflow_summary = _workflow_summary_event()
             if workflow_summary:
@@ -738,7 +757,7 @@ async def agent_loop(
                 yield (
                     "status",
                     graph.status(
-                        "execute_tool",
+                        "delegate",
                         tool=parsed_call["name"],
                         status="multi_agent_dispatch",
                         agentMode="manager_subagents",
@@ -765,6 +784,22 @@ async def agent_loop(
                 result = build_subagent_tool_result(subagent_result_payloads) if subagent_result_payloads else '{"results": {}}'
                 if _delegate_result_has_sufficient_search(result):
                     successful_search_count += 1
+                failed_subagents = [
+                    payload
+                    for payload in subagent_result_payloads
+                    if isinstance(payload, dict) and payload.get("failed")
+                ]
+                yield (
+                    "status",
+                    graph.status(
+                        "synthesize",
+                        source="delegate_task",
+                        delegated=True,
+                        taskCount=len(specs) if isinstance(specs, list) else 0,
+                        resultCount=len(subagent_result_payloads),
+                        failedCount=len(failed_subagents),
+                    ),
+                )
                 context_result = compact_tool_result_for_context(
                     tool_name=parsed_call["name"],
                     result=result,
@@ -974,6 +1009,16 @@ async def agent_loop(
                     **fallback_trace_payload(fallback_decision),
                 ),
             )
+            yield (
+                "status",
+                graph.status(
+                    "evaluate",
+                    tool=parsed_call["name"],
+                    error=display_error,
+                    validationReason=validation.reason,
+                    fallbackAction=fallback_decision.action,
+                ),
+            )
 
             yield ("tool_result", _workflow_tool_event(parsed_call, result, display_error))
 
@@ -1002,10 +1047,19 @@ async def agent_loop(
                     ),
                 })
 
-    yield ("status", graph.status("respond", reason="max_tool_calls"))
-    if is_subagent:
-        return
     workflow_summary = _workflow_summary_event()
     if workflow_summary:
         yield ("status", workflow_summary)
+    yield (
+        "status",
+        graph.status(
+            "synthesize",
+            source="max_tool_calls",
+            delegated=False,
+            toolCalls=len(executed_tool_signatures),
+        ),
+    )
+    yield ("status", graph.status("respond", reason="max_tool_calls"))
+    if is_subagent:
+        return
     yield ("token", _MAX_TOOL_CALLS_WARNING)

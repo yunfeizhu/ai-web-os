@@ -10,13 +10,11 @@ import {
 } from "react";
 import {
   Activity,
-  Boxes,
   Loader2,
   Pencil,
   Play,
   Plus,
   Power,
-  RefreshCw,
   Sparkles,
   Trash2,
   Wrench,
@@ -104,7 +102,6 @@ const DEFAULT_FORM: MCPFormState = {
 
 export function AppManager() {
   const [apps, setApps] = useState<ManagedApp[]>([]);
-  const [loading, setLoading] = useState(false);
   const [savingForm, setSavingForm] = useState(false);
   const [form, setForm] = useState<MCPFormState>(DEFAULT_FORM);
   const [isIdCustomized, setIsIdCustomized] = useState(false);
@@ -121,13 +118,8 @@ export function AppManager() {
   const formRef = useRef<HTMLDivElement | null>(null);
 
   const loadApps = async () => {
-    setLoading(true);
-    try {
-      const data = await apiFetch<ManagedApp[]>("/apps");
-      setApps(data);
-    } finally {
-      setLoading(false);
-    }
+    const data = await apiFetch<ManagedApp[]>("/apps");
+    setApps(data);
   };
 
   useEffect(() => {
@@ -138,10 +130,6 @@ export function AppManager() {
   const externalAppMap = useMemo(
     () => new Map(externalApps.map((app) => [app.id, app])),
     [externalApps],
-  );
-  const activeCount = useMemo(
-    () => apps.filter((app) => app.runtime?.status === "active").length,
-    [apps],
   );
   const isEditing = Boolean(editingAppId);
   const editingApp = editingAppId ? externalAppMap.get(editingAppId) ?? null : null;
@@ -336,42 +324,6 @@ export function AppManager() {
   return (
     <div className="space-y-5">
       <SectionTitle>扩展能力</SectionTitle>
-
-      <div
-        className="rounded-2xl p-4"
-        style={{ background: "var(--panel-bg-soft)", border: "0.5px solid var(--border)" }}
-      >
-        <div className="mb-4 flex items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 text-[15px] font-semibold">
-              <Boxes size={15} />
-              扩展总览
-            </div>
-            <div className="mt-1 text-[13px]" style={{ color: "var(--t2)" }}>
-              这里统一管理外部 MCP 服务，以及后续会接入的 Skills 技能。
-            </div>
-          </div>
-          <button
-            onClick={async () => {
-              await apiFetch("/apps/rescan", { method: "POST" });
-              await loadApps();
-            }}
-            className="inline-flex h-9 items-center justify-center rounded-lg px-3 text-[13px] leading-none"
-            style={{ background: "var(--control-bg)" }}
-          >
-            <span className="inline-flex items-center gap-1.5 leading-none">
-              <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-              重新扫描
-            </span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <StatCard label="外部 MCP 服务" value={externalApps.length} tone="blue" />
-          <StatCard label="活跃连接" value={activeCount} tone="green" />
-          <StatCard label="已发现扩展" value={externalApps.length} tone="neutral" />
-        </div>
-      </div>
 
       <div
         ref={formRef}
@@ -871,39 +823,6 @@ function SubsectionTitle({ children }: { children: ReactNode }) {
     <h3 className="text-[14px] font-semibold" style={{ color: "var(--t2)" }}>
       {children}
     </h3>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: number;
-  tone: "neutral" | "blue" | "green";
-}) {
-  const toneStyles = {
-    neutral: { background: "var(--panel-bg)", color: "var(--t1)" },
-    blue: { background: "rgba(0,122,255,0.08)", color: "#007AFF" },
-    green: { background: "rgba(16,185,129,0.10)", color: "#059669" },
-  }[tone];
-
-  return (
-    <div
-      className="rounded-xl p-3"
-      style={{ background: "var(--panel-bg-raised)", border: "0.5px solid var(--border-faint)" }}
-    >
-      <div className="text-[12px]" style={{ color: "var(--t3)" }}>
-        {label}
-      </div>
-      <div
-        className="mt-2 inline-flex rounded-full px-2.5 py-1 text-[14px] font-semibold"
-        style={toneStyles}
-      >
-        {value}
-      </div>
-    </div>
   );
 }
 

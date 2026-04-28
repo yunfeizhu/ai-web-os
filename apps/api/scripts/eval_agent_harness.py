@@ -37,7 +37,7 @@ from app.core.agent_harness import (  # noqa: E402
     tool_requires_confirmation,
     validate_tool_result,
 )
-from app.core.agent_graph import AgentGraphRuntime  # noqa: E402
+from app.core.agent_graph import AgentGraphRuntime, GRAPH_NODES  # noqa: E402
 from app.core import context_manager as context_manager_module  # noqa: E402
 from app.core import evidence_bundle as evidence_bundle_module  # noqa: E402
 from app.core import subagent as subagent_module  # noqa: E402
@@ -222,7 +222,13 @@ async def main() -> None:
     checkpoint = graph.get_checkpoint()
     _assert(checkpoint is not None, "LangGraph checkpoint should exist after status call")
 
-    # 9. Month-only weather queries should be normalized to the current year.
+    # 9. Multi-Agent 2.0 graph facade exposes explicit orchestration nodes.
+    for node in ("route", "delegate", "synthesize", "evaluate"):
+        _assert(node in GRAPH_NODES, f"explicit graph node missing: {node}")
+        node_event = graph.status(node, marker=node)
+        _assert(node_event["node"] == node, f"graph should checkpoint {node}: {node_event}")
+
+    # 10. Month-only weather queries should be normalized to the current year.
     normalized_args = normalize_temporal_tool_args(
         tool_name="mcp_tavily_search",
         args={"query": "日本5月天气 2025年 气温 降雨量 旅游季节"},
@@ -954,7 +960,7 @@ async def main() -> None:
         f"Skill failures must switch to realtime research: {fallback_decision}",
     )
 
-    print("Agent Harness eval passed: 30 cases")
+    print("Agent Harness eval passed: 31 cases")
 
 
 if __name__ == "__main__":

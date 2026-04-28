@@ -40,24 +40,67 @@ export interface ExtensionSummary {
   category: string;
   permissions: string[];
   tools: ExtensionTool[];
+  runtime?: {
+    tool_count?: number | null;
+    status?: string | null;
+  };
   transport?: string | null;
   lastError?: string | null;
 }
 
-export function summarizeExtensions(extensions: ExtensionSummary[]) {
-  return {
-    total: extensions.length,
-    apps: extensions.filter((item) => item.kind === "app").length,
-    mcp: extensions.filter((item) => item.kind === "mcp").length,
-    skills: extensions.filter((item) => item.kind === "skill").length,
-    available: extensions.filter((item) => item.status === "ok").length,
-    disabled: extensions.filter((item) => item.status === "disabled").length,
-    attention: extensions.filter((item) => item.status === "warning" || item.status === "error").length,
-    tools: extensions.reduce((sum, item) => sum + item.tools.length, 0),
-  };
+function hasExtensionAttention(extension: ExtensionSummary) {
+  return extension.status === "warning" || extension.status === "error";
 }
 
-type Filter = "all" | ExtensionKind | "attention";
+export function isManageableExtension(extension: ExtensionSummary) {
+  return extension.kind === "mcp";
+}
+
+export function shouldShowTransportBadge(extension: ExtensionSummary) {
+  if (!extension.transport) return false;
+  if (extension.source === "builtin" && extension.transport === "builtin") return false;
+  return true;
+}
+
+export function getSourceBadgeLabel(source: string) {
+  if (source === "builtin") return "系统内置";
+  if (source === "local") return "本地安装";
+  if (source === "external") return "外部扩展";
+  return source || "未知来源";
+}
+
+export function formatRuntimeStatus(status: string) {
+  if (status === "available") return "可用";
+  if (status === "active") return "运行中";
+  if (status === "inactive") return "未连接";
+  if (status === "disabled") return "已停用";
+  if (status === "error" || status === "failed") return "异常";
+  if (status === "warning" || status === "degraded") return "需关注";
+  return status || "未知";
+}
+
+export function getExtensionToolCount(extension: ExtensionSummary) {
+  const runtimeToolCount = extension.runtime?.tool_count;
+  if (typeof runtimeToolCount === "number") return runtimeToolCount;
+  if (extension.kind === "mcp" && extension.tools.length === 0 && extension.runtimeStatus !== "active") {
+    return null;
+  }
+  return extension.tools.length;
+}
+
+export function summarizeExtensions(extensions: ExtensionSummary[]) {
+  const manageableExtensions = extensions.filter(isManageableExtension);
+  return {
+    total: manageableExtensions.length,
+    apps: 0,
+    mcp: manageableExtensions.filter((item) => item.kind === "mcp").length,
+    skills: manageableExtensions.filter((item) => item.kind === "skill").length,
+    available: manageableExtensions.filter((item) => item.status === "ok").length,
+    disabled: manageableExtensions.filter((item) => item.status === "disabled").length,
+    attention: manageableExtensions.filter(hasExtensionAttention).length,
+    tools: manageableExtensions.reduce((sum, item) => sum + (getExtensionToolCount(item) ?? 0), 0),
+  };
+}
 
 const KIND_META: Record<ExtensionKind, { label: string; icon: React.ReactNode; color: string }> = {
   app: { label: "App", icon: <AppWindow size={13} />, color: "#0EA5E9" },
@@ -69,7 +112,6 @@ export function ExtensionCenter() {
   const [extensions, setExtensions] = useState<ExtensionSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
 
   const loadExtensions = async () => {
     setLoading(true);
@@ -87,18 +129,12 @@ export function ExtensionCenter() {
     loadExtensions().catch(() => undefined);
   }, []);
 
-  const summary = useMemo(() => summarizeExtensions(extensions), [extensions]);
-  const filtered = useMemo(() => {
-    if (filter === "all") return extensions;
-    if (filter === "attention") {
-      return extensions.filter((item) => item.status === "warning" || item.status === "error");
-    }
-    return extensions.filter((item) => item.kind === filter);
-  }, [extensions, filter]);
+  const manageableExtensions = useMemo(() => extensions.filter(isManageableExtension), [extensions]);
+  const summary = useMemo(() => summarizeExtensions(manageableExtensions), [manageableExtensions]);
 
   return (
     <div className="space-y-5">
-      <SectionTitle>扩展中心 2.0</SectionTitle>
+      <SectionTitle>扩展中心</SectionTitle>
 
       <section
         className="relative overflow-hidden rounded-3xl p-5"
@@ -117,13 +153,13 @@ export function ExtensionCenter() {
             <div className="mb-2 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[12px] font-medium"
               style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
               <ShieldCheck size={13} />
-              本地优先能力控制台
+              本机扩展与能力
             </div>
             <h3 className="text-[22px] font-semibold tracking-[-0.02em]" style={{ color: "var(--t1)" }}>
-              Apps / Skills / MCP 的统一扩展目录
+              管理已接入的 MCP 服务
             </h3>
             <p className="mt-2 max-w-2xl text-[13px] leading-relaxed" style={{ color: "var(--t2)" }}>
-              这里只做本地能力的发现、状态、权限和工具可见性，不做云端 Marketplace。安装、连接和密钥等动作仍复用下方已有管理面板。
+              查看每个 MCP 服务是否连接、需要哪些权限，以及会向 AI 助手开放哪些工具。Skills 可在下方技能管理区查看和配置。
             </p>
           </div>
           <button
@@ -132,41 +168,17 @@ export function ExtensionCenter() {
             style={{ background: "var(--accent)", color: "#fff" }}
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            刷新目录
+            刷新
           </button>
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-7">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <Metric label="总扩展" value={summary.total} />
-        <Metric label="Apps" value={summary.apps} />
         <Metric label="MCP" value={summary.mcp} />
-        <Metric label="Skills" value={summary.skills} />
         <Metric label="可用" value={summary.available} tone="green" />
-        <Metric label="需关注" value={summary.attention} tone="amber" />
+        <Metric label="需处理" value={summary.attention} tone="amber" />
         <Metric label="工具" value={summary.tools} tone="blue" />
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {([
-          ["all", "全部"],
-          ["app", "Apps"],
-          ["mcp", "MCP"],
-          ["skill", "Skills"],
-          ["attention", "需关注"],
-        ] as const).map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setFilter(id)}
-            className="rounded-full px-3 py-1.5 text-[12px] font-medium"
-            style={{
-              background: filter === id ? "var(--accent)" : "var(--control-bg)",
-              color: filter === id ? "#fff" : "var(--t2)",
-            }}
-          >
-            {label}
-          </button>
-        ))}
       </div>
 
       {error ? (
@@ -176,12 +188,12 @@ export function ExtensionCenter() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        {filtered.map((extension) => (
+        {manageableExtensions.map((extension) => (
           <ExtensionCard key={`${extension.kind}:${extension.id}`} extension={extension} />
         ))}
       </div>
 
-      {!loading && filtered.length === 0 ? (
+      {!loading && manageableExtensions.length === 0 ? (
         <div
           className="rounded-2xl p-4 text-[13px]"
           style={{ background: "var(--panel-bg-soft)", border: "0.5px solid var(--border)", color: "var(--t2)" }}
@@ -209,8 +221,8 @@ function ExtensionCard({ extension }: { extension: ExtensionSummary }) {
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <Badge icon={kindMeta.icon} label={kindMeta.label} color={kindMeta.color} />
             <Badge icon={statusMeta.icon} label={statusMeta.label} color={statusMeta.color} />
-            <Badge label={extension.source === "builtin" ? "builtin" : "local"} />
-            {extension.transport ? <Badge label={extension.transport} /> : null}
+            <Badge label={getSourceBadgeLabel(extension.source)} />
+            {shouldShowTransportBadge(extension) ? <Badge label={extension.transport || ""} /> : null}
           </div>
           <h4 className="truncate text-[15px] font-semibold" style={{ color: "var(--t1)" }}>
             {extension.name}
@@ -226,9 +238,7 @@ function ExtensionCard({ extension }: { extension: ExtensionSummary }) {
 
       <div className="grid grid-cols-2 gap-2 text-[12px]">
         <Info label="ID" value={extension.id} />
-        <Info label="运行状态" value={extension.runtimeStatus} />
         <Info label="分类" value={extension.category || "-"} />
-        <Info label="工具数" value={String(extension.tools.length)} />
       </div>
 
       {extension.permissions.length > 0 ? (
@@ -249,7 +259,7 @@ function ExtensionCard({ extension }: { extension: ExtensionSummary }) {
         <div className="mt-3">
           <div className="mb-1 flex items-center gap-1.5 text-[12px] font-medium" style={{ color: "var(--t3)" }}>
             <Wrench size={12} />
-            暴露工具
+            可用工具
           </div>
           <div className="space-y-1.5">
             {extension.tools.slice(0, 4).map((tool) => (

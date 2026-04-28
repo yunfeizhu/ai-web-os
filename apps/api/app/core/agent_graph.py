@@ -29,10 +29,14 @@ except Exception:  # pragma: no cover - dependency fallback for broken envs
 
 GRAPH_NODES = (
     "build_context",
+    "route",
     "llm_decide",
     "policy_guard",
     "execute_tool",
+    "delegate",
     "validate_result",
+    "evaluate",
+    "synthesize",
     "respond",
 )
 

@@ -203,13 +203,12 @@
 
 ## 阶段六：多 Agent 协作与完善
 
-状态：进行中
+状态：已完成
 
 - [x] AI 助手统一入口增强
   - [x] 跨 App 操作入口统一迁移到 AI 助手
   - [x] 系统 App 本地优先路由：邮件 / 日历 / 文件 / 文档 / 笔记 / 白板
   - [x] 输入区系统 App 候选入口
-  - [ ] 独立系统级助手入口（可选，暂缓）
 - [x] Skills 渐进加载 / 工具描述路由
   - [x] 首轮只注入 Skill 名称 / 描述 / 路径等发现元信息
   - [x] 脚本型 Skill 作为 `skill_*` function calling 工具直接暴露，靠工具描述与模型语义选择调用
@@ -258,26 +257,26 @@
   - [x] EvidenceBundle 增加搜索结果确定性事实抽取：搜索标题、摘要、链接、时间会提升为 `news_item` / `weather_result` / `market_result` / `search_result`，避免模型摘要或超时 fallback 丢掉已搜到的数据
   - [x] 实验性开启 `toolEvidence` / `mergedToolResults`：子 Agent 的 compact 工具结果会合并进入 `delegate_task` 返回，Lead Agent 可直接看到 Skill/API 原始输出，验证结构化抽取漏字段问题
   - [x] 子 Agent 工具预算耗尽改为结构化状态 `maxToolCallsReached` / `stopReason`，不再把“已达到最大工具调用次数”混入自然语言 answer；前端默认展示证据摘要和预算状态，原始 answer 仅作为深层调试输出
-  - [x] Harness eval 增至 30 个用例，覆盖子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 search/extract capability policy、EvidenceBundle 结构化交接、搜索结果确定性 facts、merged tool results、重复搜索硬停止、max-tool 结构化状态、“冲突”策略词回归与 FallbackPolicy
+  - [x] Harness eval 增至 31 个用例，覆盖子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 search/extract capability policy、EvidenceBundle 结构化交接、搜索结果确定性 facts、merged tool results、重复搜索硬停止、max-tool 结构化状态、“冲突”策略词回归、FallbackPolicy 与显式 LangGraph 编排节点
 - [x] 可观测性与评测
   - [x] 基础 Trace / 调用链状态事件
-  - [x] Harness eval 扩展至 30 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程、子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 Search/Extract 能力推断、部分成功校验、EvidenceBundle 交接、搜索结果事实抽取与 merged tool results、重复搜索硬停止、max-tool 结构化状态、“冲突”策略词回归、FallbackPolicy）
+  - [x] Harness eval 扩展至 31 个用例（新增：`tool_requires_confirmation`、skill 描述长度校验、confirmation_store 完整流程、子 Agent 工具面隔离、委派 spec 归一化、子 Agent 启动回归、并发工具事件 ID 隔离、当前轮工具结果压缩、通用 Search/Extract 能力推断、部分成功校验、EvidenceBundle 交接、搜索结果事实抽取与 merged tool results、重复搜索硬停止、max-tool 结构化状态、“冲突”策略词回归、FallbackPolicy、显式 LangGraph route/delegate/synthesize/evaluate 节点）
   - [x] Trace 后端集成：Arize Phoenix（`TRACE_PHOENIX_ENDPOINT`）+ LangSmith（`TRACE_LANGSMITH_API_KEY`），零配置零开销
   - [x] 工具调用成功率 / 路由准确率 / 端到端任务完成率离线指标基线
   - [x] 工具调用成功率 / 路由准确率 / 端到端任务完成率真实流量统计（WebSocket 实际请求滚动统计首版，`/api/v1/agents/metrics/traffic` 查询）
   - [x] Token 本地估算统计
   - [x] Provider 精确成本统计已取消（各 provider 与同模型不同计费模式差异过大，不在产品内展示成本）
-- [x] 扩展中心 2.0（本地控制台首版）
-  - [x] 基于现有 MCP / Skill / App 管理页演进
-  - [x] 统一扩展目录：Apps / Skills / MCP 的来源、版本、权限、工具与运行状态
+- [x] 扩展中心（本地 MCP / Skills 管理入口）
+  - [x] MCP 概览聚焦外部 MCP 服务，隐藏系统内置 App，避免和系统能力清单混淆
   - [x] MCP 本地接入 / 编辑 / 启停 / 健康检查沿用现有管理页
-  - [ ] Skill / App 的本地安装、版本更新与权限声明校验深化
-- [ ] 多 Agent 2.0（评估中）
+  - [x] Skills 保留在本地技能管理区展示与配置，避免与上方概览重复
+  - [x] Skill 本地安装 / 更新 / 删除 API 补齐，前端仍以现有 Skills 管理面板为主
+- [x] 多 Agent 2.0
   - [x] Lead Agent + Sub-Agent 初版：角色化任务拆解、并行执行、结果汇总
   - [x] 基础检查点：Harness 节点状态已进入 LangGraph checkpoint
   - [x] PostgresSaver 持久化检查点（`langgraph-checkpoint-postgres` + `psycopg[binary,pool]`）
-  - [ ] Conversation Handoff：active_agent、上下文过滤、ToolMessage 配对、跨轮记忆归属
-  - [ ] 完整 LangGraph StateGraph：route / delegate / synthesize / evaluate 节点显式化
+  - [x] Conversation Handoff 首版：`active_agent`、Lead 历史上下文过滤、ToolMessage 成对保留、跨轮记忆 owner 归属
+  - [x] 完整 LangGraph StateGraph：route / delegate / synthesize / evaluate 节点显式化
   - [x] 委派准确率、工具成功率、端到端任务完成率 eval（`scripts/eval_multi_agent_metrics.py`：delegationAccuracy / subagentToolSuccessRate / taskCompletionRate）
 - [x] 性能与产品打磨
   - [x] WebSocket 重连：指数退避重试（1s→2s→4s→8s→16s）+ 30 秒心跳 ping

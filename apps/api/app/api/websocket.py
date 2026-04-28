@@ -17,6 +17,11 @@ from app.core.agent_traffic_metrics import (
 from app.core.app_registry import get_app_registry
 from app.core.confirmation_store import create_confirmation, discard_confirmation
 from app.core.database import AsyncSessionLocal
+from app.core.agent_handoff import (
+    build_handoff_context,
+    memory_user_id_for_agent,
+    normalize_active_agent,
+)
 from app.core.llm_provider import agent_loop
 from app.core.agent_usage import estimate_agent_usage
 from app.core.skill_context import build_skill_augmented_system_prompt
@@ -178,6 +183,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 enable_memory: bool = payload.get("enableMemory", True)
                 user_id: str = payload.get("userId", DEFAULT_USER_ID)
                 compat_type: str = payload.get("compatType", "openai")
+                active_agent = normalize_active_agent(payload.get("activeAgent"))
+                memory_user_id = memory_user_id_for_agent(user_id, active_agent)
                 traffic_recorded = False
 
                 if not api_key:
@@ -214,10 +221,37 @@ async def websocket_endpoint(websocket: WebSocket):
                             user_message,
                             conversation_id=conv_id,
                             requested_app_id=app_id,
+                            )
+
+                    handoff_context = build_handoff_context(
+                        history,
+                        active_agent=active_agent,
+                    )
+                    if (
+                        handoff_context.dropped_tool_calls
+                        or handoff_context.dropped_tool_results
+                        or handoff_context.dropped_subagent_messages
+                    ):
+                        await websocket.send_json(
+                            {
+                                "type": "status",
+                                "requestId": request_id,
+                                "payload": {
+                                    "status": "handoff_context",
+                                    "activeAgent": handoff_context.active_agent,
+                                    "droppedToolCalls": handoff_context.dropped_tool_calls,
+                                    "droppedToolResults": handoff_context.dropped_tool_results,
+                                    "droppedSubagentMessages": handoff_context.dropped_subagent_messages,
+                                },
+                            }
                         )
 
                     if enable_memory and memory_mgr:
-                        memories = await memory_mgr.search(query=user_message, user_id=user_id, limit=5)
+                        memories = await memory_mgr.search(
+                            query=user_message,
+                            user_id=memory_user_id,
+                            limit=5,
+                        )
                         relevant = [
                             item
                             for item in memories
@@ -257,7 +291,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         else None
                     )
 
-                    input_messages = [*history, {"role": "user", "content": user_message}]
+                    input_messages = [
+                        *handoff_context.messages,
+                        {"role": "user", "content": user_message},
+                    ]
+                    skill_info = {
+                        **(skill_info or {}),
+                        "active_agent": handoff_context.active_agent,
+                    }
 
                     async for event_type, event_payload in agent_loop(
                         model=model,
@@ -384,7 +425,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 if enable_memory and memory_mgr and full_response:
                     await memory_mgr.add_async(
-                        user_id=user_id,
+                        user_id=memory_user_id,
                         messages=[
                             {"role": "user", "content": user_message},
                             {"role": "assistant", "content": full_response},

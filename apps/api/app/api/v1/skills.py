@@ -12,6 +12,13 @@ class UpdateSkillApiKeyRequest(BaseModel):
     api_key: str = ""
 
 
+class SkillUpsertRequest(BaseModel):
+    name: str
+    description: str = ""
+    content: str = ""
+    enabled: bool = True
+
+
 @router.get("")
 async def list_skills():
     registry = get_app_registry()
@@ -25,6 +32,46 @@ async def get_skill(skill_id: str):
         return registry.get_user_skill(skill_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/{skill_id}")
+async def create_skill(skill_id: str, data: SkillUpsertRequest):
+    registry = get_app_registry()
+    try:
+        return registry.upsert_user_skill(
+            skill_id,
+            name=data.name,
+            description=data.description,
+            content=data.content,
+            enabled=data.enabled,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/{skill_id}")
+async def update_skill(skill_id: str, data: SkillUpsertRequest):
+    registry = get_app_registry()
+    try:
+        return registry.upsert_user_skill(
+            skill_id,
+            name=data.name,
+            description=data.description,
+            content=data.content,
+            enabled=data.enabled,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.delete("/{skill_id}")
+async def delete_skill(skill_id: str):
+    registry = get_app_registry()
+    try:
+        registry.delete_user_skill(skill_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"status": "deleted"}
 
 
 @router.put("/{skill_id}/api-key")

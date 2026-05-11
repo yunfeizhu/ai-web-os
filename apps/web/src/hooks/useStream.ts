@@ -34,6 +34,10 @@ export interface ToolCallEvent {
   name: string;
   displayName?: string | null;
   args: Record<string, unknown>;
+  internal?: boolean;
+  skipped?: boolean;
+  skipReason?: string;
+  displayResult?: string;
   subagentId?: string;
   subagentTask?: string;
   agentName?: string;
@@ -46,6 +50,10 @@ export interface ToolResultEvent {
   displayName?: string | null;
   result: string;
   error: boolean;
+  internal?: boolean;
+  skipped?: boolean;
+  skipReason?: string;
+  displayResult?: string;
   subagentId?: string;
   subagentTask?: string;
   agentName?: string;
@@ -369,7 +377,7 @@ export async function streamChat(
         history: params.history,
         systemPrompt:
           params.systemPrompt ??
-          "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。",
+          "你是 AI-Web OS 的智能助手，简洁友好地回答用户问题。",
         apiKey: params.apiKey,
         apiBase: params.apiBase ?? null,
         enableMemory: params.enableMemory ?? true,

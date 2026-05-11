@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
@@ -11,6 +11,7 @@ import { decodeModel, PROVIDERS } from "@/apps/settings/providers";
 import { MessageBubble } from "./MessageBubble";
 import { ModelPicker } from "./ModelPicker";
 import { shouldSuppressDuplicateSubmit } from "./chatSendGate";
+import { isInternalToolEvent, isVisibleToolCall } from "./toolCallVisibility";
 import type { AppWorkflowSummary, ChatMessage, Conversation } from "./types";
 
 const API = `${API_BASE}/agents`;
@@ -207,10 +208,6 @@ function getToolEventKey(event: {
   if (!owner) return event.id;
   if (event.id.startsWith(`${owner}::`)) return event.id;
   return `${owner}::${event.id}`;
-}
-
-function isSyntheticToolPolicyResult(result?: string | null) {
-  return typeof result === "string" && result.trimStart().startsWith("ToolPolicyGuard:");
 }
 
 type MessageListProps = {
@@ -435,6 +432,11 @@ export function AiChat() {
                 displayName?: string | null;
                 args: Record<string, unknown>;
                 result?: string | null;
+                error?: boolean | null;
+                internal?: boolean | null;
+                skipped?: boolean | null;
+                skipReason?: string | null;
+                displayResult?: string | null;
                 subagentId?: string | null;
                 subagentTask?: string | null;
                 agentName?: string | null;
@@ -478,13 +480,18 @@ export function AiChat() {
               displayName: tc.displayName ?? null,
               args: tc.args,
               result,
+              error: tc.error ?? false,
+              internal: tc.internal ?? false,
+              skipped: tc.skipped ?? false,
+              skipReason: tc.skipReason ?? undefined,
+              displayResult: tc.displayResult ?? undefined,
               status: "done" as const,
               subagentId: tc.subagentId ?? undefined,
               subagentTask: tc.subagentTask ?? undefined,
               agentName: tc.agentName ?? undefined,
               role: tc.role ?? undefined,
             };
-          }).filter((tc) => !isSyntheticToolPolicyResult(tc.result));
+          }).filter(isVisibleToolCall);
 
           return {
             id: m.id,
@@ -770,7 +777,7 @@ export function AiChat() {
             providerId,
             history,
             systemPrompt:
-              "你是 AI-Native OS 的 AI 助手。你可以理解用户意图，必要时使用工具操作浏览器、文件、知识库或其他系统能力。邮件、日历、文件、文档、笔记、白板等属于系统内置 App 的能力，不能用浏览器或第三方网页服务替代；如果用户要处理这些系统能力，应引导用户使用对应 App。回答要简洁，涉及危险操作前应先说明计划并等待用户确认。当用户同时询问多个互相独立的事项时，可以用 delegate_task 并行处理。",
+              "你是 AI-Web OS 的 AI 助手。你可以理解用户意图，必要时使用工具操作浏览器、文件、知识库或其他系统能力。邮件、日历、文件、文档、笔记、白板等属于系统内置 App 的能力，不能用浏览器或第三方网页服务替代；如果用户要处理这些系统能力，应引导用户使用对应 App。回答要简洁，涉及危险操作前应先说明计划并等待用户确认。当用户同时询问多个互相独立的事项时，可以用 delegate_task 并行处理。",
             apiKey,
             apiBase,
             enableMemory: true,
@@ -853,6 +860,9 @@ export function AiChat() {
             },
             onToolCall: (event) => {
               setStatusText("");
+              if (isInternalToolEvent({ ...event, result: undefined, error: false })) {
+                return;
+              }
               const toolEventKey = getToolEventKey(event);
               liveToolArgsRef.current[toolEventKey] = event.args;
               setMessages((prev) =>
@@ -871,6 +881,10 @@ export function AiChat() {
                               ...tc,
                               args: event.args,
                               displayName: event.displayName ?? tc.displayName,
+                              internal: event.internal ?? tc.internal,
+                              skipped: event.skipped ?? tc.skipped,
+                              skipReason: event.skipReason ?? tc.skipReason,
+                              displayResult: event.displayResult ?? tc.displayResult,
                             }
                           : tc,
                       ),
@@ -924,6 +938,10 @@ export function AiChat() {
                         subagentTask: event.subagentTask,
                         agentName: event.agentName,
                         role: event.role,
+                        internal: event.internal,
+                        skipped: event.skipped,
+                        skipReason: event.skipReason,
+                        displayResult: event.displayResult,
                       },
                       ...extraPlaceholders,
                     ],
@@ -934,7 +952,7 @@ export function AiChat() {
             onToolResult: (event) => {
               const toolEventKey = getToolEventKey(event);
               const toolArgs = liveToolArgsRef.current[toolEventKey] ?? {};
-              if (!event.error && isSyntheticToolPolicyResult(event.result)) {
+              if (isInternalToolEvent(event)) {
                 setMessages((prev) =>
                   prev.map((m) => {
                     if (m.id !== assistantId) return m;
@@ -962,6 +980,10 @@ export function AiChat() {
                               event.displayName ?? tc.displayName ?? null,
                             result: event.result,
                             error: event.error,
+                            internal: event.internal ?? tc.internal,
+                            skipped: event.skipped ?? tc.skipped,
+                            skipReason: event.skipReason ?? tc.skipReason,
+                            displayResult: event.displayResult ?? tc.displayResult,
                             status: event.error
                               ? ("error" as const)
                               : ("done" as const),

@@ -29,7 +29,7 @@ from app.core.user_errors import user_facing_error_message
 from app.models.conversation import Conversation, Message
 
 DEFAULT_USER_ID = "default"
-DEFAULT_SYSTEM_PROMPT = "你是 AI-Native OS 的智能助手，请简洁、友好地回答用户问题。"
+DEFAULT_SYSTEM_PROMPT = "你是 AI-Web OS 的智能助手，请简洁、友好地回答用户问题。"
 
 
 def _split_token_for_display(token: str, *, chunk_size: int = 72) -> list[str]:

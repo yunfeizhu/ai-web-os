@@ -1,7 +1,7 @@
 [project]
-name = "ai-native-os-api"
+name = "ai-web-os-api"
 version = "0.1.0"
-description = "AI-Native OS Backend API"
+description = "AI-Web OS Backend API"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",

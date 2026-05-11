@@ -25,6 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type { EvidenceBundle, SubagentRun, ToolCall } from "./types";
+import { isVisibleToolCall } from "./toolCallVisibility";
 
 type ToolMeta = {
   label: string;
@@ -413,14 +414,6 @@ function parseJson<T>(value?: string): T | null {
   } catch {
     return null;
   }
-}
-
-function isSyntheticToolPolicyResult(result?: string) {
-  return typeof result === "string" && result.trimStart().startsWith("ToolPolicyGuard:");
-}
-
-function isVisibleToolCall(tc: ToolCall) {
-  return !(tc.error === false && isSyntheticToolPolicyResult(tc.result));
 }
 
 function formatElapsed(ms?: number) {

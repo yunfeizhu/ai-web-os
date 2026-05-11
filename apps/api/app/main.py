@@ -88,7 +88,7 @@ def create_app() -> FastAPI:
     config = get_settings()
 
     app = FastAPI(
-        title="AI-Native OS API",
+        title="AI-Web OS API",
         version="0.2.0",
         lifespan=lifespan,
     )

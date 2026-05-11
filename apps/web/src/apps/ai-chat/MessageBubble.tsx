@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Brain, Check, Copy, RotateCcw, Sparkles } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -11,6 +11,7 @@ import type { AppWorkflowSummary, ChatMessage } from "./types";
 import { buildUsageEstimateLabels } from "./usageEstimate";
 import { ToolCallDisplay } from "./ToolCallDisplay";
 import { summarizeWorkflowForDisplay } from "./workflowSummary";
+import { buildReasoningDisplayText } from "./reasoningDisplay";
 
 interface Props {
   message: ChatMessage;
@@ -311,7 +312,10 @@ function MessageBubbleView({ message, onRetry }: Props) {
       </div>
 
       <div className="relative min-w-0 flex-1">
-        <ReasoningBlock content={message.reasoningContent} />
+        <ReasoningBlock
+          content={message.reasoningContent}
+          streaming={message.streaming}
+        />
         <ToolCallDisplay
           toolCalls={message.toolCalls}
           subagentTokens={message.subagentTokens}
@@ -362,8 +366,23 @@ export const MessageBubble = memo(
     Boolean(prev.onRetry) === Boolean(next.onRetry),
 );
 
-function ReasoningBlock({ content }: { content?: string }) {
-  const text = content?.trim();
+function ReasoningBlock({
+  content,
+  streaming,
+}: {
+  content?: string;
+  streaming?: boolean;
+}) {
+  const text = buildReasoningDisplayText(content);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!streaming) return;
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [text, streaming]);
+
   if (!text) return null;
 
   return (
@@ -385,6 +404,7 @@ function ReasoningBlock({ content }: { content?: string }) {
         <span>思考过程</span>
       </div>
       <div
+        ref={scrollRef}
         className="max-h-56 overflow-auto px-3 py-2 leading-relaxed"
         style={{
           color: "var(--t3)",
@@ -392,7 +412,7 @@ function ReasoningBlock({ content }: { content?: string }) {
           wordBreak: "break-word",
         }}
       >
-        {content}
+        {text}
       </div>
     </div>
   );

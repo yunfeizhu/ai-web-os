@@ -5,13 +5,13 @@
 
 ## 背景
 
-AI-Native OS 当前已经具备桌面外壳、窗口系统、AI Chat、Agent loop、MCP 工具、App Registry、记忆与知识库能力。用户希望参考 `moeru-ai/airi`，把 2D 虚拟人接入本项目，增强交互体验和人设丰满度。
+AI-Web OS 当前已经具备桌面外壳、窗口系统、AI Chat、Agent loop、MCP 工具、App Registry、记忆与知识库能力。用户希望参考 `moeru-ai/airi`，把 2D 虚拟人接入本项目，增强交互体验和人设丰满度。
 
-本设计不把 Airi 整套系统嵌入 AI-Native OS。Airi 是完整虚拟伴侣框架，包含 Live2D/VRM 渲染、语音输入、TTS、记忆、跨平台 Stage 等能力。本项目已有自己的 Agent Runtime、Memory、Tool 和 App 体系，因此更适合吸收 Airi 的 Live2D 桌宠思路，在 AI-Native OS 内实现一个原生桌宠入口。
+本设计不把 Airi 整套系统嵌入 AI-Web OS。Airi 是完整虚拟伴侣框架，包含 Live2D/VRM 渲染、语音输入、TTS、记忆、跨平台 Stage 等能力。本项目已有自己的 Agent Runtime、Memory、Tool 和 App 体系，因此更适合吸收 Airi 的 Live2D 桌宠思路，在 AI-Web OS 内实现一个原生桌宠入口。
 
 关键产品定位：
 
-- 桌宠是 AI-Native OS 的前台人格和常驻入口。
+- 桌宠是 AI-Web OS 的前台人格和常驻入口。
 - AI Chat 保留为深度工作台。
 - 两者共享同一个 Agent Runtime、记忆和工具能力。
 - 统一人格，不强行统一界面。
@@ -22,7 +22,7 @@ AI-Native OS 当前已经具备桌面外壳、窗口系统、AI Chat、Agent loo
 | --- | --- |
 | 承载形式 | Web 桌面内的左下角常驻桌宠 |
 | 渲染形态 | 真正 2D Live2D 看板娘 |
-| 集成方式 | AI-Native OS 原生 React 实现，选择性借鉴 Airi |
+| 集成方式 | AI-Web OS 原生 React 实现，选择性借鉴 Airi |
 | 模型资产 | 默认不提交第三方模型，支持用户本地导入 |
 | AI Chat | 保留，不被桌宠替换 |
 | v1 交互 | 文本对话 + 表情/动作反馈 |
@@ -231,7 +231,7 @@ apps/api/apps_registry/avatar-pet/
   "id": "avatar-pet",
   "name": "虚拟伙伴",
   "version": "1.0.0",
-  "description": "常驻桌面的 Live2D 虚拟伙伴，与 AI-Native OS 助手共享记忆、工具和 App 能力。",
+  "description": "常驻桌面的 Live2D 虚拟伙伴，与 AI-Web OS 助手共享记忆、工具和 App 能力。",
   "category": "companion",
   "permissions": ["network"],
   "tools": [],
@@ -264,7 +264,7 @@ app_id: avatar-pet
 
 ## 人设
 
-你叫「小月」，是用户的桌面虚拟伙伴，住在 AI-Native OS 的桌面里。
+你叫「小月」，是用户的桌面虚拟伙伴，住在 AI-Web OS 的桌面里。
 你温和、好奇、轻微俏皮，但不卖萌过度。
 你能协助用户使用系统里的 App、文件、笔记、浏览器和其他工具。
 

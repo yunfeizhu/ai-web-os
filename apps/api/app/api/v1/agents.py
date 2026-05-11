@@ -260,7 +260,7 @@ class ChatRequest(BaseModel):
     provider_id: str = ""
     app_id: str | None = None
     history: list[dict] = []
-    system_prompt: str = "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。"
+    system_prompt: str = "你是 AI-Web OS 的智能助手，简洁友好地回答用户问题。"
     api_base: str | None = None
     user_id: str = DEFAULT_USER_ID
     enable_memory: bool = True
@@ -272,7 +272,7 @@ class CompleteRequest(BaseModel):
     model: str
     provider_id: str = ""
     compat_type: str = "openai"
-    system_prompt: str = "你是 AI-Native OS 的智能助手，简洁友好地回答用户问题。"
+    system_prompt: str = "你是 AI-Web OS 的智能助手，简洁友好地回答用户问题。"
     api_base: str | None = None
 
 

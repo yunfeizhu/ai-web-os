@@ -857,7 +857,7 @@ export function MailApp({ appState }: MailAppProps) {
                 className="rounded-[20px] border px-3 py-3 text-[12px] leading-6"
                 style={{ borderColor: "rgba(34,197,94,0.12)", background: "rgba(240,253,244,0.9)", color: "#166534" }}
               >
-                邮箱配置只保存在本机 `~/.ai-native-os/mail.json`，不会写入服务器数据库。
+                邮箱配置只保存在本机 `~/.ai-web-os/mail.json`，不会写入服务器数据库。
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="显示名称"><input value={accountDraft.label} onChange={(e) => setAccountDraft((prev) => ({ ...prev, label: e.target.value }))} className="w-full rounded-2xl border px-3 py-2 text-[13px] outline-none" style={fieldStyle} /></Field>

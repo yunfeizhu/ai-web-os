@@ -568,7 +568,7 @@ async def main() -> None:
         "sub-agent should stop repeated searches once discovery evidence is sufficient",
     )
     _assert(
-        not should_stop_search_after_sufficient_discovery(
+        should_stop_search_after_sufficient_discovery(
             tool_name="mcp_tavily_search_eval",
             description="Search the web and return ranked results.",
             args={"query": "美伊冲突 最新新闻 2026年4月"},
@@ -576,7 +576,18 @@ async def main() -> None:
             successful_search_count=1,
             is_subagent=False,
         ),
-        "top-level agent should not inherit sub-agent repeated-search stop policy",
+        "top-level agent should stop repeated searches once discovery evidence is sufficient",
+    )
+    _assert(
+        not should_stop_search_after_sufficient_discovery(
+            tool_name="mcp_tavily_search_eval",
+            description="Search the web and return ranked results.",
+            args={"query": "美伊冲突 最新新闻 2026年4月"},
+            task_text="搜索目前美伊冲突的新闻，并核验原文出处",
+            successful_search_count=1,
+            is_subagent=False,
+        ),
+        "top-level agent should continue when source verification requires full content",
     )
     _assert(
         not task_requires_full_content("搜索目前美伊冲突的新闻"),

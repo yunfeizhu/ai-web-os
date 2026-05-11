@@ -15,6 +15,7 @@ import {
 } from "@/apps/avatar-pet/avatar-chat";
 import { parseAvatarEmotions } from "@/apps/avatar-pet/emotion-parser";
 import type { ChatMessage, ToolCall } from "@/apps/ai-chat/types";
+import { isInternalToolEvent } from "@/apps/ai-chat/toolCallVisibility";
 import {
   streamChat,
   type ToolCallEvent,
@@ -288,6 +289,9 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
           },
           onToolCall: (tool) => {
             if (!isActiveRun(runId)) return;
+            if (isInternalToolEvent({ ...tool, result: undefined, error: false })) {
+              return;
+            }
             const key = toolEventKey(tool);
             updateAssistant(assistantId, (message) => {
               const existing = message.toolCalls ?? [];
@@ -301,6 +305,10 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
                 subagentTask: tool.subagentTask,
                 agentName: tool.agentName,
                 role: tool.role,
+                internal: tool.internal,
+                skipped: tool.skipped,
+                skipReason: tool.skipReason,
+                displayResult: tool.displayResult,
               };
 
               if (existing.some((item) => item.id === key)) {
@@ -321,6 +329,13 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
           onToolResult: (tool) => {
             if (!isActiveRun(runId)) return;
             const key = toolEventKey(tool);
+            if (isInternalToolEvent(tool)) {
+              updateAssistant(assistantId, (message) => ({
+                ...message,
+                toolCalls: (message.toolCalls ?? []).filter((item) => item.id !== key),
+              }));
+              return;
+            }
             updateAssistant(assistantId, (message) => ({
               ...message,
               toolCalls: (message.toolCalls ?? []).map((item) =>
@@ -330,6 +345,10 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
                       displayName: tool.displayName ?? item.displayName,
                       result: tool.result,
                       error: tool.error,
+                      internal: tool.internal ?? item.internal,
+                      skipped: tool.skipped ?? item.skipped,
+                      skipReason: tool.skipReason ?? item.skipReason,
+                      displayResult: tool.displayResult ?? item.displayResult,
                       status: tool.error ? "error" : "done",
                       subagentId: tool.subagentId ?? item.subagentId,
                       subagentTask: tool.subagentTask ?? item.subagentTask,

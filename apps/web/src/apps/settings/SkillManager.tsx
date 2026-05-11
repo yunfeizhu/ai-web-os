@@ -20,8 +20,8 @@ interface ManagedSkill {
   has_api_key?: boolean;
 }
 
-const USER_SKILLS_ROOT = "~/.ai-native-os/skills/user";
-const USER_SKILLS_CONFIG = "~/.ai-native-os/skills.json";
+const USER_SKILLS_ROOT = "~/.ai-web-os/skills/user";
+const USER_SKILLS_CONFIG = "~/.ai-web-os/skills.json";
 
 export function SkillManager() {
   const [skills, setSkills] = useState<ManagedSkill[]>([]);
@@ -123,7 +123,7 @@ export function SkillManager() {
         <InfoCard
           label="本地目录"
           value={USER_SKILLS_ROOT}
-          helper="将每个 Skill 放在一个独立目录下，例如 ~/.ai-native-os/skills/user/my-skill/"
+          helper="将每个 Skill 放在一个独立目录下，例如 ~/.ai-web-os/skills/user/my-skill/"
         />
         <InfoCard
           label="发现规则"

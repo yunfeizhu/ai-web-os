@@ -22,7 +22,7 @@ from pathlib import Path
 
 IS_WINDOWS = platform.system() == "Windows"
 WINDOWS_DOCUMENTS_ROOT = Path.home() / "Documents"
-APP_DOCUMENTS_ROOT = WINDOWS_DOCUMENTS_ROOT / "AI Native OS"
+APP_DOCUMENTS_ROOT = WINDOWS_DOCUMENTS_ROOT / "AI Web OS"
 APP_VIRTUAL_ROOTS = {
     "/Notes": APP_DOCUMENTS_ROOT / "Notes",
     "/Documents": APP_DOCUMENTS_ROOT / "Documents",

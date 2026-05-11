@@ -90,7 +90,7 @@
 │                │ http://localhost:<cdp_port>/json/version          │
 │                ▼                                                   │
 │  ┌─ Docker Desktop (1 container per session) ───────────────────┐  │
-│  │  ai-native-os/browser-session:0.1                            │  │
+│  │  ai-web-os/browser-session:0.1                            │  │
 │  │   ├── Xvfb :99 (1280x800)                                    │  │
 │  │   ├── chromium --remote-debugging-port=9222 (CDP)            │  │
 │  │   ├── x11vnc -display :99 -rfbport 5900                      │  │
@@ -189,7 +189,7 @@
 - `apps/api/app/main.py` — import 并 `include_router(browser_router.router, prefix="/api/v1/browser", tags=["browser"])`；`lifespan` 里 `await BrowserSessionManager.instance().startup()`，`finally` 里 `await BrowserSessionManager.instance().shutdown()`
 - `apps/api/app/core/tools.py:16` — `from app.core.browser_tools import BROWSER_TOOL_SCHEMAS; TOOL_SCHEMAS += BROWSER_TOOL_SCHEMAS`
 - `apps/api/app/core/tools.py:300` `execute_tool` — 加一个分支 `if name.startswith("browser_"): return await dispatch_browser_tool(name, args)`
-- `apps/api/app/config.py` — 新增 `browser_image: str = "ai-native-os/browser-session:0.1"`、`browser_idle_ttl_sec: int = 900`、`browser_max_sessions: int = 4`、`browser_takeover_timeout_sec: int = 600`
+- `apps/api/app/config.py` — 新增 `browser_image: str = "ai-web-os/browser-session:0.1"`、`browser_idle_ttl_sec: int = 900`、`browser_max_sessions: int = 4`、`browser_takeover_timeout_sec: int = 600`
 
 ### Frontend — 新建
 
@@ -273,7 +273,7 @@ client.containers.run(
     shm_size="1g",          # 关键：默认 64MB 会让 Chromium 崩
     mem_limit="1g",
     ports={"9222/tcp": None, "6080/tcp": None},
-    labels={"ai-native-os": "browser-session", "session_id": sid},
+    labels={"ai-web-os": "browser-session", "session_id": sid},
     name=f"ains-browser-{sid[:8]}",
 )
 ```
@@ -304,13 +304,13 @@ client.containers.run(
 ### 1. 镜像构建
 
 ```
-docker build -t ai-native-os/browser-session:0.1 infra/browser-container
+docker build -t ai-web-os/browser-session:0.1 infra/browser-container
 ```
 
 ### 2. 容器烟测（脱离后端独立验证）
 
 ```
-docker run --rm -p 9222:9222 -p 6080:6080 --shm-size=1g ai-native-os/browser-session:0.1
+docker run --rm -p 9222:9222 -p 6080:6080 --shm-size=1g ai-web-os/browser-session:0.1
 ```
 
 - 浏览器打开 `http://localhost:9222/json/version` → 应返回包含 `webSocketDebuggerUrl` 的 JSON
@@ -322,7 +322,7 @@ docker run --rm -p 9222:9222 -p 6080:6080 --shm-size=1g ai-native-os/browser-ses
 - 进 `apps/api`：`uv run uvicorn app.main:app --reload`
 - `curl -X POST http://localhost:8000/api/v1/browser/sessions` → 5s 内返回 `{id, status: "ready", vnc_ws_url, ...}`
 - `curl http://localhost:8000/api/v1/browser/sessions/<id>` → status ready, current_url about:blank
-- `docker ps --filter label=ai-native-os=browser-session` → 一个容器在跑
+- `docker ps --filter label=ai-web-os=browser-session` → 一个容器在跑
 - Ctrl+C uvicorn → 3s 内容器被自动 remove
 - 手动 `docker run` 再启 uvicorn → 启动 log 应出现 "Reaped N stale browser containers"，`docker ps` 干净
 

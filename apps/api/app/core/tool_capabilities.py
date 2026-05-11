@@ -225,22 +225,19 @@ def should_skip_content_fetch_after_search(
 
 def build_search_sufficient_tool_result(successful_search_count: int) -> str:
     return (
-        "ToolPolicyGuard: Previous search.discovery calls already returned usable "
-        f"title/url/snippet evidence ({successful_search_count} result set(s)). "
-        "Do not fetch page bodies for this task. Summarize from the existing search "
-        "results, and mention uncertainty if snippets are insufficient. Use full-page "
-        "fetch/extract only when the user explicitly asks for original text, exact "
-        "quotes, full documents, or fact verification."
+        "内部执行提示：已有搜索发现结果覆盖当前任务的关键需求，"
+        f"共 {successful_search_count} 组可用标题/链接/摘要证据。"
+        "本轮不要再抓取网页正文，请基于已有搜索证据回答；如果摘要仍有不确定性，"
+        "在最终回答中说明不确定性。不要向用户提及内部策略或工具控制规则。"
     )
 
 
 def build_discovery_sufficient_tool_result(successful_search_count: int) -> str:
     return (
-        "ToolPolicyGuard: Previous search.discovery calls already returned usable "
-        f"title/url/snippet evidence ({successful_search_count} result set(s)). "
-        "Do not run more discovery searches for this sub-task. Produce the final "
-        "answer from the existing tool evidence, and mention uncertainty if the "
-        "snippets are insufficient."
+        "内部执行提示：已有搜索发现结果覆盖当前任务的关键需求，"
+        f"共 {successful_search_count} 组可用标题/链接/摘要证据。"
+        "本轮不要继续调用搜索发现工具，请基于已有证据回答；如果仍有不确定性，"
+        "在最终回答中说明不确定性。不要向用户提及内部策略或工具控制规则。"
     )
 
 
@@ -253,13 +250,38 @@ def should_stop_search_after_sufficient_discovery(
     successful_search_count: int = 0,
     is_subagent: bool = False,
 ) -> bool:
-    if not is_subagent or successful_search_count <= 0:
+    if successful_search_count <= 0:
         return False
     capability = infer_tool_capability(tool_name, description)
     if capability != CAPABILITY_SEARCH_DISCOVERY:
         return False
     args_text = json.dumps(args or {}, ensure_ascii=False)
     return not task_requires_full_content(task_text, args_text)
+
+
+def filter_tools_by_disabled_capabilities(
+    tools: list[dict[str, Any]],
+    disabled_capabilities: set[str] | frozenset[str],
+) -> list[dict[str, Any]]:
+    """Return tools whose inferred capability is still available this turn.
+
+    The OpenAI tool-calling pattern works best when unavailable actions are
+    removed before the next model turn instead of asking the model not to call
+    them. Unknown capabilities are kept so custom/local tools remain available.
+    """
+    if not disabled_capabilities:
+        return tools
+
+    filtered: list[dict[str, Any]] = []
+    for tool in tools:
+        name = tool_schema_name(tool)
+        function = tool.get("function") or {}
+        parameters = function.get("parameters") if isinstance(function, dict) else None
+        capability = infer_tool_capability(name, tool_schema_description(tool), parameters)
+        if capability in disabled_capabilities:
+            continue
+        filtered.append(tool)
+    return filtered
 
 
 def result_has_sufficient_discovery(
@@ -279,15 +301,29 @@ def result_has_sufficient_discovery(
     if not isinstance(results, list):
         return False
     useful = 0
+    task_query_text = f"{task_text}\n{query}"
+    evidence_text_parts = [answer]
     combined_text_parts = [query, answer, task_text]
     for item in results:
         if not isinstance(item, dict):
             continue
         item_text = _search_result_item_text(item)
         if item_text:
+            evidence_text_parts.append(item_text)
             combined_text_parts.append(item_text)
         if item.get("url") and item_text:
             useful += 1
+
+    evidence_text = "\n".join(evidence_text_parts)
+    if _requires_temporal_series(task_query_text) and not _has_temporal_series_evidence(evidence_text):
+        return False
+
+    requested = _requested_field_patterns(task_query_text)
+    if requested:
+        combined_text = "\n".join(combined_text_parts)
+        covered = sum(1 for patterns in requested if _contains_any_pattern(combined_text, patterns))
+        return useful >= 1 and covered >= len(requested)
+
     if useful >= 2:
         return True
 
@@ -346,6 +382,39 @@ def _requested_field_patterns(task_text: str) -> list[tuple[str, ...]]:
                 requested.append(patterns)
                 seen.add(index)
     return requested
+
+
+def _requires_temporal_series(task_text: str) -> bool:
+    text = str(task_text or "")
+    if not _requested_field_patterns(text):
+        return False
+    return bool(
+        re.search(
+            r"(最近|未来|过去|近|接下来|后续)?\s*(一周|1\s*周|七天|7\s*天|一星期)"
+            r"|(?:每天|每日|逐日|按天|daily|day[-\s]?by[-\s]?day)"
+            r"|(?:20\d{2}[-/.年]?\s*)?\d{1,2}\s*(?:月|[-/.])\s*\d{1,2}\s*(?:日|号)?\s*(?:到|至|~|-)\s*(?:20\d{2}[-/.年]?\s*)?\d{1,2}\s*(?:月|[-/.])\s*\d{1,2}",
+            text,
+            flags=re.I,
+        )
+    )
+
+
+def _has_temporal_series_evidence(evidence_text: str) -> bool:
+    text = str(evidence_text or "")
+    markers: set[str] = set()
+    for match in re.finditer(
+        r"(?:20\d{2}[-/.年]\s*)?\d{1,2}\s*(?:月|[-/.])\s*\d{1,2}\s*(?:日|号)?"
+        r"|周[一二三四五六日天]"
+        r"|星期[一二三四五六日天]"
+        r"|礼拜[一二三四五六日天]"
+        r"|(?:今天|明天|后天|大后天)",
+        text,
+        flags=re.I,
+    ):
+        marker = re.sub(r"\s+", "", match.group(0)).lower()
+        if marker:
+            markers.add(marker)
+    return len(markers) >= 3
 
 
 def _looks_like_weather_query(text: str) -> bool:

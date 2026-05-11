@@ -418,7 +418,7 @@ def _strip_html(html: str) -> str:
 
 async def _fetch_url(url: str, max_chars: int = 3000) -> str:
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; AI-Native-OS/1.0)",
+        "User-Agent": "Mozilla/5.0 (compatible; AI-Web-OS/1.0)",
         "Accept": "text/html,application/xhtml+xml,text/plain",
     }
     try:

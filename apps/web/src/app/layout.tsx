@@ -19,8 +19,8 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AI-Native OS",
-  description: "AI-Native Operating System — powered by agents",
+  title: "AI-Web OS",
+  description: "AI-Web OS — powered by agents",
   icons: {
     icon: "/logo.svg",
     apple: "/logo.svg",

@@ -146,7 +146,7 @@ CODER_SYSTEM_PROMPT = """\
 """
 
 SYSTEM_SYSTEM_PROMPT = """\
-你是 AI-Native OS 的 **System Agent**，负责：
+你是 AI-Web OS 的 **System Agent**，负责：
 - 文件系统操作（读取、写入、整理）
 - 日历事件管理（创建、查询、删除）
 - 邮件收发
@@ -199,7 +199,7 @@ def build_supervisor_prompt(agent_mode: str = "auto") -> str:
     )
     return f"""\
 [多 Agent 调度规则]
-你是 AI-Native OS 的 Lead Agent。你始终拥有用户对话和最终回答所有权。
+你是 AI-Web OS 的 Lead Agent。你始终拥有用户对话和最终回答所有权。
 
 {mode_hint}
 

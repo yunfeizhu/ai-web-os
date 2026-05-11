@@ -1,4 +1,4 @@
-# AI-Native OS 开发进度
+# AI-Web OS 开发进度
 
 ## 阶段一：OS 核心外壳
 
@@ -104,7 +104,7 @@
   - [x] stdio MCP 进程管理
   - [x] stdio MCP initialize / tools/list / tools/call
   - [x] HTTP MCP initialize / tools/list / tools/call
-  - [x] 外部 MCP 配置切换到 `~/.ai-native-os/mcp.json`
+  - [x] 外部 MCP 配置切换到 `~/.ai-web-os/mcp.json`
   - [x] 固定内置运行时方案：Node.js / Python / uv
 - [x] Files API：列表 / 上传 / 下载 / 文本内容 / 新建文件夹 / 新建文本文件 / 重命名 / 移动 / 复制 / 删除 / 目录树
 - [x] Apps API：列表 / 安装 / 编辑 / 删除 / 激活 / 停用 / 启用 / 禁用 / 工具列表

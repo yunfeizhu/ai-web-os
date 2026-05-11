@@ -9,7 +9,7 @@ Supported entry points:
 
 This directory is ignored by git except for this `README.md` and `.gitkeep`.
 
-Avatar assets are not part of the AI-Native OS license. Only use models that
+Avatar assets are not part of the AI-Web OS license. Only use models that
 you are allowed to use, modify, and distribute.
 
 Example URL:

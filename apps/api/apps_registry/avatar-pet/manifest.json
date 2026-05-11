@@ -2,7 +2,7 @@
   "id": "avatar-pet",
   "name": "虚拟伙伴",
   "version": "1.0.0",
-  "description": "常驻桌面的 Live2D 虚拟伙伴，与 AI-Native OS 助手共享记忆、工具和 App 能力。",
+  "description": "常驻桌面的 Live2D 虚拟伙伴，与 AI-Web OS 助手共享记忆、工具和 App 能力。",
   "category": "companion",
   "permissions": [
     "network"

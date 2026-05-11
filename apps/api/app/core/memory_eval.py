@@ -24,7 +24,7 @@ async def run_memory_eval(home: Path | str | None = None) -> dict[str, Any]:
     the settings page without touching the user's real MEMORY.md.
     """
     if home is None:
-        with tempfile.TemporaryDirectory(prefix="ai-native-memory-eval-") as temp_home:
+        with tempfile.TemporaryDirectory(prefix="ai-web-memory-eval-") as temp_home:
             return await _run_eval_in_home(Path(temp_home))
     return await _run_eval_in_home(Path(home))
 

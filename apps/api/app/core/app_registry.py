@@ -25,7 +25,7 @@ SKILL_ENTRYPOINTS = ("SKILL.md", "workflow.md")
 MCP_CONFIG_VERSION = 1
 SKILLS_CONFIG_VERSION = 1
 USER_CONFIG_DIR = Path(
-    os.getenv("AI_NATIVE_OS_HOME", str(Path.home() / ".ai-native-os"))
+    os.getenv("AI_NATIVE_OS_HOME", str(Path.home() / ".ai-web-os"))
 ).expanduser()
 MCP_CONFIG_PATH = USER_CONFIG_DIR / "mcp.json"
 SKILLS_ROOT = USER_CONFIG_DIR / "skills"

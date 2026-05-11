@@ -27,7 +27,7 @@ const T = {
 };
 
 const USERNAME = "ai-os";
-const HOSTNAME = "ai-native";
+const HOSTNAME = "ai-web";
 
 type FileEntry = {
   id: string;
@@ -253,7 +253,7 @@ export function Terminal({ windowId }: { windowId: string }) {
         compatType: ctx.compatType,
         enableMemory: false,
         systemPrompt:
-          "你是 AI-Native OS 的终端 App。优先使用工具完成文件系统相关任务。输出保持终端风格，简洁、直接、可执行，不要使用聊天语气。严禁使用 Markdown 格式，不得使用反引号、代码块（```）、星号、井号等任何 Markdown 语法，直接输出纯文本。",
+          "你是 AI-Web OS 的终端 App。优先使用工具完成文件系统相关任务。输出保持终端风格，简洁、直接、可执行，不要使用聊天语气。严禁使用 Markdown 格式，不得使用反引号、代码块（```）、星号、井号等任何 Markdown 语法，直接输出纯文本。",
         onToken: (token) => {
           setMessages((prev) =>
             prev.map((m) =>

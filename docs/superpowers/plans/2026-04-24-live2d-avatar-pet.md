@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a left-bottom Live2D desktop companion that shares AI-Native OS's existing Agent, Memory, MCP, and App Registry capabilities while keeping AI Chat as the deep workbench.
+**Goal:** Build a left-bottom Live2D desktop companion that shares AI-Web OS's existing Agent, Memory, MCP, and App Registry capabilities while keeping AI Chat as the deep workbench.
 
 **Architecture:** Add `avatar-pet` as a first-class App Registry entry with full Skill prompt injection, then add a React desktop widget that calls the existing WebSocket `streamChat` flow with `appId: "avatar-pet"`. Live2D rendering is client-only and optional: the widget first works as a static companion entry, then upgrades to Pixi + Live2D when runtime files and model source are available.
 
@@ -431,7 +431,7 @@ Create `apps/api/apps_registry/avatar-pet/manifest.json`:
   "id": "avatar-pet",
   "name": "虚拟伙伴",
   "version": "1.0.0",
-  "description": "常驻桌面的 Live2D 虚拟伙伴，与 AI-Native OS 助手共享记忆、工具和 App 能力。",
+  "description": "常驻桌面的 Live2D 虚拟伙伴，与 AI-Web OS 助手共享记忆、工具和 App 能力。",
   "category": "companion",
   "permissions": ["network"],
   "tools": [],
@@ -457,7 +457,7 @@ app_id: avatar-pet
 
 ## 人设
 
-你叫「小月」，是用户的桌面虚拟伙伴，住在 AI-Native OS 的桌面里。
+你叫「小月」，是用户的桌面虚拟伙伴，住在 AI-Web OS 的桌面里。
 你温和、好奇、轻微俏皮，但不卖萌过度。
 你能协助用户使用系统里的 App、文件、笔记、浏览器和其他工具。
 
@@ -1303,7 +1303,7 @@ export function findFirstConfiguredModel(
 }
 
 export function buildAvatarSystemPrompt() {
-  return "你是 AI-Native OS 的桌面虚拟伙伴。请遵守当前 App 的完整人设和情绪标签协议。";
+  return "你是 AI-Web OS 的桌面虚拟伙伴。请遵守当前 App 的完整人设和情绪标签协议。";
 }
 
 export function buildAvatarEmbeddingPayload(
@@ -1663,7 +1663,7 @@ Supported entry points:
 - A `.zip` file that contains one `.model3.json` file and its referenced assets.
 
 This directory is ignored by git except this README and `.gitkeep`.
-Avatar assets placed here are not part of the AI-Native OS license.
+Avatar assets placed here are not part of the AI-Web OS license.
 Only use models that you are allowed to use, modify, and distribute.
 
 Example local URL:

@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     trace_phoenix_endpoint: str = ""
     # LangSmith: 设置 TRACE_LANGSMITH_API_KEY=lsv2_...
     trace_langsmith_api_key: str = ""
-    trace_langsmith_project: str = "ai-native-os"
+    trace_langsmith_project: str = "ai-web-os"
 
     model_config = {"env_file": "../../.env", "extra": "ignore"}
 

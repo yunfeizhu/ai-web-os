@@ -7,3 +7,10 @@ apps/web/.next
 apps/web/node_modules
 docker/**/*.local
 *.log
+
+# Local runtime/state created by desktop tools. These files are never needed
+# inside images and may be unreadable on Windows while processes are running.
+**/.ainative-runtime/
+**/.ai-web-runtime/
+**/.ai-web-os/
+**/.ai-native-os/

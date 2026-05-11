@@ -27,7 +27,7 @@ def get_ai_native_home() -> Path:
     configured_home = os.getenv(AI_NATIVE_OS_HOME_ENV)
     if configured_home:
         return Path(configured_home)
-    return Path.home() / ".ai-native-os"
+    return Path.home() / ".ai-web-os"
 
 
 def get_memory_root() -> Path:
@@ -140,9 +140,9 @@ Use this file for dream, reflection, and consolidation notes.
 
 
 def _readme_template(profile_id: str) -> str:
-    return f"""# AI-Native OS Memory Profile
+    return f"""# AI-Web OS Memory Profile
 
 Profile: `{profile_id}`
 
-This directory contains local Markdown memory for AI-Native OS.
+This directory contains local Markdown memory for AI-Web OS.
 """

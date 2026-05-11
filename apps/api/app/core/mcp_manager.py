@@ -64,7 +64,7 @@ class _StdioMCPClientSession:
                 "protocolVersion": MCP_PROTOCOL_VERSION,
                 "capabilities": {},
                 "clientInfo": {
-                    "name": "AI-Native-OS",
+                    "name": "AI-Web-OS",
                     "version": "0.2.0",
                 },
             },
@@ -263,7 +263,7 @@ class _StreamableHTTPMCPClientSession:
                     "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
                     "clientInfo": {
-                        "name": "AI-Native-OS",
+                        "name": "AI-Web-OS",
                         "version": "0.2.0",
                     },
                 },

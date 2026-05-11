@@ -6,7 +6,7 @@
 
 **Architecture:** `MEMORY.md` and daily Markdown files are the source of truth. The existing `app.core.memory` public interface stays compatible so WebSocket and settings UI can migrate incrementally. Consolidation promotes daily candidates into `MEMORY.md` and writes a human-readable `DREAMS.md` report.
 
-**Tech Stack:** Python 3.11, FastAPI, pytest, pathlib, JSON sidecar state under `~/.ai-native-os/memory/.dreams`.
+**Tech Stack:** Python 3.11, FastAPI, pytest, pathlib, JSON sidecar state under `~/.ai-web-os/memory/.dreams`.
 
 ---
 

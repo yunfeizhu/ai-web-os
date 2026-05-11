@@ -33,11 +33,13 @@ from app.core.tool_capabilities import (
     WEB_CONTENT_CAPABILITIES,
     build_discovery_sufficient_tool_result,
     build_search_sufficient_tool_result,
+    filter_tools_by_disabled_capabilities,
     infer_tool_capability,
     normalize_extract_args,
     result_has_sufficient_discovery,
     should_skip_content_fetch_after_search,
     should_stop_search_after_sufficient_discovery,
+    task_requires_full_content,
     tool_schema_description,
     tool_schema_name,
 )
@@ -70,6 +72,26 @@ AgentEvent = tuple[
 ]
 
 _MAX_TOOL_CALLS_WARNING = "\n\n\uff08\u5df2\u8fbe\u5230\u6700\u5927\u5de5\u5177\u8c03\u7528\u6b21\u6570\uff09"
+
+
+def build_visible_language_instruction(user_message: str) -> str:
+    """Return a user-visible language policy for this turn."""
+    text = str(user_message or "")
+    if not text.strip():
+        return ""
+    if re.search(r"(?:用|使用|以)\s*(?:英文|英语|english)\s*(?:回答|回复|输出|写|撰写)?", text, flags=re.I):
+        return ""
+    if not _contains_cjk(text):
+        return ""
+    return (
+        "[可见输出语言]\n"
+        "用户本轮使用中文。请使用简体中文输出所有用户可见内容，包括最终回答、可见思考过程、"
+        "阶段性说明和工具结果总结。工具名、URL、代码、命令、文件路径、专有名词和引用原文保持原文。"
+    )
+
+
+def _contains_cjk(text: str) -> bool:
+    return bool(re.search(r"[\u3400-\u4dbf\u4e00-\u9fff]", str(text or "")))
 
 
 def _is_safe_tool_preamble(text: str) -> bool:
@@ -381,8 +403,19 @@ async def stream_chat(
     api_base: str | None = None,
 ) -> AsyncIterator[str]:
     full_messages = []
-    if system_prompt:
-        full_messages.append({"role": "system", "content": system_prompt})
+    user_message = ""
+    if messages and isinstance(messages[-1], dict):
+        user_message = str(messages[-1].get("content") or "")
+    visible_language_instruction = build_visible_language_instruction(user_message)
+    effective_system_prompt = system_prompt or ""
+    if visible_language_instruction:
+        effective_system_prompt = (
+            f"{effective_system_prompt}\n\n{visible_language_instruction}"
+            if effective_system_prompt
+            else visible_language_instruction
+        )
+    if effective_system_prompt:
+        full_messages.append({"role": "system", "content": effective_system_prompt})
     full_messages.extend(messages)
 
     if provider_id:
@@ -501,6 +534,7 @@ async def agent_loop(
         tool_description_by_name[name] = description
         tool_capability_by_name[name] = infer_tool_capability(name, description, parameters)
     successful_search_count = 0
+    disabled_tool_capabilities: set[str] = set()
 
     effective_system_prompt = system_prompt or ""
     if not is_subagent and agent_mode != "single":
@@ -508,6 +542,13 @@ async def agent_loop(
             f"{effective_system_prompt}\n\n{build_supervisor_prompt(agent_mode)}"
             if effective_system_prompt
             else build_supervisor_prompt(agent_mode)
+        )
+    visible_language_instruction = build_visible_language_instruction(user_message)
+    if visible_language_instruction:
+        effective_system_prompt = (
+            f"{effective_system_prompt}\n\n{visible_language_instruction}"
+            if effective_system_prompt
+            else visible_language_instruction
         )
 
     base_kwargs = build_litellm_completion_kwargs(
@@ -531,7 +572,12 @@ async def agent_loop(
         ),
     )
 
-    def _workflow_tool_event(parsed_call: dict, result: str, error: bool) -> dict:
+    def _workflow_tool_event(
+        parsed_call: dict,
+        result: str,
+        error: bool,
+        **extra: Any,
+    ) -> dict:
         event = {
             "id": parsed_call["id"],
             "name": parsed_call["name"],
@@ -540,7 +586,8 @@ async def agent_loop(
             "result": result,
             "error": error,
         }
-        if workflow_plan:
+        event.update({key: value for key, value in extra.items() if value is not None})
+        if workflow_plan and not event.get("internal"):
             workflow_tool_results.append(event)
         return event
 
@@ -606,12 +653,23 @@ async def agent_loop(
         max_output_tokens=max_tokens,
     )
 
+    def _disable_redundant_research_tools(args: dict[str, Any] | None = None) -> None:
+        args_text = json.dumps(args or {}, ensure_ascii=False)
+        if task_requires_full_content(user_message, args_text):
+            return
+        disabled_tool_capabilities.add(CAPABILITY_SEARCH_DISCOVERY)
+        disabled_tool_capabilities.update(WEB_CONTENT_CAPABILITIES)
+
     for iteration in range(max_iterations):
         yield ("status", graph.status("llm_decide"))
 
         call_kwargs: dict = {**base_kwargs, "messages": full_messages, "stream": True}
-        if tools:
-            call_kwargs["tools"] = tools
+        active_tools = filter_tools_by_disabled_capabilities(
+            tools,
+            disabled_tool_capabilities,
+        )
+        if active_tools:
+            call_kwargs["tools"] = active_tools
             call_kwargs["tool_choice"] = "auto"
 
         stream_response = await acompletion(**call_kwargs)
@@ -653,8 +711,8 @@ async def agent_loop(
 
         # Try to recover plain-text tool calls from providers that don't support
         # native function calling properly
-        if tools and not tool_call_map:
-            text_calls = _parse_text_tool_calls("".join(content_parts), tools)
+        if active_tools and not tool_call_map:
+            text_calls = _parse_text_tool_calls("".join(content_parts), active_tools)
             for index, text_call in enumerate(text_calls):
                 tool_call_map[index] = {
                     "id": f"call_text_{iteration}_{index}",
@@ -735,8 +793,9 @@ async def agent_loop(
                 full_messages.append({
                     "role": "system",
                     "content": (
-                        "ToolPolicyGuard: 已阻止重复工具调用。"
+                        "内部执行提示：已阻止重复工具调用。"
                         "请基于已有工具结果回答；如果结果不足，请明确说明不确定性，不要重复调用相同查询。"
+                        "不要向用户提及内部策略或工具控制规则。"
                     ),
                 })
                 continue
@@ -806,6 +865,7 @@ async def agent_loop(
                 result = build_subagent_tool_result(subagent_result_payloads) if subagent_result_payloads else '{"results": {}}'
                 if _delegate_result_has_sufficient_search(result):
                     successful_search_count += 1
+                    _disable_redundant_research_tools(parsed_call["args"])
                 failed_subagents = [
                     payload
                     for payload in subagent_result_payloads
@@ -859,13 +919,23 @@ async def agent_loop(
                         decision="skipped",
                         reason="search_results_sufficient",
                         hint=(
-                            "A discovery/search result already covers this sub-task; "
-                            "stop searching and answer from existing evidence."
+                            "已有搜索发现结果覆盖当前任务，请基于现有证据回答。"
                         ),
                         args=parsed_call["args"],
                     ),
                 )
-                yield ("tool_result", _workflow_tool_event(parsed_call, result, False))
+                yield (
+                    "tool_result",
+                    _workflow_tool_event(
+                        parsed_call,
+                        result,
+                        False,
+                        internal=True,
+                        skipped=True,
+                        skipReason="search_results_sufficient",
+                        displayResult="已有搜索结果足够，已跳过重复搜索。",
+                    ),
+                )
                 full_messages.append(
                     {
                         "role": "tool",
@@ -896,13 +966,23 @@ async def agent_loop(
                         decision="skipped",
                         reason="search_results_sufficient",
                         hint=(
-                            "A discovery/search result is already available; "
-                            "skip full-page extraction unless exact source text is needed."
+                            "已有搜索发现结果可用；除非需要原文核验，否则跳过网页正文抓取。"
                         ),
                         args=parsed_call["args"],
                     ),
                 )
-                yield ("tool_result", _workflow_tool_event(parsed_call, result, False))
+                yield (
+                    "tool_result",
+                    _workflow_tool_event(
+                        parsed_call,
+                        result,
+                        False,
+                        internal=True,
+                        skipped=True,
+                        skipReason="search_results_sufficient",
+                        displayResult="已有搜索结果足够，已跳过不必要的网页正文抓取。",
+                    ),
+                )
                 full_messages.append(
                     {
                         "role": "tool",
@@ -1019,6 +1099,7 @@ async def agent_loop(
                 )
             ):
                 successful_search_count += 1
+                _disable_redundant_research_tools(parsed_call["args"])
 
             yield (
                 "status",

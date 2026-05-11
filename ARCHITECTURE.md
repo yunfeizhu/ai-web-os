@@ -1,8 +1,8 @@
-# AI-Native OS — 架构与实施方案
+# AI-Web OS — 架构与实施方案
 
 ## 1. 愿景
 
-AI-Native OS is a web 端完全体 AI 操作系统。它不是一个"套了 Windows 皮肤的网页"，而是一个以 **AI Agent 为核心运行时**的新计算范式。
+AI-Web OS is a web 端完全体 AI 操作系统。它不是一个"套了 Windows 皮肤的网页"，而是一个以 **AI Agent 为核心运行时**的新计算范式。
 
 - 传统 OS 的核心是 **进程调度 + 文件系统**
 - AI OS 的核心是 **Agent 调度 + 知识系统**
@@ -113,7 +113,7 @@ apps/api/app/
 ## 3. 项目结构
 
 ```
-ai-native-os/
+ai-web-os/
 │
 ├── apps/
 │   ├── web/                          # Next.js 前端
@@ -502,7 +502,7 @@ Markdown 报告，包含摘要、正文（带引用）、参考链接列表。
   "name": "Web Search",
   "version": "1.0.0",
   "description": "具备摘要能力的 AI 网页搜索",
-  "author": "AI-Native-OS",
+  "author": "AI-Web-OS",
   "category": "productivity",
 
   // Agent 定义
@@ -1965,7 +1965,7 @@ tests/
 
 ```bash
 # 1. 克隆并安装
-git init ai-native-os && cd ai-native-os
+git init ai-web-os && cd ai-web-os
 pnpm init && pnpm add -D turbo
 
 # 2. 前端

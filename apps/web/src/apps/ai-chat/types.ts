@@ -6,6 +6,10 @@ export interface ToolCall {
   result?: string;
   error?: boolean;
   status: "running" | "done" | "error";
+  internal?: boolean;
+  skipped?: boolean;
+  skipReason?: string;
+  displayResult?: string;
   subagentId?: string;
   subagentTask?: string;
   agentName?: string;

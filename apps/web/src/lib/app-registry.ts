@@ -9,7 +9,7 @@ export const BUILTIN_APPS: AppManifest[] = [
     icon: "MessageSquare",
     category: "productivity",
     agent: {
-      systemPrompt: "你是 AI-Native OS 的智能助手。",
+      systemPrompt: "你是 AI-Web OS 的智能助手。",
       model: "auto",
       temperature: 0.7,
       maxTokens: 4096,

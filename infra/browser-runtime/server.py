@@ -1144,7 +1144,7 @@ class BrowserRuntime:
 
 
 runtime = BrowserRuntime()
-app = FastAPI(title="AI-Native OS Browser Runtime", version="0.1.0")
+app = FastAPI(title="AI-Web OS Browser Runtime", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

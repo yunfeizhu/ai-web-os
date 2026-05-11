@@ -114,7 +114,7 @@ button:disabled {
 }
 
 /* ═══════════════════════════════════════════
-   AI-Native OS — macOS-Inspired Light Theme
+   AI-Web OS — macOS-Inspired Light Theme
    ═══════════════════════════════════════════ */
 
 :root {
@@ -193,7 +193,7 @@ button:disabled {
 }
 
 /* ═══════════════════════════════════════════
-   AI-Native OS — Dark Theme
+   AI-Web OS — Dark Theme
    ═══════════════════════════════════════════ */
 
 [data-theme="dark"] {

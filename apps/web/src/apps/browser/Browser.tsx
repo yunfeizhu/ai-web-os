@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -1526,7 +1526,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
           "4. 如果遇到登录、验证码、支付、人工确认等，status=need_user。",
           "5. 如果页面正文里已经能回答用户问题，也可以直接 done。",
         ].join("\n"),
-        "你是 AI-Native OS 的浏览器任务代理。目标是安全、稳妥地完成网页任务。",
+        "你是 AI-Web OS 的浏览器任务代理。目标是安全、稳妥地完成网页任务。",
       );
 
       const plan = parseBrowserAgentStep(planResult.content);

@@ -27,7 +27,7 @@ from app.models.mail import MailAccount, MailMessage
 router = APIRouter()
 MAIL_CONFIG_VERSION = 1
 USER_CONFIG_DIR = Path(
-    os.getenv("AI_NATIVE_OS_HOME", str(Path.home() / ".ai-native-os"))
+    os.getenv("AI_NATIVE_OS_HOME", str(Path.home() / ".ai-web-os"))
 ).expanduser()
 MAIL_CONFIG_PATH = USER_CONFIG_DIR / "mail.json"
 

@@ -69,7 +69,7 @@ function exportConfig() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `ai-native-os-config-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `ai-web-os-config-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -153,7 +153,7 @@ function AboutPanel() {
 
   return (
     <div className="space-y-6">
-      <SectionTitle>关于 AI-Native OS</SectionTitle>
+      <SectionTitle>关于 AI-Web OS</SectionTitle>
 
       {/* 版本信息 */}
       <div
@@ -176,7 +176,7 @@ function AboutPanel() {
           </span>
         </div>
         <p>
-          AI-Native OS 是以 AI Agent 为核心运行时的新一代本地智能操作系统原型。
+          AI-Web OS 是以 AI Agent 为核心运行时的新一代本地智能操作系统原型。
         </p>
       </div>
 
@@ -207,7 +207,7 @@ function AboutPanel() {
             },
             {
               label: "外部 MCP 配置",
-              location: "本地文件 (~/.ai-native-os/mcp.json)",
+              location: "本地文件 (~/.ai-web-os/mcp.json)",
               note: "仅本地进程读取",
               secure: true,
             },

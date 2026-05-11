@@ -26,10 +26,10 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_BUCKET: ainative-files
-      AI_NATIVE_OS_HOME: /root/.ai-native-os
+      AI_NATIVE_OS_HOME: /root/.ai-web-os
       BROWSER_RUNTIME_URL: http://browser-runtime:18100
     volumes:
-      - api_home:/root/.ai-native-os
+      - api_home:/root/.ai-web-os
     depends_on:
       - postgres
       - redis
@@ -103,7 +103,7 @@ services:
     volumes:
       - qdrantdata:/qdrant/storage
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "timeout 3 bash -lc '</dev/tcp/127.0.0.1/6333'"]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -1,11 +1,18 @@
 """Compatibility entry points for the markdown-backed memory manager."""
 from __future__ import annotations
 
+import logging
+import os
 from typing import Any
 
+from app.core.legacy_memory_import import import_legacy_qdrant_memories
 from app.core.markdown_memory import MarkdownMemoryManager
+from app.core.memory_dreaming import maybe_run_scheduled_dreaming
+from app.core.memory_paths import AI_NATIVE_OS_HOME_ENV
 
+logger = logging.getLogger(__name__)
 _manager: MarkdownMemoryManager | None = None
+LEGACY_MEMORY_IMPORT_ENV = "AI_NATIVE_OS_IMPORT_LEGACY_MEMORY"
 
 
 def collection_name_for_embedding(model: str, dims: int | None) -> str:
@@ -56,10 +63,12 @@ async def ensure_memory_manager(
 
     current = get_memory_manager()
     if current is not None:
+        _maybe_run_scheduled_dreaming(current)
         return current
 
     manager = init_memory_manager(llm_model="")
     manager.start()
+    _maybe_run_scheduled_dreaming(manager)
     return manager
 
 
@@ -92,8 +101,6 @@ def init_memory_manager(
         embedder_api_key,
         embedder_base_url,
         embedder_dims,
-        qdrant_host,
-        qdrant_port,
         collection_name,
     )
 
@@ -101,4 +108,37 @@ def init_memory_manager(
     if _manager is not None:
         _manager.stop()
     _manager = MarkdownMemoryManager()
+    _manager.normalize_memory_markdown()
+    if _should_import_legacy_memory():
+        try:
+            result = import_legacy_qdrant_memories(
+                _manager,
+                qdrant_host=qdrant_host,
+                qdrant_port=qdrant_port,
+            )
+            _manager.normalize_memory_markdown()
+            if result.imported:
+                logger.info(
+                    "imported %s legacy memory records into Markdown",
+                    result.imported,
+                )
+        except Exception as exc:
+            logger.warning("legacy memory import skipped: %s", exc)
     return _manager
+
+
+def _should_import_legacy_memory() -> bool:
+    configured = os.getenv(LEGACY_MEMORY_IMPORT_ENV)
+    if configured is not None:
+        return configured.strip().lower() in {"1", "true", "yes", "on"}
+
+    # A custom AI_NATIVE_OS_HOME is commonly used by tests and isolated profiles.
+    # Avoid pulling the user's live Qdrant memories into those separate homes.
+    return os.getenv(AI_NATIVE_OS_HOME_ENV) is None
+
+
+def _maybe_run_scheduled_dreaming(manager: MarkdownMemoryManager) -> None:
+    try:
+        maybe_run_scheduled_dreaming(manager)
+    except Exception as exc:
+        logger.warning("scheduled dreaming sweep skipped: %s", exc)

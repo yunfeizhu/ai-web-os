@@ -181,6 +181,39 @@ def test_test_write_creates_daily_candidate_and_consolidate_promotes_it(client):
     assert "Task 5 API test memory" in Path(consolidate_payload["memory_path"]).read_text(
         encoding="utf-8"
     )
+    assert consolidate_payload["state_path"] == str(
+        home / "memory" / ".dreams" / "short-term.json"
+    )
+    assert consolidate_payload["phase_signal_path"] == str(
+        home / "memory" / ".dreams" / "phase-signals.json"
+    )
+
+
+def test_dreaming_status_and_sweep_endpoints(client):
+    test_client, home = client
+    init_response = test_client.post("/api/v1/memory/init", json={"llm_model": "test-llm"})
+    write_response = test_client.post("/api/v1/memory/test-write")
+    status_before = test_client.get("/api/v1/memory/dreaming/status")
+    sweep_response = test_client.post("/api/v1/memory/dreaming/sweep")
+    status_after = test_client.get("/api/v1/memory/dreaming/status")
+
+    assert init_response.status_code == 200
+    assert write_response.status_code == 200
+    assert status_before.status_code == 200
+    assert status_before.json()["short_term_entries"] == 0
+    assert status_before.json()["runtime"]["enabled"] is False
+    assert status_before.json()["runtime"]["interval_seconds"] == 86400
+    assert sweep_response.status_code == 200
+    sweep_payload = sweep_response.json()
+    assert sweep_payload["promoted"]
+    assert sweep_payload["state_path"] == str(home / "memory" / ".dreams" / "short-term.json")
+    assert sweep_payload["phase_signal_path"] == str(
+        home / "memory" / ".dreams" / "phase-signals.json"
+    )
+    assert status_after.status_code == 200
+    status_payload = status_after.json()
+    assert status_payload["short_term_entries"] == 1
+    assert status_payload["phase_signals"]["deep"]["promoted"] == 1
 
 
 def test_reindex_reports_current_long_term_count_and_deletes_are_lazy(client):

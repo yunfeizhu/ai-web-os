@@ -26,6 +26,8 @@ from typing import Any
 RESEARCH_TOOL_NAMES: frozenset[str] = frozenset({
     "fetch_url",
     "retrieve_knowledge",
+    "memory_search",
+    "memory_get",
     "load_skill_context",
 })
 RESEARCH_TOOL_PREFIXES: tuple[str, ...] = ("browser_", "mcp_", "skill_")
@@ -51,6 +53,10 @@ SYSTEM_TOOL_NAMES: frozenset[str] = frozenset({
     "list_files",
     "read_file",
     "write_file",
+    "memory_search",
+    "memory_get",
+    "list_notes",
+    "save_note",
     "load_skill_context",
 })
 SYSTEM_TOOL_PREFIXES: tuple[str, ...] = (
@@ -64,6 +70,8 @@ SYSTEM_TOOL_PREFIXES: tuple[str, ...] = (
 # Writer worker: content creation with minimal tool access.
 WRITER_TOOL_NAMES: frozenset[str] = frozenset({
     "retrieve_knowledge",
+    "memory_search",
+    "memory_get",
     "read_file",
     "write_file",
 })

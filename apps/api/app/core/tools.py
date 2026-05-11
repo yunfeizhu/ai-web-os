@@ -27,6 +27,7 @@ from app.core.agent_harness import (
 from app.core.app_registry import get_app_registry
 from app.core.browser_tools import BROWSER_TOOL_SCHEMAS, dispatch_browser_tool
 from app.core.database import AsyncSessionLocal
+from app.core.memory import get_memory_manager, init_memory_manager
 from app.core.tool_capabilities import (
     CAPABILITY_SEARCH_DISCOVERY,
     CAPABILITY_WEB_EXTRACT,
@@ -43,8 +44,9 @@ _MCP_ROUTES_CACHE_TTL = 30.0  # seconds
 
 def invalidate_mcp_routes_cache() -> None:
     """Force the next call to _list_external_mcp_tool_routes to re-scan."""
-    global _MCP_ROUTES_CACHE
+    global _MCP_ROUTES_CACHE, _MCP_ROUTES_CACHE_EXPIRES
     _MCP_ROUTES_CACHE = None
+    _MCP_ROUTES_CACHE_EXPIRES = 0.0
 
 BUILTIN_TOOL_SCHEMAS: list[dict] = [
     {
@@ -155,6 +157,95 @@ BUILTIN_TOOL_SCHEMAS: list[dict] = [
                     }
                 },
                 "required": ["code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_notes",
+            "description": "List Markdown note files stored in the virtual /Notes directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_note",
+            "description": "Create or update a Markdown note file in the virtual /Notes directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Note title. The .md suffix is optional.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "Full Markdown content to save.",
+                    },
+                },
+                "required": ["title", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_search",
+            "description": "Search local Markdown memory, including long-term MEMORY.md plus recent daily notes context.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Question or topic to search in local Markdown memory.",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maximum long-term/candidate matches to return.",
+                        "default": 5,
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "memory_get",
+            "description": "Read a local Markdown memory file: MEMORY.md, DREAMS.md, or a daily note.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string",
+                        "enum": ["memory", "dreams", "daily"],
+                        "description": "Which local memory file to read.",
+                        "default": "memory",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Daily note date in YYYY-MM-DD format when kind is daily.",
+                    },
+                    "max_chars": {
+                        "type": "integer",
+                        "description": "Maximum characters to return from the file.",
+                        "default": 4000,
+                    },
+                    "start_line": {
+                        "type": "integer",
+                        "description": "Optional 1-based start line to read.",
+                    },
+                    "end_line": {
+                        "type": "integer",
+                        "description": "Optional 1-based end line to read, inclusive.",
+                    },
+                },
             },
         },
     },
@@ -825,6 +916,7 @@ async def _list_external_mcp_tool_routes() -> list[dict]:
 
     registry = get_app_registry()
     routes: list[dict] = []
+    had_scan_error = False
 
     async with AsyncSessionLocal() as db:
         apps = await registry.list_apps(db)
@@ -839,6 +931,7 @@ async def _list_external_mcp_tool_routes() -> list[dict]:
             try:
                 tool_defs = await registry.get_tools(db, app.id)
             except Exception as exc:
+                had_scan_error = True
                 print(f"[Agent MCP tools] skip app={app.id}: {exc}")
                 continue
 
@@ -859,8 +952,12 @@ async def _list_external_mcp_tool_routes() -> list[dict]:
                     }
                 )
 
-    _MCP_ROUTES_CACHE = routes
-    _MCP_ROUTES_CACHE_EXPIRES = time.monotonic() + _MCP_ROUTES_CACHE_TTL
+    if had_scan_error:
+        _MCP_ROUTES_CACHE = None
+        _MCP_ROUTES_CACHE_EXPIRES = 0.0
+    else:
+        _MCP_ROUTES_CACHE = routes
+        _MCP_ROUTES_CACHE_EXPIRES = time.monotonic() + _MCP_ROUTES_CACHE_TTL
     return routes
 
 
@@ -869,6 +966,14 @@ async def get_tool_display_name(name: str) -> str | None:
         return "多 Agent 委托"
     if name == LOAD_SKILL_CONTEXT_TOOL_NAME:
         return "加载 Skill 上下文"
+    if name == "list_notes":
+        return "列出笔记"
+    if name == "save_note":
+        return "保存笔记"
+    if name == "memory_search":
+        return "搜索记忆"
+    if name == "memory_get":
+        return "读取记忆文件"
     for route in await _list_external_mcp_tool_routes():
         if route["alias"] == name:
             capability = infer_tool_capability(
@@ -944,6 +1049,53 @@ async def execute_tool(
         )
         return f"已写入 {entry.path}（{entry.size} bytes）"
 
+    if name in {"list_notes", "save_note"}:
+        registry = get_app_registry()
+        async with AsyncSessionLocal() as db:
+            result = await registry.call_tool(db, "notes", name, args)
+        return _format_tool_result(result)
+
+    if name == "memory_search":
+        manager = get_memory_manager() or init_memory_manager(llm_model="")
+        context = await manager.recall_context(
+            str(args.get("query") or ""),
+            limit=int(args.get("limit") or 5),
+        )
+        return _format_tool_result(context)
+
+    if name == "memory_get":
+        manager = get_memory_manager() or init_memory_manager(llm_model="")
+        kind = str(args.get("kind") or "memory").lower()
+        if kind == "memory":
+            path = manager.paths.memory_file
+        elif kind == "dreams":
+            path = manager.paths.dreams_file
+        elif kind == "daily":
+            from datetime import date as calendar_date
+
+            selected_day = str(args.get("date") or calendar_date.today().isoformat())
+            try:
+                calendar_date.fromisoformat(selected_day)
+            except ValueError:
+                return "无效的 daily 日期，请使用 YYYY-MM-DD。"
+            path = manager.paths.daily_dir / f"{selected_day}.md"
+        else:
+            return "未知记忆文件类型。"
+        content = path.read_text(encoding="utf-8") if path.exists() else ""
+        start_line = _optional_positive_int(args.get("start_line"))
+        end_line = _optional_positive_int(args.get("end_line"))
+        if start_line is not None or end_line is not None:
+            lines = content.splitlines()
+            start_index = max((start_line or 1) - 1, 0)
+            end_index = end_line if end_line is not None else len(lines)
+            if end_index < start_index + 1:
+                return "无效的行号范围。"
+            content = "\n".join(lines[start_index:end_index])
+        max_chars = int(args.get("max_chars") or 4000)
+        if max_chars > 0:
+            content = content[:max_chars]
+        return content or "记忆文件为空。"
+
     if name == "retrieve_knowledge":
         from app.core.knowledge import get_knowledge_manager
 
@@ -979,6 +1131,16 @@ async def execute_tool(
         return user_skill_result
 
     return f"未知工具: {name}"
+
+
+def _optional_positive_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 # ── User skill → dedicated tool helpers ───────────────────────

@@ -117,7 +117,16 @@ def _memory_template(profile_id: str) -> str:
 
 Profile: `{profile_id}`
 
-Use this file for durable user and agent memory.
+长期记忆只保存稳定的事实、偏好和项目决定。请使用普通 Markdown bullet，
+不要在这里记录临时对话、运行日志或内部元数据。
+
+## 用户画像
+
+## 用户偏好
+
+## 项目与长期目标
+
+## 事实与背景
 """
 
 

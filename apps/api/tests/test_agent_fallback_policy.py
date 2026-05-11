@@ -2,6 +2,7 @@ from app.core.agent_harness import (
     ToolResultValidation,
     decide_fallback_policy,
     fallback_trace_payload,
+    guard_tool_call,
 )
 
 
@@ -75,3 +76,49 @@ def test_fallback_trace_payload_exposes_action_and_hint():
     assert payload["fallbackAction"] == "switch_to_realtime_research"
     assert payload["fallbackRetryOriginalTool"] is False
     assert "search.discovery" in payload["fallbackHint"]
+
+
+def test_notes_tool_is_blocked_for_memory_only_requests():
+    decision = guard_tool_call(
+        tool_name="save_note",
+        args={"title": "旅行计划", "content": "2026年五一准备去日本"},
+        task_text="记住，我今年五一去了日本",
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "memory_request_should_not_use_notes"
+    assert "记忆系统" in decision.replacement_hint
+
+
+def test_notes_tool_is_allowed_for_explicit_note_requests():
+    decision = guard_tool_call(
+        tool_name="save_note",
+        args={"title": "旅行计划", "content": "2026年五一准备去日本"},
+        task_text="把 2026 年五一准备去日本这件事保存到笔记里",
+    )
+
+    assert decision.allowed is True
+
+
+def test_file_tool_is_blocked_for_memory_only_requests():
+    decision = guard_tool_call(
+        tool_name="write_file",
+        args={"path": "/Notes/MEMORY.md", "content": "用户今年五一准备去日本"},
+        task_text="记住，我今年五一准备去日本",
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "memory_request_should_not_use_files"
+    assert "记忆系统" in decision.replacement_hint
+
+
+def test_file_tool_cannot_write_reserved_memory_file():
+    decision = guard_tool_call(
+        tool_name="write_file",
+        args={"path": "/MEMORY.md", "content": "# Memory"},
+        task_text="整理我的长期记忆",
+    )
+
+    assert decision.allowed is False
+    assert decision.reason == "reserved_memory_file_path_blocked"
+    assert "memory_search" in decision.replacement_hint

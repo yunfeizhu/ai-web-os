@@ -247,29 +247,25 @@ async def websocket_endpoint(websocket: WebSocket):
                         )
 
                     if enable_memory and memory_mgr:
-                        memories = await memory_mgr.search(
+                        memory_context = await memory_mgr.recall_context(
                             query=user_message,
                             user_id=memory_user_id,
                             limit=5,
                         )
-                        relevant = [
-                            item
-                            for item in memories
-                            if isinstance(item, dict)
-                            and item.get("memory")
-                            and (item.get("score") or 0) >= 0.45
-                        ]
-                        if relevant:
-                            facts = "\n".join(f"- {item['memory']}" for item in relevant)
-                            effective_system = (
-                                f"{effective_system}\n\n"
-                                f"## 关于用户的已知信息（来自记忆）\n{facts}"
-                            )
+                        prompt_context = str(memory_context.get("prompt") or "").strip()
+                        if prompt_context:
+                            effective_system = f"{effective_system}\n\n{prompt_context}"
                             await websocket.send_json(
                                 {
                                     "type": "status",
                                     "requestId": request_id,
-                                    "payload": {"status": "recalled", "count": len(relevant)},
+                                    "payload": {
+                                        "status": "recalled",
+                                        "count": len(memory_context.get("recalled") or []),
+                                        "dailyNotes": len(
+                                            memory_context.get("dailyNotes") or []
+                                        ),
+                                    },
                                 }
                             )
 
@@ -427,6 +423,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await memory_mgr.add_async(
                         user_id=memory_user_id,
                         messages=[
+                            *history[-6:],
                             {"role": "user", "content": user_message},
                             {"role": "assistant", "content": full_response},
                         ],

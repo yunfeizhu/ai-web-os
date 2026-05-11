@@ -316,18 +316,25 @@ async def chat(
             )
 
         if req.enable_memory and memory_mgr:
-            memories = await memory_mgr.search(query=req.message, user_id=req.user_id, limit=5)
-            relevant = [
-                m for m in memories
-                if isinstance(m, dict) and m.get("memory") and (m.get("score") or 0) >= 0.45
-            ]
-            if relevant:
-                facts = "\n".join(f"- {m['memory']}" for m in relevant)
-                effective_system = (
-                    f"{effective_system}\n\n"
-                    f"## 关于用户的已知信息（来自记忆）\n{facts}"
+            memory_context = await memory_mgr.recall_context(
+                query=req.message,
+                user_id=req.user_id,
+                limit=5,
+            )
+            prompt_context = str(memory_context.get("prompt") or "").strip()
+            if prompt_context:
+                effective_system = f"{effective_system}\n\n{prompt_context}"
+                yield (
+                    "data: "
+                    + json.dumps(
+                        {
+                            "x_recalled": len(memory_context.get("recalled") or []),
+                            "x_daily_notes": len(memory_context.get("dailyNotes") or []),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n\n"
                 )
-                yield f"data: {json.dumps({'x_recalled': len(relevant)}, ensure_ascii=False)}\n\n"
 
         try:
             with registry.apply_user_skill_env():
@@ -395,6 +402,7 @@ async def chat(
                 await memory_mgr.add_async(
                     user_id=req.user_id,
                     messages=[
+                        *req.history[-6:],
                         {"role": "user", "content": req.message},
                         {"role": "assistant", "content": full_response},
                     ],

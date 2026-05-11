@@ -565,6 +565,26 @@ async def agent_loop(
         summarizer=_summarizer,
     )
     if compaction.compacted:
+        memory_flush_payload: dict | None = None
+        try:
+            from app.core.memory import get_memory_manager
+            from app.core.memory_flush import flush_memory_before_compaction
+            from app.core.memory_transcripts import ingest_redacted_transcript
+
+            memory_manager = get_memory_manager()
+            if memory_manager is not None:
+                flush_result = flush_memory_before_compaction(memory_manager, messages)
+                transcript_result = ingest_redacted_transcript(memory_manager, messages)
+                memory_flush_payload = {
+                    "status": "memory_flushed",
+                    "staged": flush_result.get("staged", 0),
+                    "transcripts": transcript_result.get("ingested", 0),
+                }
+        except Exception as exc:
+            memory_flush_payload = {
+                "status": "memory_flush_skipped",
+                "error": str(exc),
+            }
         yield (
             "status",
             {
@@ -576,6 +596,8 @@ async def agent_loop(
                 "keptMessageCount": compaction.kept_message_count,
             },
         )
+        if memory_flush_payload is not None:
+            yield ("status", memory_flush_payload)
 
     full_messages = prepare_messages(
         model=litellm_model,
@@ -893,6 +915,7 @@ async def agent_loop(
             decision = guard_tool_call(
                 tool_name=parsed_call["name"],
                 args=parsed_call["args"],
+                task_text=user_message,
             )
             if not decision.allowed:
                 yield (

@@ -1,117 +1,108 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trash2, RefreshCw, Search, Brain, Database } from "lucide-react";
+import { Trash2, RefreshCw, Search, Brain, FileText, Sparkles } from "lucide-react";
 import { SectionTitle } from "./Settings";
 import { API_BASE } from "@/lib/backend";
-import { useSettingsStore } from "@/stores/settingsStore";
 
 const API = API_BASE;
 
 interface Memory {
   id: string;
   memory: string;
+  kind?: string;
+  sourcePath?: string;
+  line?: number;
+  status?: string;
   created_at?: string;
   score?: number;
 }
 
 interface MemoryListResponse {
   memories?: Memory[];
+  candidates?: Memory[];
   initialized?: boolean;
+  backend?: string | null;
   collection?: string | null;
-  embedder_model?: string | null;
-  embedder_base_url?: string | null;
-  embedder_dims?: number | null;
+  memory_file?: string | null;
+  daily_dir?: string | null;
 }
 
-// 与后端 _collection_name() 逻辑对齐
-function collectionName(model: string, dims?: number): string {
-  const slug = model.toLowerCase().split("/").pop() ?? model.toLowerCase();
-  const safe = slug.replace(/[^a-z0-9]/g, "_").replace(/^_+|_+$/g, "");
-  return `ai_os_mem_${safe}${dims ? `_${dims}` : ""}`;
+interface DreamingStatusResponse {
+  short_term_entries?: number;
+  pending_candidates?: number;
+  runtime?: {
+    enabled?: boolean;
+    interval_seconds?: number;
+    scheduler?: {
+      lastRunAt?: string;
+      lastResult?: {
+        promoted?: number;
+        skipped?: number;
+        duplicate?: number;
+      };
+    };
+  };
+  phase_signals?: {
+    light?: { candidates?: number };
+    deep?: { promoted?: number; skipped?: number; duplicate?: number };
+  };
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "尚未运行";
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) return "尚未运行";
+  return time.toLocaleString("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 export function MemoryManager() {
-  const { embeddingConfig: activeProvider, providers, defaultModel } = useSettingsStore();
-
   const [memories, setMemories] = useState<Memory[]>([]);
+  const [pendingNotes, setPendingNotes] = useState<Memory[]>([]);
   const [loading, setLoading] = useState(false);
+  const [consolidating, setConsolidating] = useState(false);
   const [initialized, setInitialized] = useState<boolean | null>(null);
-  const [activeCollection, setActiveCollection] = useState<string | null>(null);
+  const [memoryFile, setMemoryFile] = useState<string | null>(null);
+  const [dailyDir, setDailyDir] = useState<string | null>(null);
   const [searchQ, setSearchQ] = useState("");
   const [searchResults, setSearchResults] = useState<Memory[] | null>(null);
-
-  const reinit = async (cfg: NonNullable<typeof activeProvider>) => {
-    const { decodeModel, PROVIDERS } = await import("./providers");
-    let llmModel = "";
-    let llmApiKey: string | null = null;
-    let llmApiBase: string | null = null;
-    if (defaultModel) {
-      const { providerId, modelId } = decodeModel(defaultModel);
-      const pcfg = providers[providerId];
-      const pdef = PROVIDERS.find(p => p.id === providerId);
-      if (pcfg?.apiKey) {
-        llmModel = modelId;
-        llmApiKey = pcfg.apiKey;
-        llmApiBase = pcfg.baseUrl ?? pdef?.defaultBaseUrl ?? null;
-      }
-    }
-    if (!llmModel) return;
-    const res = await fetch(`${API}/memory/init`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        llm_provider: "litellm",
-        llm_model: llmModel,
-        llm_api_key: llmApiKey,
-        llm_api_base: llmApiBase,
-        embedder_provider: "openai",
-        embedder_model: cfg.model,
-        embedder_api_key: cfg.apiKey,
-        embedder_base_url: cfg.baseUrl,
-        embedder_dims: cfg.dims,
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`初始化记忆失败：HTTP ${res.status}`);
-    }
-    return await res.json() as MemoryListResponse;
-  };
-
-  const isExpectedMemoryBackend = (data: MemoryListResponse) => {
-    if (!activeProvider) return true;
-    const expectedCollection = collectionName(activeProvider.model, activeProvider.dims);
-    return (
-      data.collection === expectedCollection &&
-      data.embedder_model === activeProvider.model &&
-      data.embedder_base_url === activeProvider.baseUrl &&
-      Number(data.embedder_dims ?? 0) === Number(activeProvider.dims ?? 0)
-    );
-  };
+  const [dreaming, setDreaming] = useState<DreamingStatusResponse | null>(null);
+  const [dreamingBusy, setDreamingBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API}/memory`);
+      const [res, notesRes, dreamingRes] = await Promise.all([
+        fetch(`${API}/memory`),
+        fetch(`${API}/memory/candidates`),
+        fetch(`${API}/memory/dreaming/status`),
+      ]);
       if (res.ok) {
-        let data = await res.json() as MemoryListResponse;
-        if (activeProvider && (!data.initialized || !isExpectedMemoryBackend(data))) {
-          await reinit(activeProvider);
-          const res2 = await fetch(`${API}/memory`);
-          if (res2.ok) {
-            data = await res2.json() as MemoryListResponse;
-          }
-        }
+        const data = await res.json() as MemoryListResponse;
         setInitialized(Boolean(data.initialized));
-        setActiveCollection(data.collection ?? null);
+        setMemoryFile(data.memory_file ?? null);
+        setDailyDir(data.daily_dir ?? null);
         setMemories(data.memories ?? []);
+      }
+      if (notesRes.ok) {
+        const data = await notesRes.json() as MemoryListResponse;
+        setPendingNotes(data.candidates ?? []);
+      }
+      if (dreamingRes.ok) {
+        const data = await dreamingRes.json() as DreamingStatusResponse;
+        setDreaming(data);
       }
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, [activeProvider?.model, activeProvider?.baseUrl, activeProvider?.dims]);
+  useEffect(() => { load(); }, []);
 
   const deleteOne = async (id: string) => {
     await fetch(`${API}/memory/${id}`, { method: "DELETE" });
@@ -120,10 +111,32 @@ export function MemoryManager() {
   };
 
   const clearAll = async () => {
-    if (!confirm("确定清空当前模型的所有记忆？")) return;
+    if (!confirm("确定清空所有长期记忆？待整理笔记不会被删除。")) return;
     await fetch(`${API}/memory`, { method: "DELETE" });
     setMemories([]);
     setSearchResults(null);
+  };
+
+  const consolidate = async () => {
+    setConsolidating(true);
+    try {
+      await fetch(`${API}/memory/consolidate`, { method: "POST" });
+      await load();
+      setSearchResults(null);
+    } finally {
+      setConsolidating(false);
+    }
+  };
+
+  const runDreamingAction = async (path: string) => {
+    setDreamingBusy(true);
+    try {
+      await fetch(`${API}${path}`, { method: "POST" });
+      await load();
+      setSearchResults(null);
+    } finally {
+      setDreamingBusy(false);
+    }
   };
 
   const doSearch = async () => {
@@ -141,34 +154,136 @@ export function MemoryManager() {
     <div className="space-y-5">
       <SectionTitle>记忆管理</SectionTitle>
 
-      {/* 当前模型标识 */}
-      {activeProvider && (
-        <div
-          className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl"
-          style={{
-            background: "var(--panel-bg)",
-            border: "0.5px solid var(--border)",
-          }}
-        >
-          <Database size={14} style={{ color: "var(--t3)", flexShrink: 0 }} />
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <span className="text-[13px]" style={{ color: "var(--t3)" }}>当前模型</span>
-            <span
-              className="text-[13px] font-medium px-1.5 py-0.5 rounded-md truncate"
-              style={{
-                background: "var(--control-bg)",
-                color: "var(--t1)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              {activeProvider.model}
-            </span>
+      <div
+        className="rounded-2xl p-4"
+        style={{
+          background: "linear-gradient(135deg, rgba(255,255,255,0.72), rgba(245,241,235,0.52))",
+          border: "0.5px solid var(--border)",
+        }}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+            style={{ background: "rgba(0,122,255,0.1)", color: "var(--accent)" }}
+          >
+            <FileText size={17} />
           </div>
-          <span className="text-[12px] shrink-0" style={{ color: "var(--t3)" }}>
-            collection: {activeCollection ?? collectionName(activeProvider.model, activeProvider.dims)}
-          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[14px] font-semibold" style={{ color: "var(--t1)" }}>
+                本地 Markdown 记忆
+              </span>
+            </div>
+            <p className="text-[13px] mt-1 leading-relaxed" style={{ color: "var(--t2)" }}>
+              这里只长期保留稳定的偏好、事实和项目决定。新信息会先进入待整理笔记，确认稳定后再写入长期记忆。
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-3">
+              <div
+                className="rounded-xl px-3 py-2"
+                style={{ background: "rgba(0,122,255,0.06)", border: "0.5px solid rgba(0,122,255,0.12)" }}
+              >
+                <p className="text-[12px] font-medium" style={{ color: "var(--accent)" }}>近期上下文</p>
+                <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--t3)" }}>
+                  今日/昨日会自动参与新对话，适合“最近在玩/正在做”这类短期状态。
+                </p>
+              </div>
+              <div
+                className="rounded-xl px-3 py-2"
+                style={{ background: "rgba(255,149,0,0.07)", border: "0.5px solid rgba(255,149,0,0.14)" }}
+              >
+                <p className="text-[12px] font-medium" style={{ color: "#b45309" }}>待整理候选 {pendingNotes.length}</p>
+                <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--t3)" }}>
+                  已发现但还没长期化；运行整理后会判断是否写入长期记忆。
+                </p>
+              </div>
+              <div
+                className="rounded-xl px-3 py-2"
+                style={{ background: "rgba(52,199,89,0.07)", border: "0.5px solid rgba(52,199,89,0.14)" }}
+              >
+                <p className="text-[12px] font-medium" style={{ color: "#15803d" }}>长期记忆 {memories.length}</p>
+                <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--t3)" }}>
+                  已写入 MEMORY.md，通常是稳定事实、偏好和项目决定。
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-3 flex-wrap">
+              <span className="text-[12px] px-2.5 py-1 rounded-lg" style={{ background: "rgba(0,122,255,0.08)", color: "var(--accent)" }}>
+                今日/昨日自动参与召回
+              </span>
+              {memoryFile && (
+                <span className="text-[12px] px-2.5 py-1 rounded-lg truncate max-w-full" style={{ background: "var(--control-bg)", color: "var(--t3)" }}>
+                  {memoryFile}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-      )}
+      </div>
+
+      <div
+        className="rounded-2xl p-4"
+        style={{
+          background: "linear-gradient(135deg, rgba(0,122,255,0.07), rgba(255,255,255,0.58))",
+          border: "0.5px solid var(--border)",
+        }}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[14px] font-semibold" style={{ color: "var(--t1)" }}>
+              记忆整理
+            </p>
+            <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--t2)" }}>
+              把待整理笔记合并成长期记忆。默认手动运行；如果开启自动整理，系统会按设定间隔在后台处理。
+            </p>
+            <p className="text-[12px] mt-2 leading-relaxed" style={{ color: "var(--t3)" }}>
+              回放历史只会把旧候选重新放入整理队列，不会直接写入长期记忆；撤回回放只移除这批回放候选。
+            </p>
+            <div className="flex gap-2 mt-3 flex-wrap">
+              <span className="text-[12px] px-2.5 py-1 rounded-lg" style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
+                {dreaming?.runtime?.enabled ? "自动整理：开启" : "自动整理：关闭"}
+              </span>
+              <span className="text-[12px] px-2.5 py-1 rounded-lg" style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
+                短期候选 {dreaming?.short_term_entries ?? 0}
+              </span>
+              <span className="text-[12px] px-2.5 py-1 rounded-lg" style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
+                待确认 {dreaming?.pending_candidates ?? pendingNotes.length}
+              </span>
+              <span className="text-[12px] px-2.5 py-1 rounded-lg" style={{ background: "var(--control-bg)", color: "var(--t2)" }}>
+                上次写入 {dreaming?.runtime?.scheduler?.lastResult?.promoted ?? dreaming?.phase_signals?.deep?.promoted ?? 0}
+              </span>
+              <span className="text-[12px] px-2.5 py-1 rounded-lg" style={{ background: "var(--control-bg)", color: "var(--t3)" }}>
+                上次运行 {formatDateTime(dreaming?.runtime?.scheduler?.lastRunAt)}
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+            <button
+              onClick={() => runDreamingAction("/memory/dreaming/sweep")}
+              className="px-3 py-1.5 rounded-xl text-[13px] font-medium"
+              style={{ background: "var(--accent)", color: "#fff" }}
+              disabled={dreamingBusy}
+            >
+              运行整理
+            </button>
+            <button
+              onClick={() => runDreamingAction("/memory/backfill/stage")}
+              className="px-3 py-1.5 rounded-xl text-[13px]"
+              style={{ background: "var(--control-bg)", color: "var(--t2)", border: "0.5px solid var(--border)" }}
+              disabled={dreamingBusy}
+            >
+              回放历史
+            </button>
+            <button
+              onClick={() => runDreamingAction("/memory/backfill/rollback")}
+              className="px-3 py-1.5 rounded-xl text-[13px]"
+              style={{ background: "rgba(255,59,48,0.08)", color: "var(--red, #ef4444)", border: "0.5px solid rgba(255,59,48,0.16)" }}
+              disabled={dreamingBusy}
+            >
+              撤回回放
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* 未初始化提示 */}
       {initialized === false && (
@@ -180,18 +295,9 @@ export function MemoryManager() {
             <Brain size={16} style={{ color: "#f59e0b", marginTop: 1, flexShrink: 0 }} />
             <div>
               <p className="font-medium mb-1" style={{ color: "var(--t1)" }}>记忆系统未初始化</p>
-              {!activeProvider ? (
-                <p style={{ color: "var(--t2)" }}>
-                  请先在 <strong>API Keys → Embedding 模型</strong> 中配置并激活一个 Embedding 接口。
-                </p>
-              ) : (
-                <p style={{ color: "var(--t2)" }}>
-                  Embedding 已配置（{activeProvider.model}），请确保 Qdrant 已启动：
-                  <code className="ml-1 px-1 rounded" style={{ background: "rgba(0,0,0,0.06)" }}>
-                    docker compose -f docker/docker-compose.yml up -d qdrant
-                  </code>
-                </p>
-              )}
+              <p style={{ color: "var(--t2)" }}>
+                本地 Markdown 记忆会自动初始化；如果一直未初始化，请刷新页面或重启后端服务。
+              </p>
             </div>
           </div>
         </div>
@@ -261,6 +367,19 @@ export function MemoryManager() {
               <Trash2 size={13} /> 清空全部
             </button>
           )}
+          {pendingNotes.length > 0 && (
+            <button
+              onClick={consolidate}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[14px]"
+              style={{
+                background: "rgba(0,122,255,0.08)",
+                color: "var(--accent)",
+                border: "0.5px solid rgba(0,122,255,0.16)",
+              }}
+            >
+              <Sparkles size={13} className={consolidating ? "animate-spin" : ""} /> 整理笔记
+            </button>
+          )}
         </div>
       </div>
 
@@ -272,7 +391,11 @@ export function MemoryManager() {
         >
           <Brain size={32} style={{ color: "var(--t3)", margin: "0 auto 12px" }} />
           <p className="text-[14px]" style={{ color: "var(--t3)" }}>
-            {searchResults ? "没有匹配的记忆" : "暂无记忆，开始对话后会自动记录"}
+            {searchResults
+              ? "没有匹配的记忆"
+              : pendingNotes.length > 0
+                ? `暂无长期记忆，有 ${pendingNotes.length} 条待整理笔记`
+                : "暂无长期记忆；明确要求记住的内容会先进入待整理笔记"}
           </p>
         </div>
       ) : (
@@ -315,6 +438,40 @@ export function MemoryManager() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {pendingNotes.length > 0 && (
+        <div
+          className="rounded-2xl p-4"
+          style={{ background: "rgba(255,149,0,0.06)", border: "0.5px solid rgba(255,149,0,0.18)" }}
+        >
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <p className="text-[14px] font-medium" style={{ color: "var(--t1)" }}>待整理笔记</p>
+              <p className="text-[12px] mt-0.5" style={{ color: "var(--t3)" }}>
+                只收集明确要求长期保存的偏好、事实和项目决定。整理后才会进入长期记忆。{dailyDir ? `目录：${dailyDir}` : ""}
+              </p>
+            </div>
+            <button
+              onClick={consolidate}
+              className="px-3 py-1.5 rounded-xl text-[13px] font-medium shrink-0"
+              style={{ background: "var(--accent)", color: "#fff" }}
+            >
+              整理笔记
+            </button>
+          </div>
+          <div className="space-y-2">
+            {pendingNotes.slice(0, 5).map((candidate) => (
+              <div
+                key={candidate.id}
+                className="px-3 py-2 rounded-xl text-[13px] leading-relaxed"
+                style={{ background: "rgba(255,255,255,0.55)", color: "var(--t2)" }}
+              >
+                {candidate.memory}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

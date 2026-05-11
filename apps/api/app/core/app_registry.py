@@ -179,6 +179,14 @@ def get_app_registry() -> "AppRegistry":
     return _registry
 
 
+def _invalidate_agent_mcp_routes_cache() -> None:
+    try:
+        from app.core.tools import invalidate_mcp_routes_cache
+    except Exception:
+        return
+    invalidate_mcp_routes_cache()
+
+
 async def shutdown_app_registry() -> None:
     global _registry
     if _registry is None:
@@ -515,6 +523,7 @@ class AppRegistry:
 
         await self._update_external_records(db, updater)
         self._external_last_error.pop(record["id"], None)
+        _invalidate_agent_mcp_routes_cache()
         return self._build_external_app(record)
 
     async def update_external_manifest(
@@ -560,6 +569,7 @@ class AppRegistry:
 
         await self._update_external_records(db, updater)
         self._external_last_error.pop(app_id, None)
+        _invalidate_agent_mcp_routes_cache()
 
         if was_active and normalized["enabled"]:
             return await self.activate_app(db, app_id)
@@ -596,6 +606,7 @@ class AppRegistry:
             return next_records
 
         records = await self._update_external_records(db, updater)
+        _invalidate_agent_mcp_routes_cache()
         for record in records:
             if record["id"] == app_id:
                 return self._build_external_app(record)
@@ -616,6 +627,7 @@ class AppRegistry:
 
         await self._update_external_records(db, updater)
         self._external_last_error.pop(app_id, None)
+        _invalidate_agent_mcp_routes_cache()
 
     async def activate_app(self, db: AsyncSession, app_id: str) -> App | ManagedAppRecord:
         app = await self.get_app(db, app_id)
@@ -639,9 +651,11 @@ class AppRegistry:
             app.status = active.status
             app.last_error = None
             await db.flush()
+            _invalidate_agent_mcp_routes_cache()
             return app
 
         self._external_last_error.pop(app_id, None)
+        _invalidate_agent_mcp_routes_cache()
         return await self.get_app(db, app_id) or self._build_external_app(
             {
                 "id": app_id,
@@ -660,8 +674,10 @@ class AppRegistry:
         if app.is_builtin:
             app.status = "inactive" if app.enabled else "disabled"
             await db.flush()
+            _invalidate_agent_mcp_routes_cache()
             return app
 
+        _invalidate_agent_mcp_routes_cache()
         return await self.get_app(db, app_id) or self._build_external_app(
             {
                 "id": app_id,
@@ -705,6 +721,7 @@ class AppRegistry:
         if not enabled:
             await self.mcp_manager.stop_server(app_id)
         self._external_last_error.pop(app_id, None)
+        _invalidate_agent_mcp_routes_cache()
 
         for record in records:
             if record["id"] == app_id:

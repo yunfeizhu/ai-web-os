@@ -30,6 +30,27 @@ from app.core.tool_capabilities import (
 )
 
 FILE_TOOL_NAMES: frozenset[str] = frozenset({"list_files", "read_file", "write_file"})
+NOTE_TOOL_NAMES: frozenset[str] = frozenset({"list_notes", "save_note"})
+MEMORY_INTENT_TERMS: tuple[str, ...] = (
+    "记住",
+    "记得",
+    "记录",
+    "以后",
+    "偏好",
+    "喜欢",
+    "希望",
+    "决定",
+    "remember",
+    "note that",
+)
+EXPLICIT_NOTE_TERMS: tuple[str, ...] = (
+    "笔记",
+    "备忘录",
+    "便签",
+    "notes",
+    "note",
+    "/notes",
+)
 
 
 # ── Decision dataclasses ──────────────────────────────────────────────────────
@@ -127,6 +148,18 @@ def _looks_like_virtual_file_path(path: str) -> bool:
     return not n.startswith(("/app/", "/workspace/", "/usr/", "/var/", "/etc/"))
 
 
+def _looks_like_reserved_memory_file_path(path: str) -> bool:
+    n = str(path or "").replace("\\", "/").strip().lower()
+    if not n:
+        return False
+    leaf = n.rsplit("/", 1)[-1]
+    return (
+        leaf in {"memory.md", "dreams.md"}
+        or "/daily/" in n
+        or "/.dreams/" in n
+    )
+
+
 # ── Tool policy guard ─────────────────────────────────────────────────────────
 
 
@@ -136,7 +169,12 @@ _NON_MATH_RE = re.compile(
 )
 
 
-def guard_tool_call(*, tool_name: str, args: dict[str, Any]) -> ToolPolicyDecision:
+def guard_tool_call(
+    *,
+    tool_name: str,
+    args: dict[str, Any],
+    task_text: str = "",
+) -> ToolPolicyDecision:
     """Validate a tool call for safety violations.
 
     This function has NO routing logic. It only blocks provably wrong calls:
@@ -147,8 +185,36 @@ def guard_tool_call(*, tool_name: str, args: dict[str, Any]) -> ToolPolicyDecisi
     """
     name = str(tool_name or "")
 
+    if name in NOTE_TOOL_NAMES and _is_memory_request_without_explicit_note(task_text):
+        return ToolPolicyDecision(
+            allowed=False,
+            reason="memory_request_should_not_use_notes",
+            replacement_hint=(
+                "这是记忆请求，不是笔记编辑请求。请直接回复用户；"
+                "对话结束后记忆系统会自动把可保存内容写入待整理记忆。"
+            ),
+        )
+
     if name in FILE_TOOL_NAMES:
         path = str(args.get("path") or "")
+        if name == "write_file" and _is_memory_request_without_explicit_note(task_text):
+            return ToolPolicyDecision(
+                allowed=False,
+                reason="memory_request_should_not_use_files",
+                replacement_hint=(
+                    "这是记忆请求，不是文件编辑请求。请直接回复用户；"
+                    "对话结束后记忆系统会自动把可保存内容写入待整理记忆。"
+                ),
+            )
+        if name == "write_file" and _looks_like_reserved_memory_file_path(path):
+            return ToolPolicyDecision(
+                allowed=False,
+                reason="reserved_memory_file_path_blocked",
+                replacement_hint=(
+                    "MEMORY.md、DREAMS.md 和 daily 记忆文件由记忆系统维护；"
+                    "需要读取时请使用 memory_search 或 memory_get，不要用 write_file 直接覆盖。"
+                ),
+            )
         if _looks_like_skill_internal_path(path):
             return ToolPolicyDecision(
                 allowed=False,
@@ -179,6 +245,15 @@ def guard_tool_call(*, tool_name: str, args: dict[str, Any]) -> ToolPolicyDecisi
             )
 
     return ToolPolicyDecision(allowed=True)
+
+
+def _is_memory_request_without_explicit_note(task_text: str) -> bool:
+    normalized = str(task_text or "").strip().lower()
+    if not normalized:
+        return False
+    if any(term in normalized for term in EXPLICIT_NOTE_TERMS):
+        return False
+    return any(term in normalized for term in MEMORY_INTENT_TERMS)
 
 
 # ── Duplicate call detection ──────────────────────────────────────────────────

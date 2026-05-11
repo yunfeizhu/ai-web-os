@@ -70,6 +70,32 @@ def test_ensure_memory_manager_ignores_legacy_embedder_dims(
     assert asyncio.run(same_manager.get_all()) == []
 
 
+def test_ensure_memory_manager_runs_due_dreaming_when_enabled(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("AI_NATIVE_OS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("AI_NATIVE_OS_DREAMING_ENABLED", "1")
+    monkeypatch.setenv("AI_NATIVE_OS_DREAMING_INTERVAL_SECONDS", "0")
+    monkeypatch.setattr(memory, "_manager", None)
+
+    manager = asyncio.run(memory.ensure_memory_manager(llm_model="x"))
+    asyncio.run(
+        manager.add_async(
+            "alice",
+            [
+                {"role": "user", "content": "请记住我喜欢番茄钟"},
+                {"role": "assistant", "content": "好的。"},
+            ],
+        )
+    )
+
+    same_manager = asyncio.run(memory.ensure_memory_manager(llm_model="x"))
+
+    assert same_manager is manager
+    assert "请记住我喜欢番茄钟" in manager.read_memory_markdown()
+
+
 def test_init_memory_manager_returns_usable_markdown_manager_without_mem0_import(
     monkeypatch,
     tmp_path,

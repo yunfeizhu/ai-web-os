@@ -138,8 +138,11 @@ button:disabled {
   --input-bg: rgba(255, 255, 255, 0.84);
   --search-field-bg: transparent;
   --search-field-border: rgba(0, 0, 0, 0.075);
-  --virtualized-bg:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(238, 242, 247, 0.52));
+  --virtualized-bg: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.34),
+    rgba(238, 242, 247, 0.52)
+  );
   --disabled-bg: rgba(0, 0, 0, 0.06);
   --disabled-text: rgba(0, 0, 0, 0.25);
   --traffic-disabled: #d4d4d4;
@@ -214,8 +217,11 @@ button:disabled {
   --input-bg: rgba(44, 44, 46, 0.84);
   --search-field-bg: transparent;
   --search-field-border: rgba(255, 255, 255, 0.085);
-  --virtualized-bg:
-    linear-gradient(135deg, rgba(44, 44, 46, 0.48), rgba(20, 20, 22, 0.72));
+  --virtualized-bg: linear-gradient(
+    135deg,
+    rgba(44, 44, 46, 0.48),
+    rgba(20, 20, 22, 0.72)
+  );
   --disabled-bg: rgba(255, 255, 255, 0.07);
   --disabled-text: rgba(255, 255, 255, 0.32);
   --traffic-disabled: rgba(255, 255, 255, 0.22);
@@ -305,7 +311,8 @@ body {
   user-select: text;
 }
 
-.settings-root input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
+.settings-root
+  input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
 .settings-root select,
 .settings-root textarea:not(.bg-transparent) {
   background-color: var(--input-bg) !important;
@@ -328,7 +335,9 @@ body {
   color: var(--t3);
 }
 
-[data-theme="dark"] .settings-root input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
+[data-theme="dark"]
+  .settings-root
+  input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
 [data-theme="dark"] .settings-root select,
 [data-theme="dark"] .settings-root textarea:not(.bg-transparent) {
   color-scheme: dark;
@@ -369,13 +378,27 @@ body {
 [data-theme="dark"] .macos-dark-app [style*="background: rgb(255, 255, 255"],
 [data-theme="dark"] .macos-dark-app [style*="background: #fff"],
 [data-theme="dark"] .macos-dark-app [style*="background: #ffffff"],
-[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(255,255,255"],
-[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(255, 255, 255"],
-[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(249"],
-[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(248"],
-[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(246"],
-[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(244"],
-[data-theme="dark"] .macos-dark-app [style*="background: linear-gradient"][style*="rgba(236"] {
+[data-theme="dark"]
+  .macos-dark-app
+  [style*="background: linear-gradient"][style*="rgba(255,255,255"],
+[data-theme="dark"]
+  .macos-dark-app
+  [style*="background: linear-gradient"][style*="rgba(255, 255, 255"],
+[data-theme="dark"]
+  .macos-dark-app
+  [style*="background: linear-gradient"][style*="rgba(249"],
+[data-theme="dark"]
+  .macos-dark-app
+  [style*="background: linear-gradient"][style*="rgba(248"],
+[data-theme="dark"]
+  .macos-dark-app
+  [style*="background: linear-gradient"][style*="rgba(246"],
+[data-theme="dark"]
+  .macos-dark-app
+  [style*="background: linear-gradient"][style*="rgba(244"],
+[data-theme="dark"]
+  .macos-dark-app
+  [style*="background: linear-gradient"][style*="rgba(236"] {
   background: var(--panel-bg-raised) !important;
 }
 
@@ -386,7 +409,9 @@ body {
   background: var(--control-bg) !important;
 }
 
-[data-theme="dark"] .macos-dark-app input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
+[data-theme="dark"]
+  .macos-dark-app
+  input:not([type="checkbox"]):not([type="radio"]):not(.bg-transparent),
 [data-theme="dark"] .macos-dark-app select,
 [data-theme="dark"] .macos-dark-app textarea:not(.bg-transparent) {
   background: var(--input-bg) !important;
@@ -411,7 +436,9 @@ body {
 [data-theme="dark"] .macos-dark-app [style*="borderColor: rgba(15,23,42"],
 [data-theme="dark"] .macos-dark-app [style*="border-color: rgba(15,23,42"],
 [data-theme="dark"] .macos-dark-app [style*="borderColor: rgba(15, 23, 42"],
-[data-theme="dark"] .macos-dark-app [style*="border: 0.5px solid rgba(15,23,42"],
+[data-theme="dark"]
+  .macos-dark-app
+  [style*="border: 0.5px solid rgba(15,23,42"],
 [data-theme="dark"] .macos-dark-app [style*="border: 1px solid rgba(15,23,42"] {
   border-color: var(--border) !important;
 }

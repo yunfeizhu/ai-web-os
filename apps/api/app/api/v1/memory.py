@@ -9,7 +9,13 @@ from pydantic import BaseModel
 
 from app.core.markdown_memory import MarkdownMemoryManager
 from app.core.memory import get_memory_manager, init_memory_manager
-from app.core.memory_consolidation import consolidate_memory
+from app.core.memory_backfill import (
+    preview_grounded_backfill,
+    rollback_grounded_backfill,
+    stage_grounded_backfill,
+)
+from app.core.memory_consolidation import consolidate_memory, get_dreaming_status
+from app.core.memory_eval import run_memory_eval
 
 router = APIRouter()
 
@@ -143,6 +149,30 @@ async def consolidate_memories():
         "duplicate": result.duplicate,
         "report_path": result.report_path,
         "memory_path": result.memory_path,
+        "state_path": result.state_path,
+        "phase_signal_path": result.phase_signal_path,
+        **_metadata(manager),
+    }
+
+
+@router.get("/memory/dreaming/status")
+async def dreaming_status():
+    manager = _ensure_manager()
+    return {**get_dreaming_status(manager), **_metadata(manager)}
+
+
+@router.post("/memory/dreaming/sweep")
+async def dreaming_sweep():
+    manager = _ensure_manager()
+    result = consolidate_memory(manager)
+    return {
+        "promoted": result.promoted,
+        "skipped": result.skipped,
+        "duplicate": result.duplicate,
+        "report_path": result.report_path,
+        "memory_path": result.memory_path,
+        "state_path": result.state_path,
+        "phase_signal_path": result.phase_signal_path,
         **_metadata(manager),
     }
 
@@ -174,8 +204,32 @@ async def write_memory_file(
 @router.post("/memory/reindex")
 async def reindex_memory(user_id: str = DEFAULT_USER_ID):
     manager = _ensure_manager()
-    memories = await manager.get_all(user_id=user_id)
-    return {"status": "ok", "indexed": len(memories), **_metadata(manager)}
+    del user_id
+    result = manager.rebuild_search_index()
+    return {"status": "ok", **result, **_metadata(manager)}
+
+
+@router.get("/memory/backfill/preview")
+async def preview_backfill():
+    manager = _ensure_manager()
+    return {**preview_grounded_backfill(manager), **_metadata(manager)}
+
+
+@router.post("/memory/backfill/stage")
+async def stage_backfill():
+    manager = _ensure_manager()
+    return {**stage_grounded_backfill(manager), **_metadata(manager)}
+
+
+@router.post("/memory/backfill/rollback")
+async def rollback_backfill():
+    manager = _ensure_manager()
+    return {**rollback_grounded_backfill(manager), **_metadata(manager)}
+
+
+@router.post("/memory/eval")
+async def evaluate_memory():
+    return await run_memory_eval()
 
 
 @router.delete("/memory/{memory_id}")

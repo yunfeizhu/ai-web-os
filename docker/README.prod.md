@@ -5,7 +5,7 @@
 生产环境使用独立的 `docker/docker-compose.prod.yml`，并通过容器内的 Nginx gateway 统一入口。服务器外部只需要开放一个端口：
 
 ```text
-http://SERVER_IP:13000
+http://SERVER_IP:14000
 ```
 
 gateway 会在 Docker 内网里转发：
@@ -82,7 +82,7 @@ ainative-prod-minio
 ainative-prod-qdrant
 ```
 
-只有 `ainative-prod-gateway` 会把宿主机 `13000` 暴露出来。
+只有 `ainative-prod-gateway` 会把宿主机 `14000` 暴露出来。
 
 ## 查看容器状态
 
@@ -117,7 +117,7 @@ docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml log
 检查 gateway：
 
 ```bash
-curl http://127.0.0.1:13000/healthz
+curl http://127.0.0.1:14000/healthz
 ```
 
 正常返回：
@@ -141,7 +141,7 @@ docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml exe
 通过 gateway 检查应用 API：
 
 ```bash
-curl http://127.0.0.1:13000/api/v1/settings
+curl http://127.0.0.1:14000/api/v1/settings
 ```
 
 如果这一步能返回 JSON，说明 gateway、API、数据库链路基本正常。
@@ -151,24 +151,24 @@ curl http://127.0.0.1:13000/api/v1/settings
 如果服务器使用 `ufw`：
 
 ```bash
-sudo ufw allow 13000/tcp
+sudo ufw allow 14000/tcp
 sudo ufw status
 ```
 
-如果是云服务器，还需要在云控制台的安全组里放开 `13000/tcp`。
+如果是云服务器，还需要在云控制台的安全组里放开 `14000/tcp`。
 
 ## 浏览器访问
 
 在本机浏览器打开：
 
 ```text
-http://SERVER_IP:13000
+http://SERVER_IP:14000
 ```
 
 例如：
 
 ```text
-http://1.2.3.4:13000
+http://1.2.3.4:14000
 ```
 
 ## 后续更新

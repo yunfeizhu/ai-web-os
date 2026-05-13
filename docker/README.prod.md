@@ -84,6 +84,48 @@ ainative-prod-qdrant
 
 只有 `ainative-prod-gateway` 会把宿主机 `14000` 暴露出来。
 
+## 生产数据目录
+
+生产配置会把部分运行时数据挂载到项目目录下，方便直接在服务器上查看和放置资源文件。
+
+如果项目目录是 `/opt/AI-Native-OS`，对应宿主机路径是：
+
+```text
+/opt/AI-Native-OS/docker/data/api-home
+/opt/AI-Native-OS/docker/data/browser-state
+```
+
+容器内映射关系：
+
+```text
+docker/data/api-home       -> api:/root/.ai-web-os
+docker/data/browser-state  -> browser-runtime:/data/browser-state
+```
+
+Live2D 模型资源放在：
+
+```text
+docker/data/api-home/avatar/live2d/<模型目录>/<模型文件>.model3.json
+```
+
+例如服务器文件：
+
+```text
+/opt/AI-Native-OS/docker/data/api-home/avatar/live2d/my-model/my-model.model3.json
+```
+
+前端设置里填写：
+
+```text
+/avatar/assets/live2d/my-model/my-model.model3.json
+```
+
+如果使用“本地 ZIP”上传，文件会保存到：
+
+```text
+docker/data/api-home/avatar/live2d/uploads/
+```
+
 ## 查看容器状态
 
 ```bash
@@ -203,4 +245,4 @@ docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml dow
 docker compose --env-file docker/.env.prod -f docker/docker-compose.prod.yml down -v
 ```
 
-`down -v` 会删除 Postgres、Redis、MinIO、Qdrant、API home、browser-state 等数据卷，相当于清空练习项目里的持久化数据。
+`down -v` 会删除 Postgres、Redis、MinIO、Qdrant 等 Docker 数据卷。`docker/data/api-home` 和 `docker/data/browser-state` 是宿主机目录，不会因为 `down -v` 自动删除；如果要清空它们，需要手动删除 `docker/data/` 下的文件。

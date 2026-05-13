@@ -54,7 +54,7 @@ services:
       DEBUG: "false"
       APP_TIMEZONE: "${APP_TIMEZONE:-Asia/Shanghai}"
     volumes:
-      - api_home:/root/.ai-web-os
+      - ./data/api-home:/root/.ai-web-os
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,7 +85,7 @@ services:
     environment:
       BROWSER_STORAGE_ROOT: /data/browser-state
     volumes:
-      - browser_state:/data/browser-state
+      - ./data/browser-state:/data/browser-state
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18100/health"]
       interval: 10s
@@ -150,8 +150,6 @@ services:
       retries: 10
 
 volumes:
-  api_home:
-  browser_state:
   pgdata:
   redisdata:
   miniodata:

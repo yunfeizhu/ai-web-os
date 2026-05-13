@@ -5,6 +5,7 @@ dist/
 .env
 .env.local
 docker/.env.prod
+docker/data/
 *.pyc
 __pycache__/
 .venv/

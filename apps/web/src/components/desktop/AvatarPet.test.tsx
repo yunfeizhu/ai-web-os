@@ -35,7 +35,7 @@ describe("AvatarPet", () => {
       position: { x: 24, y: 488 },
       size: AVATAR_DEFAULT_SIZE,
       modelSourceType: "url",
-      modelUrl: "/avatar/live2d/hiyori_free_zh/runtime/hiyori_free_t08.model3.json",
+      modelUrl: "/avatar/assets/live2d/hiyori_free_zh/runtime/hiyori_free_t08.model3.json",
       localModelName: "",
       currentEmotion: "neutral",
       personalityPreset: "default",

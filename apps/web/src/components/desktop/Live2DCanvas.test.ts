@@ -259,7 +259,7 @@ describe("Live2DCanvas desktop status", () => {
     act(() => {
       root.render(
         createElement(Live2DCanvas, {
-          modelUrl: "/avatar/live2d/model.png",
+          modelUrl: "/avatar/assets/live2d/model.png",
           emotion: "neutral",
         }),
       );

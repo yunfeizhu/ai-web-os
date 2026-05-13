@@ -8,6 +8,7 @@ import {
   classifyLive2DSource,
   loadAvatarZip,
   prepareZipModelBlob,
+  resolveAvatarModelSource,
   type PreparedZipModel,
 } from "@/apps/avatar-pet/live2d-loader";
 import { useAvatarStore } from "@/stores/avatarStore";
@@ -448,7 +449,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
         let modelSource = modelUrl;
 
         if (modelSourceType === "zip") {
-          const zipFile = await loadAvatarZip();
+          const zipFile = await loadAvatarZip(localModelName);
 
           if (disposed) return;
 
@@ -471,7 +472,7 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
           modelSource = preparedZip.objectUrl;
         } else {
           const classified = classifyLive2DSource(modelUrl);
-          modelSource = classified.source;
+          modelSource = resolveAvatarModelSource(classified.source);
         }
 
         await loadCubismCore();

@@ -1,6 +1,5 @@
 import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { get, set } from "idb-keyval";
 
 import {
   classifyLive2DSource,
@@ -10,11 +9,6 @@ import {
   prepareZipModelBlob,
   saveAvatarZip,
 } from "./live2d-loader";
-
-vi.mock("idb-keyval", () => ({
-  get: vi.fn(),
-  set: vi.fn(),
-}));
 
 const createdObjectUrls = new Map<string, Blob>();
 const revokedObjectUrls: string[] = [];
@@ -72,23 +66,23 @@ afterEach(() => {
 });
 
 describe("classifyLive2DSource", () => {
-  it("classifies model3 json sources", () => {
+  it("classifies legacy public model3 json sources as local avatar assets", () => {
     const source = "/avatar/live2d/hiyori/hiyori.model3.json";
 
     expect(classifyLive2DSource(source)).toEqual({
       kind: "model3-json",
-      source,
+      source: "/avatar/assets/live2d/hiyori/hiyori.model3.json",
     });
   });
 
   it("classifies model3 json sources with query or hash fragments", () => {
     expect(classifyLive2DSource("/avatar/live2d/hiyori.model3.json?v=1")).toEqual({
       kind: "model3-json",
-      source: "/avatar/live2d/hiyori.model3.json?v=1",
+      source: "/avatar/assets/live2d/hiyori.model3.json?v=1",
     });
     expect(classifyLive2DSource("/avatar/live2d/hiyori.model3.json#cache")).toEqual({
       kind: "model3-json",
-      source: "/avatar/live2d/hiyori.model3.json#cache",
+      source: "/avatar/assets/live2d/hiyori.model3.json#cache",
     });
   });
 
@@ -97,18 +91,18 @@ describe("classifyLive2DSource", () => {
 
     expect(classifyLive2DSource(source)).toEqual({
       kind: "zip",
-      source,
+      source: "/avatar/assets/live2d/hiyori.zip",
     });
   });
 
   it("classifies zip sources with query or hash fragments", () => {
     expect(classifyLive2DSource("/avatar/live2d/hiyori.zip?v=1")).toEqual({
       kind: "zip",
-      source: "/avatar/live2d/hiyori.zip?v=1",
+      source: "/avatar/assets/live2d/hiyori.zip?v=1",
     });
     expect(classifyLive2DSource("/avatar/live2d/hiyori.zip#cache")).toEqual({
       kind: "zip",
-      source: "/avatar/live2d/hiyori.zip#cache",
+      source: "/avatar/assets/live2d/hiyori.zip#cache",
     });
   });
 
@@ -122,14 +116,14 @@ describe("classifyLive2DSource", () => {
   it("trims sources before classifying and returning them", () => {
     expect(classifyLive2DSource("  /avatar/live2d/HIYORI.MODEL3.JSON  ")).toEqual({
       kind: "model3-json",
-      source: "/avatar/live2d/HIYORI.MODEL3.JSON",
+      source: "/avatar/assets/live2d/HIYORI.MODEL3.JSON",
     });
   });
 
   it("classifies unrecognized non-empty sources as unknown", () => {
     expect(classifyLive2DSource("/avatar/live2d/hiyori.txt")).toEqual({
       kind: "unknown",
-      source: "/avatar/live2d/hiyori.txt",
+      source: "/avatar/assets/live2d/hiyori.txt",
     });
   });
 });
@@ -435,35 +429,52 @@ describe("prepareZipModelBlob", () => {
 });
 
 describe("saveAvatarZip", () => {
-  it("persists the selected ZIP File in browser cache", async () => {
+  it("uploads the selected ZIP File to the local avatar asset API", async () => {
     const file = new File(["zip"], "hiyori_free_en.zip", {
       type: "application/zip",
     });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          name: "hiyori_free_en.zip",
+          path: "live2d/uploads/hiyori_free_en.zip",
+          url: "/avatar/assets/live2d/uploads/hiyori_free_en.zip",
+        }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
 
-    await saveAvatarZip(file);
+    await expect(saveAvatarZip(file)).resolves.toEqual({
+      name: "hiyori_free_en.zip",
+      path: "live2d/uploads/hiyori_free_en.zip",
+      url: "/avatar/assets/live2d/uploads/hiyori_free_en.zip",
+    });
 
-    expect(set).toHaveBeenCalledWith("ainative-avatar-live2d-zip", file);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/avatar/live2d/zip",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.any(FormData),
+      }),
+    );
   });
 });
 
 describe("loadAvatarZip", () => {
-  it("returns null when cached data is absent or not a Blob/File", async () => {
-    vi.mocked(get).mockResolvedValue(undefined);
+  it("returns null when no local ZIP name is configured", async () => {
     await expect(loadAvatarZip()).resolves.toBeNull();
-
-    vi.mocked(get).mockResolvedValue({ name: "not-a-file" });
-    await expect(loadAvatarZip()).resolves.toBeNull();
+    await expect(loadAvatarZip("  ")).resolves.toBeNull();
   });
 
-  it("returns null when cached data is a Blob and File is unavailable", async () => {
-    const cached = new Blob(["zip"], { type: "application/zip" });
+  it("returns null when File is unavailable or the local ZIP cannot be fetched", async () => {
     const originalFile = globalThis.File;
-
-    vi.mocked(get).mockResolvedValue(cached);
     Reflect.deleteProperty(globalThis, "File");
 
     try {
-      await expect(loadAvatarZip()).resolves.toBeNull();
+      await expect(loadAvatarZip("avatar.zip")).resolves.toBeNull();
     } finally {
       Object.defineProperty(globalThis, "File", {
         configurable: true,
@@ -471,23 +482,27 @@ describe("loadAvatarZip", () => {
         value: originalFile,
       });
     }
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
+
+    await expect(loadAvatarZip("missing.zip")).resolves.toBeNull();
   });
 
-  it("returns a cached File and wraps cached Blob data when File is available", async () => {
-    const cachedFile = new File(["zip"], "cached.zip", {
-      type: "application/zip",
-    });
+  it("fetches the named local ZIP from the avatar asset API", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Blob(["zip"], { type: "application/x-zip-compressed" }), {
+        status: 200,
+        headers: { "Content-Type": "application/x-zip-compressed" },
+      }),
+    );
 
-    vi.mocked(get).mockResolvedValue(cachedFile);
-    await expect(loadAvatarZip()).resolves.toBe(cachedFile);
-
-    const cachedBlob = new Blob(["zip"], { type: "application/x-zip-compressed" });
-    vi.mocked(get).mockResolvedValue(cachedBlob);
-
-    const loaded = await loadAvatarZip();
+    const loaded = await loadAvatarZip("cached model.zip");
 
     expect(loaded).toBeInstanceOf(File);
-    expect(loaded?.name).toBe("avatar-live2d.zip");
+    expect(loaded?.name).toBe("cached model.zip");
     expect(loaded?.type).toBe("application/x-zip-compressed");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/avatar/assets/live2d/uploads/cached%20model.zip",
+    );
   });
 });

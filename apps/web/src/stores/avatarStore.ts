@@ -14,6 +14,21 @@ import type { AvatarEmotion } from "@/apps/avatar-pet/emotion-parser";
 
 export type AvatarModelSourceType = "url" | "zip";
 
+const LEGACY_PUBLIC_LIVE2D_PREFIX = "/avatar/live2d/";
+const LOCAL_AVATAR_ASSET_PREFIX = "/avatar/assets/";
+
+function normalizeAvatarModelUrl(modelUrl: string) {
+  const trimmed = modelUrl.trim();
+
+  if (trimmed.startsWith(LEGACY_PUBLIC_LIVE2D_PREFIX)) {
+    return `${LOCAL_AVATAR_ASSET_PREFIX}live2d/${trimmed.slice(
+      LEGACY_PUBLIC_LIVE2D_PREFIX.length,
+    )}`;
+  }
+
+  return trimmed;
+}
+
 export interface AvatarState {
   visible: boolean;
   bubbleOpen: boolean;
@@ -84,7 +99,11 @@ export const useAvatarStore = create<AvatarState>()(
           position: getDefaultAvatarPlacement(viewport, AVATAR_DEFAULT_SIZE),
         }),
       setModelUrl: (modelUrl) =>
-        set({ modelUrl, modelSourceType: "url", live2dError: "" }),
+        set({
+          modelUrl: normalizeAvatarModelUrl(modelUrl),
+          modelSourceType: "url",
+          live2dError: "",
+        }),
       setLocalModelName: (localModelName) =>
         set({ localModelName, modelSourceType: "zip", live2dError: "" }),
       setModelSourceType: (modelSourceType) =>
@@ -94,6 +113,18 @@ export const useAvatarStore = create<AvatarState>()(
     }),
     {
       name: "ainative-avatar",
+      version: 1,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<AvatarState>;
+        if (typeof state.modelUrl !== "string") {
+          return state as AvatarState;
+        }
+
+        return {
+          ...state,
+          modelUrl: normalizeAvatarModelUrl(state.modelUrl),
+        } as AvatarState;
+      },
       partialize: (state) => ({
         visible: state.visible,
         bubbleOpen: state.bubbleOpen,

@@ -4,6 +4,7 @@ dist/
 .turbo/
 .env
 .env.local
+docker/.env.prod
 *.pyc
 __pycache__/
 .venv/

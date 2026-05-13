@@ -154,7 +154,7 @@ describe("avatar layout", () => {
     expect(useAvatarStore.getState().position).toEqual({ x: 432, y: 8 });
   });
 
-  it("switches to URL model source when a model URL is configured", () => {
+  it("switches to local file model source when a legacy public model URL is configured", () => {
     useAvatarStore.setState({
       visible: true,
       bubbleOpen: false,
@@ -174,7 +174,7 @@ describe("avatar layout", () => {
 
     expect(useAvatarStore.getState()).toMatchObject({
       modelSourceType: "url",
-      modelUrl: "/avatar/live2d/hiyori_free_en/hiyori.model3.json",
+      modelUrl: "/avatar/assets/live2d/hiyori_free_en/hiyori.model3.json",
       localModelName: "hiyori_free_en.zip",
       live2dError: "",
     });
@@ -187,7 +187,7 @@ describe("avatar layout", () => {
       position: { x: 24, y: 188 },
       size: AVATAR_DEFAULT_SIZE,
       modelSourceType: "url",
-      modelUrl: "/avatar/live2d/hiyori_free_en/hiyori.model3.json",
+      modelUrl: "/avatar/assets/live2d/hiyori_free_en/hiyori.model3.json",
       localModelName: "",
       currentEmotion: "neutral",
       personalityPreset: "default",
@@ -197,7 +197,7 @@ describe("avatar layout", () => {
 
     expect(useAvatarStore.getState()).toMatchObject({
       modelSourceType: "zip",
-      modelUrl: "/avatar/live2d/hiyori_free_en/hiyori.model3.json",
+      modelUrl: "/avatar/assets/live2d/hiyori_free_en/hiyori.model3.json",
       localModelName: "hiyori_free_en.zip",
     });
   });

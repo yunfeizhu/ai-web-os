@@ -390,23 +390,6 @@ function getArgsSummary(tc: ToolCall): string {
   return safeStringify(args, 70);
 }
 
-function normalizeToolResult(result: string) {
-  return result
-    .replaceAll("璇硶閿欒", "语法错误")
-    .replaceAll("涓嶅厑璁哥殑鎿嶄綔", "不允许的操作")
-    .replaceAll("鏈煡鍙橀噺", "未知变量")
-    .replaceAll("璁＄畻閿欒", "计算错误")
-    .replaceAll("鈥︼紙鍐呭宸叉埅鏂級", "...（内容已截断）")
-    .replaceAll("HTTP 閿欒", "HTTP 错误")
-    .replaceAll("鎶撳彇澶辫触", "抓取失败")
-    .replaceAll(
-      "锛堜唬鐮佹墽琛屽畬姣曪紝鏃犺緭鍑猴級",
-      "（代码执行完毕，无输出）",
-    )
-    .replaceAll("鎵ц瓒呮椂锛堣秴杩?", "执行超时（超过 ")
-    .replaceAll(" 绉掞級", " 秒）");
-}
-
 function parseJson<T>(value?: string): T | null {
   if (!value) return null;
   try {
@@ -751,7 +734,7 @@ function ToolCallItem({ tc, compact = false }: { tc: ToolCall; compact?: boolean
   const meta = getToolMeta(tc);
   const status = statusFromToolCall(tc);
   const argsSummary = getArgsSummary(tc);
-  const result = tc.result ? normalizeToolResult(tc.result) : "";
+  const result = tc.result ?? "";
 
   return (
     <div

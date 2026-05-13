@@ -470,7 +470,7 @@ async def save_binary_file(
     normalized = normalize_path(path)
     real = _to_real(normalized)
     if not overwrite and real.exists():
-        raise ValueError("鍚屽悕鏂囦欢鎴栫洰褰曞凡瀛樺湪銆?")
+        raise ValueError("同名文件或目录已存在。")
     await _run(_sync_write_bytes, real, content)
     return _make_node(real, normalized)
 

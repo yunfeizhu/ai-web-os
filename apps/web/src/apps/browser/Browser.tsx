@@ -32,6 +32,9 @@ import { useSettingsStore } from "@/stores/settingsStore";
 const LIVE_BASE_FROM_ENV = (
   process.env.NEXT_PUBLIC_BROWSER_LIVE_BASE || ""
 ).replace(/\/$/, "");
+const RUNTIME_BASE_FROM_ENV = (
+  process.env.NEXT_PUBLIC_BROWSER_RUNTIME_BASE || ""
+).replace(/\/$/, "");
 
 interface BrowserProps {
   appState?: Record<string, unknown>;
@@ -464,6 +467,20 @@ function sleep(ms: number) {
   });
 }
 
+function resolveLiveWebSocketPath(liveBase: string) {
+  const fallbackOrigin =
+    typeof window === "undefined" ? "http://localhost" : window.location.origin;
+
+  try {
+    const url = new URL(liveBase || "/", fallbackOrigin);
+    const pathPrefix = url.pathname.replace(/^\/+|\/+$/g, "");
+    return pathPrefix ? `${pathPrefix}/websockify` : "websockify";
+  } catch {
+    const pathPrefix = liveBase.replace(/^\/+|\/+$/g, "");
+    return pathPrefix ? `${pathPrefix}/websockify` : "websockify";
+  }
+}
+
 export function Browser({ appState, windowId }: BrowserProps) {
   const updateAppState = useWindowStore((state) => state.updateAppState);
   const browserWindow = useWindowStore((state) => state.windows[windowId]);
@@ -570,14 +587,31 @@ export function Browser({ appState, windowId }: BrowserProps) {
     return `${window.location.protocol}//${window.location.hostname}:16080`;
   }, []);
 
+  const runtimeBase = useMemo(() => {
+    if (RUNTIME_BASE_FROM_ENV) return RUNTIME_BASE_FROM_ENV;
+    if (typeof window === "undefined") return "http://localhost:18100";
+    return `${window.location.protocol}//${window.location.hostname}:18100`;
+  }, []);
+
+  const liveWebSocketPath = useMemo(
+    () => resolveLiveWebSocketPath(liveBase),
+    [liveBase],
+  );
+
   const liveUrl = useMemo(() => {
     if (!activeSessionId) return "";
-    const apiBase =
-      typeof window === "undefined"
-        ? "http://localhost:18100"
-        : `${window.location.protocol}//${window.location.hostname}:18100`;
-    return `${liveBase}/embedded_vnc.html?autoconnect=1&scale=${preciseControl ? 0 : 1}&precise=${preciseControl ? 1 : 0}&view_only=0&path=websockify&reconnect=1&session_id=${encodeURIComponent(activeSessionId)}&api_base=${encodeURIComponent(apiBase)}`;
-  }, [activeSessionId, liveBase, preciseControl]);
+    const params = new URLSearchParams({
+      autoconnect: "1",
+      scale: preciseControl ? "0" : "1",
+      precise: preciseControl ? "1" : "0",
+      view_only: "0",
+      path: liveWebSocketPath,
+      reconnect: "1",
+      session_id: activeSessionId,
+      api_base: runtimeBase,
+    });
+    return `${liveBase}/embedded_vnc.html?${params.toString()}`;
+  }, [activeSessionId, liveBase, liveWebSocketPath, preciseControl, runtimeBase]);
 
   const liveFrameKey = useMemo(() => activeSessionId, [activeSessionId]);
 

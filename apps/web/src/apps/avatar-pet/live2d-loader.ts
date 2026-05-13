@@ -1,5 +1,6 @@
 import JSZip, { type JSZipObject } from "jszip";
-import { get, set } from "idb-keyval";
+
+import { buildApiUrl } from "@/lib/backend";
 
 export type Live2DSourceKind = "missing" | "model3-json" | "zip" | "unknown";
 
@@ -14,10 +15,17 @@ export type PreparedZipModel = {
   objectUrls: string[];
 };
 
+export type StoredAvatarZip = {
+  name: string;
+  path: string;
+  url: string;
+};
+
 const MODEL3_JSON_EXTENSION = ".model3.json";
 const MODEL_JSON_EXTENSION = ".model.json";
 const ZIP_EXTENSION = ".zip";
-const AVATAR_ZIP_CACHE_KEY = "ainative-avatar-live2d-zip";
+const LEGACY_PUBLIC_LIVE2D_PREFIX = "/avatar/live2d/";
+const LOCAL_AVATAR_ASSET_PREFIX = "/avatar/assets/";
 
 function hasExtension(source: string, extension: string): boolean {
   const fragmentStart = source.search(/[?#]/);
@@ -362,7 +370,7 @@ export function isLive2DZipSource(source: string): boolean {
 export function classifyLive2DSource(
   source: string,
 ): Live2DSourceClassification {
-  const trimmedSource = source.trim();
+  const trimmedSource = normalizeAvatarModelSource(source);
 
   if (trimmedSource.length === 0) {
     return { kind: "missing", source: trimmedSource };
@@ -377,6 +385,28 @@ export function classifyLive2DSource(
   }
 
   return { kind: "unknown", source: trimmedSource };
+}
+
+export function normalizeAvatarModelSource(source: string): string {
+  const trimmedSource = source.trim();
+
+  if (trimmedSource.startsWith(LEGACY_PUBLIC_LIVE2D_PREFIX)) {
+    return `${LOCAL_AVATAR_ASSET_PREFIX}live2d/${trimmedSource.slice(
+      LEGACY_PUBLIC_LIVE2D_PREFIX.length,
+    )}`;
+  }
+
+  return trimmedSource;
+}
+
+export function resolveAvatarModelSource(source: string): string {
+  const normalizedSource = normalizeAvatarModelSource(source);
+
+  if (normalizedSource.startsWith(LOCAL_AVATAR_ASSET_PREFIX)) {
+    return buildApiUrl(normalizedSource);
+  }
+
+  return normalizedSource;
 }
 
 export function findModelSettingsPath(paths: string[]): string | null {
@@ -440,30 +470,38 @@ export async function prepareZipModelBlob(blob: Blob): Promise<PreparedZipModel>
   }
 }
 
-export async function saveAvatarZip(file: File): Promise<void> {
-  await set(AVATAR_ZIP_CACHE_KEY, file);
+export async function saveAvatarZip(file: File): Promise<StoredAvatarZip> {
+  const body = new FormData();
+  body.append("file", file);
+
+  const response = await fetch(buildApiUrl("/avatar/live2d/zip"), {
+    method: "POST",
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return response.json() as Promise<StoredAvatarZip>;
 }
 
-export async function loadAvatarZip(): Promise<File | null> {
-  const cached = await get<unknown>(AVATAR_ZIP_CACHE_KEY);
-
-  if (!cached) {
+export async function loadAvatarZip(localModelName?: string): Promise<File | null> {
+  const filename = localModelName?.trim();
+  if (!filename || typeof File === "undefined") {
     return null;
   }
 
-  if (typeof File !== "undefined" && cached instanceof File) {
-    return cached;
+  const response = await fetch(
+    buildApiUrl(`/avatar/assets/live2d/uploads/${encodeURIComponent(filename)}`),
+  );
+
+  if (!response.ok) {
+    return null;
   }
 
-  if (typeof Blob !== "undefined" && cached instanceof Blob) {
-    if (typeof File === "undefined") {
-      return null;
-    }
-
-    return new File([cached], "avatar-live2d.zip", {
-      type: cached.type || "application/zip",
-    });
-  }
-
-  return null;
+  const blob = await response.blob();
+  return new File([blob], filename, {
+    type: blob.type || "application/zip",
+  });
 }

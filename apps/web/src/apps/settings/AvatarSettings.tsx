@@ -22,8 +22,8 @@ import {
 } from "@/stores/settingsStore";
 
 const SOURCE_OPTIONS: { id: AvatarModelSourceType; label: string }[] = [
-  { id: "url", label: "URL" },
-  { id: "zip", label: "Local ZIP" },
+  { id: "url", label: "本地文件" },
+  { id: "zip", label: "本地 ZIP" },
 ];
 
 type AvatarModelGroup = {
@@ -125,11 +125,11 @@ export function AvatarSettings() {
 
     try {
       const { saveAvatarZip } = await import("@/apps/avatar-pet/live2d-loader");
-      await saveAvatarZip(file);
-      setLocalModelName(file.name);
+      const saved = await saveAvatarZip(file);
+      setLocalModelName(saved.name);
     } catch {
       setZipSaveError(
-        "Failed to save local ZIP. Please try again or choose a smaller file.",
+        "保存本地 ZIP 失败，请重试或选择更小的文件。",
       );
     } finally {
       event.target.value = "";
@@ -326,13 +326,13 @@ export function AvatarSettings() {
             className="mb-2 block text-[13px] font-medium"
             style={{ color: "var(--t2)" }}
           >
-            Cubism 3/4 .model3.json URL
+            Cubism 3/4 .model3.json 本地文件
           </span>
           <input
             value={modelUrl}
             onChange={(event) => setModelUrl(event.target.value)}
             onFocus={() => setModelSourceType("url")}
-            placeholder="/avatar/live2d/my-model/my-model.model3.json"
+            placeholder="/avatar/assets/live2d/my-model/my-model.model3.json"
             className="h-9 w-full rounded-lg px-3 text-[13px] outline-none transition-colors"
             style={{
               background: "var(--search-field-bg)",
@@ -350,7 +350,7 @@ export function AvatarSettings() {
             className="mb-2 block text-[13px] font-medium"
             style={{ color: "var(--t2)" }}
           >
-            Local ZIP
+            本地 ZIP
           </span>
           <button
             type="button"
@@ -390,7 +390,7 @@ export function AvatarSettings() {
             </p>
           )}
           <p className="mt-2 text-[12px]" style={{ color: "var(--t3)" }}>
-            Local ZIP is saved in this browser and loaded directly on the desktop.
+            文件会保存到 ~/.ai-web-os/avatar，并由本地后端加载。
           </p>
         </div>
       </div>

@@ -15,6 +15,7 @@ from app.api.v1 import mail as mail_router
 from app.api.v1 import office as office_router
 from app.api.v1 import skills as skills_router
 from app.api.v1 import extensions as extensions_router
+from app.api.v1 import avatar as avatar_router
 from app.core.database import init_db
 from app.core.app_registry import get_app_registry, shutdown_app_registry
 from app.core.agent_graph import init_checkpointer, shutdown_checkpointer
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(office_router.router, prefix="/api/v1/office", tags=["office"])
     app.include_router(skills_router.router, prefix="/api/v1/skills", tags=["skills"])
     app.include_router(extensions_router.router, prefix="/api/v1/extensions", tags=["extensions"])
+    app.include_router(avatar_router.router, prefix="/api/v1/avatar", tags=["avatar"])
 
     from fastapi import WebSocket
     @app.websocket("/ws")

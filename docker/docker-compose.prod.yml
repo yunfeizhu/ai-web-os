@@ -1,0 +1,158 @@
+name: ainative-prod
+
+services:
+  gateway:
+    image: nginx:1.27-alpine
+    container_name: ainative-prod-gateway
+    restart: unless-stopped
+    ports:
+      - "13000:80"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      web:
+        condition: service_started
+      api:
+        condition: service_healthy
+      browser-runtime:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE: /api/v1
+        NEXT_PUBLIC_BROWSER_LIVE_BASE: /browser-live
+        NEXT_PUBLIC_BROWSER_RUNTIME_BASE: /browser-runtime
+    container_name: ainative-prod-web
+    restart: unless-stopped
+    expose:
+      - "3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    container_name: ainative-prod-api
+    restart: unless-stopped
+    expose:
+      - "8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-ainative}"
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+      MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
+      MINIO_BUCKET: "${MINIO_BUCKET:-ainative-files}"
+      AI_NATIVE_OS_HOME: /root/.ai-web-os
+      BROWSER_RUNTIME_URL: http://browser-runtime:18100
+      SECRET_KEY: "${SECRET_KEY:?SECRET_KEY is required}"
+      DEBUG: "false"
+      APP_TIMEZONE: "${APP_TIMEZONE:-Asia/Shanghai}"
+    volumes:
+      - api_home:/root/.ai-web-os
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      browser-runtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  browser-runtime:
+    build:
+      context: ..
+      dockerfile: infra/browser-runtime/Dockerfile
+    container_name: ainative-prod-browser-runtime
+    restart: unless-stopped
+    expose:
+      - "18100"
+      - "6080"
+    environment:
+      BROWSER_STORAGE_ROOT: /data/browser-state
+    volumes:
+      - browser_state:/data/browser-state
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:18100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: ainative-prod-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-postgres}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POSTGRES_DB: "${POSTGRES_DB:-ainative}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ainative-prod-redis
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: ainative-prod-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: "${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}"
+      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}"
+    volumes:
+      - miniodata:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: ainative-prod-qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrantdata:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -lc '</dev/tcp/127.0.0.1/6333'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  api_home:
+  browser_state:
+  pgdata:
+  redisdata:
+  miniodata:
+  qdrantdata:

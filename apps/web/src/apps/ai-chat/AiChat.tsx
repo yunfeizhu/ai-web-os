@@ -11,6 +11,7 @@ import { decodeModel, PROVIDERS } from "@/apps/settings/providers";
 import { MessageBubble } from "./MessageBubble";
 import { ModelPicker } from "./ModelPicker";
 import { shouldSuppressDuplicateSubmit } from "./chatSendGate";
+import { scrollMessagesToBottom } from "./scrolling";
 import { isInternalToolEvent, isVisibleToolCall } from "./toolCallVisibility";
 import type { AppWorkflowSummary, ChatMessage, Conversation } from "./types";
 
@@ -535,9 +536,10 @@ export function AiChat() {
 
   useEffect(() => {
     if (!userScrolledUpRef.current) {
-      bottomRef.current?.scrollIntoView({
-        behavior: scrollBehaviorRef.current,
-      });
+      scrollMessagesToBottom(
+        scrollContainerRef.current,
+        scrollBehaviorRef.current,
+      );
     }
   }, [messages]);
 

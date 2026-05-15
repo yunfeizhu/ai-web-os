@@ -6,6 +6,10 @@ import { AvatarPet } from "./AvatarPet";
 import { Dock } from "./Dock";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { DesktopIcon } from "./DesktopIcon";
+import {
+  DESKTOP_ICON_GRID_ITEM_STYLE,
+  DESKTOP_ICON_GRID_STYLE,
+} from "./desktopIconLayout";
 import { useDesktopStore } from "@/stores/desktopStore";
 import { useWindowStore } from "@/stores/windowStore";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -149,14 +153,16 @@ export function Desktop() {
       {/* 桌面时钟 — 左上角 */}
       <DesktopClock />
 
-      {/* Desktop icon grid — macOS 风格：纵向排列，紧贴右侧 */}
+      {/* Desktop icon grid — 先纵向排列；高度不足时向左新增列。 */}
       <div
         data-desktop-blocker="true"
-        className="absolute top-3 right-3 flex flex-col gap-1"
-        style={{ zIndex: 1 }}
+        className="absolute top-3 right-3"
+        style={DESKTOP_ICON_GRID_STYLE}
       >
         {desktopApps.map((app) => (
-          <DesktopIcon key={app.manifest.id} app={app} />
+          <div key={app.manifest.id} style={DESKTOP_ICON_GRID_ITEM_STYLE}>
+            <DesktopIcon app={app} />
+          </div>
         ))}
       </div>
 

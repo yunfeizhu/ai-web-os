@@ -43,6 +43,29 @@ class Settings(BaseSettings):
     trace_langsmith_api_key: str = ""
     trace_langsmith_project: str = "ai-web-os"
 
+    # QQ official Bot channel
+    qqbot_enabled: bool = False
+    qqbot_app_id: str = ""
+    qqbot_app_secret: str = ""
+    qqbot_bot_user_id: str = ""
+    qqbot_account_id: str = "default"
+    qqbot_allow_private: bool = True
+    qqbot_allow_group: bool = False
+    qqbot_allow_unlisted: bool = False
+    qqbot_allowed_users: str = ""
+    qqbot_allowed_groups: str = ""
+
+    # Agent defaults used by external channels.
+    qqbot_agent_user_id: str = "default"
+    qqbot_agent_app_id: str = "ai-chat"
+    qqbot_agent_model: str = "kimi-k2.5"
+    qqbot_agent_provider_id: str = "moonshot"
+    qqbot_agent_compat_type: str = "openai"
+    qqbot_agent_api_key: str = ""
+    qqbot_agent_api_base: str | None = None
+    qqbot_agent_system_prompt: str = "你是 AI-Web OS 的智能助手，请简洁、友好地回答用户问题。"
+    qqbot_enable_memory: bool = True
+
     model_config = {"env_file": "../../.env", "extra": "ignore"}
 
 

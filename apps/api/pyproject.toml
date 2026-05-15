@@ -26,6 +26,7 @@ dependencies = [
     "langgraph>=1.1.8",
     "langgraph-checkpoint-postgres>=2.0.0",
     "psycopg[binary,pool]>=3.1.0",
+    "qq-botpy>=1.2.1",
 ]
 
 [dependency-groups]

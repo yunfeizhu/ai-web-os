@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import {
   BookOpen,
+  Bot,
   Boxes,
   Brain,
   Download,
@@ -15,6 +16,7 @@ import {
 
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import { AvatarSettings } from "./AvatarSettings";
+import { ChannelSettings } from "./ChannelSettings";
 import { ExtensionCenter } from "./ExtensionCenter";
 import { KnowledgeBase } from "./KnowledgeBase";
 import { MemoryManager } from "./MemoryManager";
@@ -26,6 +28,7 @@ type Tab =
   | "avatar"
   | "memory"
   | "knowledge"
+  | "channels"
   | "extensions"
   | "about";
 
@@ -35,6 +38,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: "avatar", label: "虚拟伙伴", icon: <SmilePlus size={15} /> },
   { id: "memory", label: "记忆", icon: <Brain size={15} /> },
   { id: "knowledge", label: "知识库", icon: <BookOpen size={15} /> },
+  { id: "channels", label: "渠道接入", icon: <Bot size={15} /> },
   { id: "extensions", label: "扩展能力", icon: <Boxes size={15} /> },
   { id: "about", label: "关于", icon: <Info size={15} /> },
 ];
@@ -130,6 +134,7 @@ export function Settings() {
         {tab === "avatar" && <AvatarSettings />}
         {tab === "memory" && <MemoryManager />}
         {tab === "knowledge" && <KnowledgeBase />}
+        {tab === "channels" && <ChannelSettings />}
         {tab === "extensions" && <ExtensionCenter />}
         {tab === "about" && <AboutPanel />}
       </div>

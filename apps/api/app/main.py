@@ -11,6 +11,7 @@ from app.api.v1 import test as test_router
 from app.api.v1 import knowledge as knowledge_router
 from app.api.v1 import browser as browser_router
 from app.api.v1 import calendar as calendar_router
+from app.api.v1 import channels as channels_router
 from app.api.v1 import mail as mail_router
 from app.api.v1 import office as office_router
 from app.api.v1 import skills as skills_router
@@ -20,6 +21,7 @@ from app.core.database import init_db
 from app.core.app_registry import get_app_registry, shutdown_app_registry
 from app.core.agent_graph import init_checkpointer, shutdown_checkpointer
 from app.core.browser_session import get_browser_session_manager
+from app.core.channel_runtime import shutdown_channel_runtimes, startup_channel_runtimes
 from app.core.knowledge import shutdown_knowledge_manager
 from app.core.file_manager import ensure_default_directories, FS_ROOT
 from app.api.websocket import websocket_endpoint
@@ -74,11 +76,13 @@ async def lifespan(app: FastAPI):
     print(f"[FileSystem] 沙箱根目录: {FS_ROOT}")
     get_app_registry()
     await init_checkpointer()
+    await startup_channel_runtimes(get_settings())
     if get_settings().browser_session_enabled:
         await get_browser_session_manager().startup()
     try:
         yield
     finally:
+        await shutdown_channel_runtimes()
         await get_browser_session_manager().shutdown()
         await shutdown_app_registry()
         await shutdown_knowledge_manager()
@@ -111,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge_router.router, prefix="/api/v1/knowledge", tags=["knowledge"])
     app.include_router(browser_router.router, prefix="/api/v1/browser", tags=["browser"])
     app.include_router(calendar_router.router, prefix="/api/v1/calendar", tags=["calendar"])
+    app.include_router(channels_router.router, prefix="/api/v1/channels", tags=["channels"])
     app.include_router(mail_router.router, prefix="/api/v1/mail", tags=["mail"])
     app.include_router(office_router.router, prefix="/api/v1/office", tags=["office"])
     app.include_router(skills_router.router, prefix="/api/v1/skills", tags=["skills"])

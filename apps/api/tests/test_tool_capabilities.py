@@ -95,6 +95,32 @@ def test_temporal_field_query_is_sufficient_with_dated_field_coverage():
     )
 
 
+def test_answer_only_search_payload_counts_as_sufficient_discovery():
+    result = json.dumps(
+        {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps(
+                        {
+                            "answer": "沪深300今日收盘上涨 1.2%，收于 3650 点，成交额较上一交易日放大。",
+                        },
+                        ensure_ascii=False,
+                    ),
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+    assert result_has_sufficient_discovery(
+        "mcp_tavily_search",
+        result,
+        "Search the web and return ranked results.",
+        task_text="查一下沪深300今天的收盘表现",
+    )
+
+
 def test_top_level_search_stops_after_sufficient_discovery_for_any_domain():
     assert should_stop_search_after_sufficient_discovery(
         tool_name="mcp_tavily_search",

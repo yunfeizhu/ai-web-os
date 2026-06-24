@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DOCK_BASE_ICON_SIZE } from "./dockMagnification";
 
 export function SystemTray() {
   const [time, setTime] = useState({ h: "", m: "" });
@@ -19,10 +20,17 @@ export function SystemTray() {
   }, []);
 
   return (
-    <div className="flex items-center justify-center h-11 px-1.5">
+    <div
+      className="flex items-center justify-center px-1.5"
+      style={{ height: DOCK_BASE_ICON_SIZE }}
+    >
       <span
         className="text-[14px] font-semibold tabular-nums"
-        style={{ color: "rgba(0,0,0,0.55)", fontFamily: "var(--font-mono)" }}
+        style={{
+          color: "rgba(0,0,0,0.55)",
+          fontFamily: "var(--font-mono)",
+          lineHeight: 1,
+        }}
       >
         {time.h}:{time.m}
       </span>

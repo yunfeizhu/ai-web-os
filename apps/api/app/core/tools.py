@@ -16,6 +16,7 @@ import sys
 import tempfile
 import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -85,6 +86,47 @@ BUILTIN_TOOL_SCHEMAS: list[dict] = [
                     },
                 },
                 "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "query_weather",
+            "description": (
+                "Query current weather and short forecast directly from wttr.in JSON. "
+                "Use this first for simple weather requests instead of web search. "
+                "For relative dates, pass the resolved absolute date in YYYY-MM-DD."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {
+                        "type": "string",
+                        "description": "City, airport code, coordinates, or place name, e.g. `杭州`, `London`, `muc`, `30.25,120.16`.",
+                    },
+                    "date": {
+                        "type": "string",
+                        "description": "Optional target date in YYYY-MM-DD. wttr.in supports current weather plus short forecast only.",
+                    },
+                    "days": {
+                        "type": "integer",
+                        "description": "Number of forecast days to include, 1-3.",
+                        "default": 3,
+                    },
+                    "lang": {
+                        "type": "string",
+                        "description": "Response language code for wttr.in weather descriptions.",
+                        "default": "zh",
+                    },
+                    "units": {
+                        "type": "string",
+                        "enum": ["metric", "us", "metric_ms"],
+                        "description": "metric=Celsius/kmh, us=Fahrenheit/mph, metric_ms=Celsius/m/s wind.",
+                        "default": "metric",
+                    },
+                },
+                "required": ["location"],
             },
         },
     },
@@ -353,6 +395,39 @@ DELEGATE_TASK_SCHEMA: dict = {
     },
 }
 
+_DELEGATE_TASK_STRONG_SIGNALS = re.compile(
+    r"(多\s*agent|子\s*agent|delegate|subagent|并行|分别|各自|对比|比较|"
+    r"多方面|多个来源|多源|交叉验证|综合.*来源|parallel|compare)",
+    re.I,
+)
+
+
+def should_expose_delegate_task(user_message: str) -> bool:
+    """Return True when manager-style delegation has clear expected value.
+
+    This is a task-complexity gate, not a domain-specific route. Short one-hop
+    requests should keep a single agent and use the matching tool directly.
+    """
+    text = str(user_message or "").strip()
+    if not text:
+        return False
+
+    if _DELEGATE_TASK_STRONG_SIGNALS.search(text):
+        return True
+
+    try:
+        from app.core.agent_plan import build_plan_preview
+
+        preview = build_plan_preview(text)
+    except Exception:
+        preview = None
+
+    reasons = set(preview.get("reasons") or []) if isinstance(preview, dict) else set()
+    if "multi_app" in reasons:
+        return True
+
+    return len(text) >= 160 and len(reasons) >= 2
+
 
 def _tool_schema_name(schema: dict[str, Any]) -> str:
     return str(((schema.get("function") or {}).get("name")) or "")
@@ -433,6 +508,193 @@ async def _fetch_url(url: str, max_chars: int = 3000) -> str:
         return f"HTTP 错误 {exc.response.status_code}: {url}"
     except Exception as exc:
         return f"抓取失败: {exc}"
+
+
+def _wttr_weather_url(
+    location: str,
+    *,
+    domain: str = "wttr.in",
+    lang: str = "zh",
+    units: str = "metric",
+) -> str:
+    encoded_location = quote(str(location or "").strip(), safe=",@")
+    unit_flag = {"metric": "m", "us": "u", "metric_ms": "M"}.get(str(units or "metric"), "m")
+    query = f"format=j1&{unit_flag}"
+    lang_text = str(lang or "").strip()
+    if lang_text:
+        query = f"{query}&lang={quote(lang_text, safe='')}"
+    return f"https://{domain}/{encoded_location}?{query}"
+
+
+async def _fetch_wttr_weather_payload(
+    location: str,
+    *,
+    lang: str = "zh",
+    units: str = "metric",
+) -> tuple[dict[str, Any], str]:
+    headers = {
+        "User-Agent": "AI-Web-OS/1.0 weather tool",
+        "Accept": "application/json,text/plain",
+    }
+    errors: list[str] = []
+    for domain in ("wttr.in", "wttr.is"):
+        url = _wttr_weather_url(location, domain=domain, lang=lang, units=units)
+        try:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                payload = response.json()
+                if isinstance(payload, dict):
+                    return payload, url
+                errors.append(f"{domain}: 返回非 JSON 对象")
+        except Exception as exc:
+            detail = str(exc).strip() or type(exc).__name__
+            errors.append(f"{domain}: {detail}")
+    raise RuntimeError("; ".join(errors) or "wttr.in 查询失败")
+
+
+def _wttr_value(value: Any) -> str:
+    if isinstance(value, list):
+        if not value:
+            return ""
+        first = value[0]
+        if isinstance(first, dict):
+            return str(first.get("value") or "").strip()
+        return str(first or "").strip()
+    if isinstance(value, dict):
+        return str(value.get("value") or "").strip()
+    return str(value or "").strip()
+
+
+def _wttr_max(items: list[Any], key: str) -> str:
+    values: list[int] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        try:
+            values.append(int(str(item.get(key) or "").strip()))
+        except ValueError:
+            continue
+    return str(max(values)) if values else ""
+
+
+def _summarize_wttr_forecast_day(day: dict[str, Any]) -> dict[str, Any]:
+    hourly = day.get("hourly") if isinstance(day.get("hourly"), list) else []
+    representative = None
+    best_rain = -1
+    for item in hourly:
+        if not isinstance(item, dict):
+            continue
+        try:
+            chance = int(str(item.get("chanceofrain") or "0").strip())
+        except ValueError:
+            chance = 0
+        if representative is None or chance > best_rain:
+            representative = item
+            best_rain = chance
+
+    return {
+        "date": str(day.get("date") or "").strip(),
+        "description": _wttr_value((representative or {}).get("weatherDesc")),
+        "tempMaxC": str(day.get("maxtempC") or "").strip(),
+        "tempMinC": str(day.get("mintempC") or "").strip(),
+        "tempAvgC": str(day.get("avgtempC") or "").strip(),
+        "chanceOfRain": _wttr_max(hourly, "chanceofrain"),
+        "chanceOfSnow": _wttr_max(hourly, "chanceofsnow"),
+    }
+
+
+def _summarize_wttr_weather_payload(
+    payload: dict[str, Any],
+    *,
+    query_location: str,
+    target_date: str = "",
+    days: int = 3,
+    source_url: str = "",
+) -> dict[str, Any]:
+    nearest = payload.get("nearest_area")
+    nearest_area = nearest[0] if isinstance(nearest, list) and nearest else {}
+    if not isinstance(nearest_area, dict):
+        nearest_area = {}
+    location_parts = [
+        _wttr_value(nearest_area.get("areaName")),
+        _wttr_value(nearest_area.get("region")),
+        _wttr_value(nearest_area.get("country")),
+    ]
+    resolved_location = ", ".join(part for part in location_parts if part)
+
+    current_rows = payload.get("current_condition")
+    current = current_rows[0] if isinstance(current_rows, list) and current_rows else {}
+    if not isinstance(current, dict):
+        current = {}
+
+    weather_rows = payload.get("weather") if isinstance(payload.get("weather"), list) else []
+    forecast = [
+        _summarize_wttr_forecast_day(row)
+        for row in weather_rows
+        if isinstance(row, dict)
+    ]
+    selected_forecast = forecast
+    if target_date:
+        selected_forecast = [item for item in forecast if item.get("date", "") >= target_date]
+        if not selected_forecast:
+            selected_forecast = forecast
+
+    return {
+        "source": "wttr.in",
+        "sourceUrl": source_url,
+        "queryLocation": query_location,
+        "resolvedLocation": resolved_location or query_location,
+        "targetDate": target_date,
+        "targetDateMatched": bool(
+            not target_date or any(item.get("date") == target_date for item in forecast)
+        ),
+        "current": {
+            "observationTime": str(current.get("observation_time") or "").strip(),
+            "description": _wttr_value(current.get("weatherDesc")),
+            "tempC": str(current.get("temp_C") or "").strip(),
+            "feelsLikeC": str(current.get("FeelsLikeC") or "").strip(),
+            "humidity": str(current.get("humidity") or "").strip(),
+            "windKmph": str(current.get("windspeedKmph") or "").strip(),
+            "windDirection": str(current.get("winddir16Point") or "").strip(),
+            "precipMM": str(current.get("precipMM") or "").strip(),
+            "pressureHPa": str(current.get("pressure") or "").strip(),
+            "uvIndex": str(current.get("uvIndex") or "").strip(),
+            "cloudCover": str(current.get("cloudcover") or "").strip(),
+            "visibilityKm": str(current.get("visibility") or "").strip(),
+        },
+        "forecast": selected_forecast[: max(1, min(int(days or 3), 3))],
+    }
+
+
+async def _query_weather(
+    *,
+    location: str,
+    date: str = "",
+    days: int = 3,
+    lang: str = "zh",
+    units: str = "metric",
+) -> str:
+    clean_location = str(location or "").strip()
+    if not clean_location:
+        return "缺少 location 参数。"
+    try:
+        payload, source_url = await _fetch_wttr_weather_payload(
+            clean_location,
+            lang=str(lang or "zh"),
+            units=str(units or "metric"),
+        )
+        summary = _summarize_wttr_weather_payload(
+            payload,
+            query_location=clean_location,
+            target_date=str(date or "").strip(),
+            days=days,
+            source_url=source_url,
+        )
+        return json.dumps(summary, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        detail = str(exc).strip() or type(exc).__name__
+        return f"天气查询失败: {detail}"
 
 
 
@@ -1018,6 +1280,15 @@ async def execute_tool(
     if name == "fetch_url":
         return await _fetch_url(args.get("url", ""), int(args.get("max_chars", 3000)))
 
+    if name == "query_weather":
+        return await _query_weather(
+            location=str(args.get("location") or ""),
+            date=str(args.get("date") or ""),
+            days=int(args.get("days") or 3),
+            lang=str(args.get("lang") or "zh"),
+            units=str(args.get("units") or "metric"),
+        )
+
     if name == "python_exec":
         return await _python_exec(args.get("code", ""))
 
@@ -1393,7 +1664,11 @@ async def get_tools_for_model(
     agent_depth: int = int(ctx.get("agent_depth", 0))
     agent_mode = str(ctx.get("agent_mode") or "auto").lower()
     # Only the top-level agent (depth 0) may spawn sub-agents
-    if agent_depth == 0 and agent_mode != "single":
+    if (
+        agent_depth == 0
+        and agent_mode != "single"
+        and should_expose_delegate_task(user_message or "")
+    ):
         tools.append(DELEGATE_TASK_SCHEMA)
 
     # Specialist agents receive a role-scoped tool surface. The top-level Lead

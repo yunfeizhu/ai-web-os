@@ -347,18 +347,24 @@ def _json_has_no_search_results(text: str) -> bool:
                     pass
 
     saw_search = False
+    saw_empty_results = False
+    saw_answer = False
     for node in _walk(payload):
         if not isinstance(node, dict):
             continue
         if "results" in node or "answer" in node:
             saw_search = True
+            answer = str(node.get("answer") or "").strip()
+            if answer and answer.lower() not in {"none", "null", "无", "n/a"}:
+                saw_answer = True
             if (
                 isinstance(node.get("results"), list)
                 and not node["results"]
-                and not node.get("answer")
+                and not answer
             ):
-                return True
-    return saw_search and '"results":[]' in text.replace(" ", "")
+                saw_empty_results = True
+    compact = text.replace(" ", "")
+    return saw_search and not saw_answer and (saw_empty_results or '"results":[]' in compact)
 
 
 def validate_tool_result(

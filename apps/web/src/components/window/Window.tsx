@@ -6,6 +6,7 @@ import { TitleBar } from "./TitleBar";
 import { useWindowStore } from "@/stores/windowStore";
 import type { WindowState } from "@/types/window";
 import { detectSnapZone, getSnapTarget, type SnapZone } from "./WindowSnapZone";
+import { clampWindowRectToWorkArea, getDesktopWorkArea } from "./windowLayout";
 
 interface WindowProps {
   window: WindowState;
@@ -115,6 +116,9 @@ export function Window({
   if (win.state === "minimized" && exitAnim === null && !restoring) return null;
 
   const isMaximized = win.state === "maximized";
+  const workArea = getDesktopWorkArea(undefined, {
+    reserveDock: !isMaximized,
+  });
 
   const maxW =
     typeof globalThis.window !== "undefined"
@@ -127,6 +131,19 @@ export function Window({
 
   const position = isMaximized ? { x: 0, y: 0 } : win.position;
   const size = isMaximized ? { width: maxW, height: maxH } : win.size;
+  const isSnapSized = win.state === "normal" && Boolean(win.preMaximizeSnapshot);
+  const minSize = {
+    width: Math.min(
+      win.minSize.width,
+      workArea.width,
+      isSnapSized ? size.width : workArea.width,
+    ),
+    height: Math.min(
+      win.minSize.height,
+      workArea.height,
+      isSnapSized ? size.height : workArea.height,
+    ),
+  };
 
   // 动画播完后 win.state 已是 minimized，组件保留但隐藏，等待 restore
   const isHidden = win.state === "minimized" && exitAnim === "minimize";
@@ -153,8 +170,8 @@ export function Window({
     <Rnd
       position={position}
       size={size}
-      minWidth={win.minSize.width}
-      minHeight={win.minSize.height}
+      minWidth={minSize.width}
+      minHeight={minSize.height}
       dragHandleClassName="window-drag-handle"
       disableDragging={isMaximized}
       enableResizing={!isMaximized}
@@ -189,15 +206,25 @@ export function Window({
           );
           snapTimer.current = setTimeout(() => setSnapping(false), 350);
         } else {
-          updatePosition(win.id, d.x, d.y);
+          const rect = clampWindowRectToWorkArea({
+            position: { x: d.x, y: d.y },
+            size: win.size,
+            minSize: win.minSize,
+          });
+          updatePosition(win.id, rect.position.x, rect.position.y);
         }
       }}
       onResizeStart={() => {
         if (!win.isFocused) focusWindow(win.id);
       }}
       onResizeStop={(_e, _dir, ref, _delta, pos) => {
-        updateSize(win.id, ref.offsetWidth, ref.offsetHeight);
-        updatePosition(win.id, pos.x, pos.y);
+        const rect = clampWindowRectToWorkArea({
+          position: { x: pos.x, y: pos.y },
+          size: { width: ref.offsetWidth, height: ref.offsetHeight },
+          minSize: win.minSize,
+        });
+        updateSize(win.id, rect.size.width, rect.size.height);
+        updatePosition(win.id, rect.position.x, rect.position.y);
       }}
       onMouseDown={() => {
         if (!win.isFocused) focusWindow(win.id);

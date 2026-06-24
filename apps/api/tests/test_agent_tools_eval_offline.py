@@ -25,7 +25,91 @@ def test_get_tools_for_model_can_skip_external_mcp_scan(monkeypatch):
         for tool in tools
         if isinstance(tool, dict)
     }
-    assert {"calculator", "fetch_url", "python_exec", "read_file", "delegate_task"} <= names
+    assert {"calculator", "fetch_url", "python_exec", "read_file"} <= names
+    assert "delegate_task" not in names
+
+
+def test_get_tools_for_model_exposes_delegate_only_for_complex_parallel_work(monkeypatch):
+    async def fail_external_mcp_scan():
+        raise AssertionError("external MCP routes should not be loaded in offline eval mode")
+
+    monkeypatch.setattr(tools_module, "_list_external_mcp_tool_routes", fail_external_mcp_scan)
+
+    simple_tools = asyncio.run(
+        tools_module.get_tools_for_model(
+            "gpt-4o",
+            user_message="查一下杭州今天的天气",
+            include_external_mcp=False,
+        )
+    )
+    complex_tools = asyncio.run(
+        tools_module.get_tools_for_model(
+            "gpt-4o",
+            user_message="分别调研杭州和上海今天的天气，并对比两地出行建议",
+            include_external_mcp=False,
+        )
+    )
+
+    simple_names = {
+        str((tool.get("function") or {}).get("name") or "")
+        for tool in simple_tools
+        if isinstance(tool, dict)
+    }
+    complex_names = {
+        str((tool.get("function") or {}).get("name") or "")
+        for tool in complex_tools
+        if isinstance(tool, dict)
+    }
+
+    assert "delegate_task" not in simple_names
+    assert "delegate_task" in complex_names
+
+
+def test_get_tools_for_model_exposes_direct_weather_tool(monkeypatch):
+    async def fail_external_mcp_scan():
+        raise AssertionError("external MCP routes should not be loaded in offline eval mode")
+
+    monkeypatch.setattr(tools_module, "_list_external_mcp_tool_routes", fail_external_mcp_scan)
+
+    tools = asyncio.run(
+        tools_module.get_tools_for_model(
+            "gpt-4o",
+            user_message="查一下杭州今天的天气",
+            include_external_mcp=False,
+        )
+    )
+
+    by_name = {
+        str((tool.get("function") or {}).get("name") or ""): tool
+        for tool in tools
+        if isinstance(tool, dict)
+    }
+
+    assert "query_weather" in by_name
+    assert "wttr.in" in by_name["query_weather"]["function"]["description"]
+
+
+def test_get_tools_for_model_does_not_delegate_simple_english_research(monkeypatch):
+    async def fail_external_mcp_scan():
+        raise AssertionError("external MCP routes should not be loaded in offline eval mode")
+
+    monkeypatch.setattr(tools_module, "_list_external_mcp_tool_routes", fail_external_mcp_scan)
+
+    tools = asyncio.run(
+        tools_module.get_tools_for_model(
+            "gpt-4o",
+            user_message="Research Hangzhou weather today",
+            include_external_mcp=False,
+        )
+    )
+
+    names = {
+        str((tool.get("function") or {}).get("name") or "")
+        for tool in tools
+        if isinstance(tool, dict)
+    }
+
+    assert "delegate_task" not in names
 
 
 def test_get_tools_for_model_exposes_notes_tools_with_memory_boundary(monkeypatch):
@@ -99,6 +183,7 @@ def test_research_subagent_keeps_read_only_memory_tools(monkeypatch):
     }
     assert "memory_search" in names
     assert "memory_get" in names
+    assert "query_weather" in names
     assert "save_note" not in names
 
 

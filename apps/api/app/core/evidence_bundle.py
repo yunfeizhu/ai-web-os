@@ -76,7 +76,10 @@ def build_tool_evidence(payload: dict[str, Any]) -> dict[str, Any] | None:
         return None
 
     display_name = str(payload.get("displayName") or "")
-    capability = infer_tool_capability(tool_name, display_name)
+    capability = str(payload.get("capability") or "").strip() or infer_tool_capability(
+        tool_name,
+        display_name,
+    )
     content = compact_tool_result_for_context(
         tool_name=tool_name,
         result=result,
@@ -107,8 +110,6 @@ def fallback_evidence_bundle(
         "missing_fields": [],
         "sources": _sources_from_tool_evidence(tool_evidence),
         "capabilities_used": _capabilities_from_tool_evidence(tool_evidence),
-        "evidence_sufficient": _has_non_error_evidence(tool_evidence),
-        "needs_more_tools": False,
     }
     bundle = normalize_evidence_bundle(
         raw,
@@ -287,12 +288,15 @@ def normalize_evidence_bundle(
     has_facts_or_sources = bool(facts or sources)
     evidence_sufficient = _as_bool(
         raw.get("evidence_sufficient", raw.get("evidenceSufficient")),
-        default=has_facts_or_sources or _has_non_error_evidence(tool_evidence),
+        default=(has_facts_or_sources or _has_non_error_evidence(tool_evidence))
+        and not bool(missing),
     )
     needs_more_tools = _as_bool(
         raw.get("needs_more_tools", raw.get("needsMoreTools")),
-        default=bool(missing) and not evidence_sufficient,
+        default=bool(missing),
     )
+    if missing or needs_more_tools:
+        evidence_sufficient = False
 
     return {
         "summary": summary[:4000],

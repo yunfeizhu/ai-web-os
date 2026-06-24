@@ -25,6 +25,7 @@ from typing import Any
 # Research worker: web search, URL fetch, browser, knowledge retrieval.
 RESEARCH_TOOL_NAMES: frozenset[str] = frozenset({
     "fetch_url",
+    "query_weather",
     "retrieve_knowledge",
     "memory_search",
     "memory_get",

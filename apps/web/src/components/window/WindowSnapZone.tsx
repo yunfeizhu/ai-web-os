@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { DESKTOP_DOCK_CLEARANCE, getResponsiveSnapTarget } from "./windowLayout";
 
 export type SnapZone = "left" | "right" | "maximize" | null;
 
@@ -58,11 +59,26 @@ export function WindowSnapZoneOverlay({ activeZone }: SnapZoneOverlayProps) {
   };
 
   if (activeZone === "left") {
-    Object.assign(base, { top: 4, left: 4, bottom: 4, width: "calc(50% - 6px)" });
+    Object.assign(base, {
+      top: 4,
+      left: 4,
+      bottom: DESKTOP_DOCK_CLEARANCE + 4,
+      width: "calc(50% - 6px)",
+    });
   } else if (activeZone === "right") {
-    Object.assign(base, { top: 4, right: 4, bottom: 4, width: "calc(50% - 6px)" });
+    Object.assign(base, {
+      top: 4,
+      right: 4,
+      bottom: DESKTOP_DOCK_CLEARANCE + 4,
+      width: "calc(50% - 6px)",
+    });
   } else if (activeZone === "maximize") {
-    Object.assign(base, { top: 4, left: 4, right: 4, bottom: 4 });
+    Object.assign(base, {
+      top: 4,
+      left: 4,
+      right: 4,
+      bottom: DESKTOP_DOCK_CLEARANCE + 4,
+    });
   }
 
   return <div style={base} />;
@@ -83,17 +99,5 @@ export function getSnapTarget(zone: SnapZone): {
   position: { x: number; y: number };
   size: { width: number; height: number };
 } {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-
-  switch (zone) {
-    case "left":
-      return { position: { x: 0, y: 0 }, size: { width: Math.round(vw / 2), height: vh } };
-    case "right":
-      return { position: { x: Math.round(vw / 2), y: 0 }, size: { width: Math.round(vw / 2), height: vh } };
-    case "maximize":
-      return { position: { x: 0, y: 0 }, size: { width: vw, height: vh } };
-    default:
-      return { position: { x: 0, y: 0 }, size: { width: 800, height: 600 } };
-  }
+  return getResponsiveSnapTarget(zone);
 }

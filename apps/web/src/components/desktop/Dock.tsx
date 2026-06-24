@@ -1,10 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useWindowStore } from "@/stores/windowStore";
 import { useDesktopStore } from "@/stores/desktopStore";
 import { StartMenu } from "./StartMenu";
 import { SystemTray } from "./SystemTray";
+import { getMacosAppIconSrc } from "./appIconAssets";
+import {
+  DOCK_BASE_ICON_SIZE,
+  DOCK_ITEM_GAP,
+  getDockItemCenterX,
+  getDockMagnification,
+  getRenderableDockAppIds,
+} from "./dockMagnification";
 import * as Icons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -12,7 +20,7 @@ function getIcon(name: string): LucideIcon {
   return (Icons as unknown as Record<string, LucideIcon>)[name] ?? Icons.Box;
 }
 
-// macOS 风格 Dock 图标颜色
+// fallback only: built-in apps normally use generated macOS-like PNG assets.
 const DOCK_COLORS: Record<string, string> = {
   "ai-chat": "linear-gradient(180deg, #5Ac8FA, #007AFF)",
   "file-manager": "linear-gradient(180deg, #54C7FC, #147EFB)",
@@ -44,6 +52,8 @@ const DOCK_APPS = [
 
 export function Dock() {
   const [startOpen, setStartOpen] = useState(false);
+  const [pointerX, setPointerX] = useState<number | null>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
   const windows = useWindowStore((s) => s.windows);
   const focusWindow = useWindowStore((s) => s.focusWindow);
   const restoreWindow = useWindowStore((s) => s.restoreWindow);
@@ -73,26 +83,42 @@ export function Dock() {
   };
 
   const openAppIds = new Set(Object.values(windows).map((w) => w.appId));
+  const dockAppIds = getRenderableDockAppIds(
+    DOCK_APPS,
+    new Set(Object.keys(apps)),
+  );
+  const getDockContentLeft = () =>
+    (dockRef.current?.getBoundingClientRect().left ?? 0) + 16;
 
   return (
     <>
       <div
+        ref={dockRef}
         data-desktop-blocker="true"
-        className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-end gap-1 px-2.5 py-1.5"
+        className="absolute bottom-1.5 left-1/2 flex -translate-x-1/2 items-end overflow-visible"
+        onMouseMove={(event) => {
+          setPointerX(event.clientX);
+        }}
+        onMouseLeave={() => {
+          setPointerX(null);
+        }}
         style={{
           zIndex: 9999,
-          background: "rgba(250,250,252,0.55)",
-          backdropFilter: "blur(40px) saturate(180%)",
-          WebkitBackdropFilter: "blur(40px) saturate(180%)",
-          borderRadius: "var(--dock-radius)",
-          border: "1px solid rgba(255,255,255,0.45)",
-          boxShadow: "var(--shadow-dock)",
-          height: 62,
+          minHeight: 80,
+          padding: "13px 16px 9px",
+          gap: DOCK_ITEM_GAP,
+          background:
+            "linear-gradient(180deg, rgba(255,255,255,0.58), rgba(245,248,250,0.38) 46%, rgba(220,228,232,0.34))",
+          backdropFilter: "blur(44px) saturate(190%) brightness(1.04)",
+          WebkitBackdropFilter: "blur(44px) saturate(190%) brightness(1.04)",
+          borderRadius: 30,
+          border: "1px solid rgba(255,255,255,0.52)",
+          boxShadow:
+            "0 28px 70px rgba(0,0,0,0.32), 0 9px 26px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.72), inset 0 -1px 0 rgba(0,0,0,0.12)",
         }}
       >
-        {DOCK_APPS.map((appId) => {
+        {dockAppIds.map((appId, index) => {
           const app = apps[appId];
-          if (!app) return null;
           const IconComp = getIcon(app.manifest.icon);
           const bg =
             DOCK_COLORS[appId] ?? "linear-gradient(180deg, #8E8E93, #636366)";
@@ -106,11 +132,17 @@ export function Dock() {
           return (
             <DockItem
               key={appId}
-              icon={<IconComp size={24} color="#fff" strokeWidth={1.8} />}
+              fallbackIcon={<IconComp size={28} color="#fff" strokeWidth={1.75} />}
+              iconSrc={getMacosAppIconSrc(appId)}
               bg={bg}
               label={app.manifest.name}
               isOpen={isOpen}
               isFocused={!!isFocused}
+              itemCenterX={getDockItemCenterX({
+                dockLeft: getDockContentLeft(),
+                index,
+              })}
+              pointerX={pointerX}
               onClick={() => handleDockClick(appId)}
             />
           );
@@ -118,8 +150,12 @@ export function Dock() {
 
         {/* 分隔线 */}
         <div
-          className="w-px self-stretch my-2 mx-0.5"
-          style={{ background: "rgba(0,0,0,0.12)" }}
+          className="w-px self-stretch my-2 mx-1.5"
+          style={{
+            background:
+              "linear-gradient(180deg, transparent, rgba(0,0,0,0.22), transparent)",
+            boxShadow: "1px 0 rgba(255,255,255,0.42)",
+          }}
         />
 
         {/* 系统托盘 */}
@@ -132,58 +168,131 @@ export function Dock() {
 }
 
 function DockItem({
-  icon,
+  fallbackIcon,
+  iconSrc,
   bg,
   label,
   isOpen,
   isFocused,
+  itemCenterX,
+  pointerX,
   onClick,
 }: {
-  icon: React.ReactNode;
+  fallbackIcon: React.ReactNode;
+  iconSrc?: string;
   bg: string;
   label: string;
   isOpen: boolean;
   isFocused: boolean;
+  itemCenterX: number;
+  pointerX: number | null;
   onClick: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const magnification = getDockMagnification({
+    itemCenterX,
+    pointerX: itemCenterX > 0 ? pointerX : null,
+  });
+  const tooltipBottom = 110 + Math.max(0, -magnification.translateY * 0.45);
 
   return (
-    <div className="flex flex-col items-center relative">
+    <div
+      className="relative flex flex-col items-center justify-end"
+      style={{
+        width: DOCK_BASE_ICON_SIZE,
+        height: DOCK_BASE_ICON_SIZE,
+      }}
+    >
       {/* Tooltip */}
       {hovered && (
         <div
-          className="absolute -top-8 px-2 py-0.5 rounded-md text-[12px] font-medium whitespace-nowrap pointer-events-none"
+          className="absolute px-3 py-1.5 rounded-xl text-[13px] font-medium whitespace-nowrap pointer-events-none"
           style={{
-            background: "rgba(0,0,0,0.75)",
-            color: "#fff",
-            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+            bottom: tooltipBottom,
+            zIndex: 2,
+            background: "rgba(255,255,255,0.93)",
+            color: "rgba(0,0,0,0.88)",
+            border: "0.5px solid rgba(0,0,0,0.10)",
+            boxShadow:
+              "0 12px 30px rgba(0,0,0,0.22), 0 2px 8px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.85)",
+            backdropFilter: "blur(26px) saturate(180%)",
+            WebkitBackdropFilter: "blur(26px) saturate(180%)",
+            animation: "dockTooltipIn 160ms cubic-bezier(0.16,1,0.3,1)",
           }}
         >
           {label}
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: "50%",
+              bottom: -6,
+              width: 10,
+              height: 10,
+              transform: "translateX(-50%) rotate(45deg)",
+              background: "rgba(255,255,255,0.93)",
+              borderRight: "0.5px solid rgba(0,0,0,0.08)",
+              borderBottom: "0.5px solid rgba(0,0,0,0.08)",
+              boxShadow: "2px 2px 5px rgba(0,0,0,0.05)",
+            }}
+          />
         </div>
       )}
       <button
-        className="w-11 h-11 flex items-center justify-center transition-transform duration-150"
+        className="flex items-center justify-center"
         style={{
-          background: bg,
-          borderRadius: 11,
-          boxShadow: "0 1px 4px rgba(0,0,0,0.18), 0 0.5px 1px rgba(0,0,0,0.08)",
-          transform: hovered ? "scale(1.18) translateY(-6px)" : "scale(1)",
+          width: DOCK_BASE_ICON_SIZE,
+          height: DOCK_BASE_ICON_SIZE,
+          padding: 0,
+          border: "none",
+          background: iconSrc ? "transparent" : bg,
+          borderRadius: iconSrc ? 0 : 14,
+          boxShadow: iconSrc
+            ? "none"
+            : "0 8px 18px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.25)",
+          transform: `translateY(${magnification.translateY}px) scale(${magnification.scale})`,
+          transformOrigin: "bottom center",
+          transition:
+            pointerX === null
+              ? "transform 320ms cubic-bezier(0.16,1,0.3,1)"
+              : "transform 230ms cubic-bezier(0.22,1,0.36,1)",
+          willChange: "transform",
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={onClick}
         title={label}
       >
-        {icon}
+        {iconSrc ? (
+          <img
+            src={iconSrc}
+            alt=""
+            draggable={false}
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "block",
+              objectFit: "contain",
+              pointerEvents: "none",
+              filter: "drop-shadow(0 9px 12px rgba(0,0,0,0.30))",
+            }}
+          />
+        ) : (
+          fallbackIcon
+        )}
       </button>
       {/* Running indicator dot */}
       {isOpen && (
         <div
-          className="w-1 h-1 rounded-full mt-0.5"
+          data-testid="dock-running-indicator"
+          className="w-1 h-1 rounded-full"
           style={{
-            background: isFocused ? "rgba(0,0,0,0.65)" : "rgba(0,0,0,0.32)",
+            position: "absolute",
+            left: "50%",
+            bottom: -8,
+            transform: "translateX(-50%)",
+            background: isFocused ? "rgba(0,0,0,0.72)" : "rgba(0,0,0,0.36)",
+            boxShadow: "0 0 0 0.5px rgba(255,255,255,0.45)",
           }}
         />
       )}

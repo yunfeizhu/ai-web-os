@@ -108,7 +108,7 @@ def infer_tool_capability(
         return CAPABILITY_FILESYSTEM
     if name == "retrieve_knowledge" or "knowledge" in name:
         return CAPABILITY_KNOWLEDGE_RETRIEVE
-    if name.startswith("skill_"):
+    if name == "query_weather" or name.startswith("skill_"):
         return CAPABILITY_DATA_API
     if name == "fetch_url":
         return CAPABILITY_WEB_FETCH
@@ -298,10 +298,18 @@ def result_has_sufficient_discovery(
     query = str(payload.get("query") or "")
     answer = str(payload.get("answer") or "").strip()
     results = payload.get("results")
-    if not isinstance(results, list):
-        return False
-    useful = 0
     task_query_text = f"{task_text}\n{query}"
+    if not isinstance(results, list):
+        if not _nonempty_search_answer(answer):
+            return False
+        if _requires_temporal_series(task_query_text) and not _has_temporal_series_evidence(answer):
+            return False
+        return _single_search_result_is_sufficient(
+            task_text=task_query_text,
+            evidence_text=answer,
+            answer=answer,
+        )
+    useful = 0
     evidence_text_parts = [answer]
     combined_text_parts = [query, answer, task_text]
     for item in results:
@@ -482,10 +490,15 @@ def _walk_jsonish(value: Any):
 
 
 def _find_search_payload(value: Any) -> dict[str, Any] | None:
+    answer_payload: dict[str, Any] | None = None
     for payload in _walk_jsonish(value):
-        if isinstance(payload, dict) and isinstance(payload.get("results"), list):
+        if not isinstance(payload, dict):
+            continue
+        if isinstance(payload.get("results"), list):
             return payload
-    return None
+        if answer_payload is None and _nonempty_search_answer(str(payload.get("answer") or "")):
+            answer_payload = payload
+    return answer_payload
 
 
 def normalize_url_before_extract(url: str) -> str:

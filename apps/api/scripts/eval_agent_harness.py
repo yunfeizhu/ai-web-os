@@ -97,9 +97,21 @@ async def main() -> None:
     names = _tool_names(tools)
     _assert("calculator" in names, f"calculator must always be available, got {names}")
     _assert("fetch_url" in names, f"fetch_url must always be available, got {names}")
+    _assert("query_weather" in names, f"query_weather must be available, got {names}")
     _assert("python_exec" in names, f"python_exec must always be available, got {names}")
     _assert("read_file" in names, f"read_file must always be available, got {names}")
-    _assert("delegate_task" in names, f"Lead Agent should expose delegate_task, got {names}")
+    _assert("delegate_task" not in names, f"simple tasks should not expose delegate_task, got {names}")
+
+    complex_tools = await get_tools_for_model(
+        "gpt-4o",
+        user_message="分别调研杭州和上海今天的天气，并对比两地出行建议",
+        include_external_mcp=False,
+    )
+    complex_names = _tool_names(complex_tools)
+    _assert(
+        "delegate_task" in complex_names,
+        f"clear parallel comparison tasks should expose delegate_task, got {complex_names}",
+    )
 
     # 2. Calculator only blocks non-math expressions, not legitimate calculations
     decision = guard_tool_call(tool_name="calculator", args={"expression": "2+3*4"})

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -29,6 +30,7 @@ _TOOL_RESULT_SUMMARY_THRESHOLD = 1500
 _CURRENT_TOOL_RESULT_CONTEXT_LIMIT = 4000
 _SUBAGENT_TOOL_RESULT_CONTEXT_LIMIT = 1400
 _SEARCH_RESULT_SNIPPET_LIMIT = 260
+_SEARCH_RESULT_PASSAGES_PER_ITEM = 2
 _MAX_SEARCH_RESULTS_FOR_CONTEXT = 4
 _CONTEXT_COMPRESSION_TRIGGER_RATIO = 0.62
 _CONTEXT_COMPRESSION_KEEP_RECENT_GROUPS = 8
@@ -511,6 +513,120 @@ def _find_search_payload(value: Any) -> dict[str, Any] | None:
     return None
 
 
+def _query_terms(query: str) -> list[str]:
+    text = str(query or "")
+    terms: set[str] = set()
+
+    for match in re.findall(
+        r"20\d{2}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*[日号]?"
+        r"|\d{1,2}\s*月\s*\d{1,2}\s*[日号]?"
+        r"|\bq[1-4]\b"
+        r"|\b[a-zA-Z][a-zA-Z0-9_-]{1,}\b"
+        r"|\b\d+(?:\.\d+)?%?\b",
+        text,
+        flags=re.I,
+    ):
+        term = re.sub(r"\s+", "", match).strip().lower()
+        if len(term) >= 2:
+            terms.add(term)
+
+    for run in re.findall(r"[\u4e00-\u9fff]{2,}", text):
+        terms.add(run)
+        if len(run) > 4:
+            for size in (2, 3, 4):
+                for index in range(0, len(run) - size + 1):
+                    terms.add(run[index : index + size])
+
+    return sorted(terms, key=lambda item: (-len(item), item))
+
+
+def _split_passages(text: str) -> list[str]:
+    compact = " ".join(str(text or "").split())
+    if not compact:
+        return []
+    parts = re.split(r"(?<=[。！？!?])\s*|(?:\.\s+)|(?:[；;]\s*)|\n+", compact)
+    return [part.strip(" .") for part in parts if part.strip(" .")]
+
+
+def _find_term_positions(text: str, terms: list[str]) -> list[int]:
+    lowered = text.lower()
+    positions: list[int] = []
+    for term in terms:
+        needle = term.lower()
+        start = 0
+        while needle:
+            index = lowered.find(needle, start)
+            if index < 0:
+                break
+            positions.append(index)
+            start = index + max(1, len(needle))
+    return sorted(set(positions))
+
+
+def _window_around(text: str, center: int, limit: int) -> str:
+    if len(text) <= limit:
+        return text.strip()
+    half = max(40, limit // 2)
+    start = max(0, center - half)
+    end = min(len(text), start + limit)
+    start = max(0, end - limit)
+    prefix = "..." if start > 0 else ""
+    suffix = "..." if end < len(text) else ""
+    return f"{prefix}{text[start:end].strip()}{suffix}"
+
+
+def _score_passage(passage: str, terms: list[str]) -> int:
+    lowered = passage.lower()
+    score = 0
+    for term in terms:
+        if term.lower() in lowered:
+            score += max(2, min(len(term), 12))
+    return score
+
+
+def _compact_search_snippet(content: str, *, query: str, title: str = "") -> str:
+    text = " ".join(str(content or "").split())
+    if not text:
+        return ""
+
+    terms = _query_terms(query) or _query_terms(title)
+    if not terms:
+        return text[:_SEARCH_RESULT_SNIPPET_LIMIT]
+
+    candidates: list[tuple[int, int, str]] = []
+    for order, passage in enumerate(_split_passages(text)):
+        score = _score_passage(passage, terms)
+        if score <= 0:
+            continue
+        positions = _find_term_positions(passage, terms)
+        if len(passage) > _SEARCH_RESULT_SNIPPET_LIMIT and positions:
+            passage = _window_around(passage, positions[0], _SEARCH_RESULT_SNIPPET_LIMIT)
+        else:
+            passage = passage[:_SEARCH_RESULT_SNIPPET_LIMIT]
+        candidates.append((score, order, passage))
+
+    if not candidates:
+        positions = _find_term_positions(text, terms)
+        if positions:
+            return _window_around(text, positions[0], _SEARCH_RESULT_SNIPPET_LIMIT)
+        return text[:_SEARCH_RESULT_SNIPPET_LIMIT]
+
+    selected = sorted(candidates, key=lambda item: (-item[0], item[1]))[
+        :_SEARCH_RESULT_PASSAGES_PER_ITEM
+    ]
+    selected.sort(key=lambda item: item[1])
+
+    passages: list[str] = []
+    seen: set[str] = set()
+    for _score, _order, passage in selected:
+        normalized = passage.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        passages.append(passage)
+    return " ... ".join(passages)
+
+
 def _compact_search_like_result(content: str, limit: int) -> str | None:
     payload = _find_search_payload(content)
     if not payload:
@@ -536,8 +652,11 @@ def _compact_search_like_result(content: str, limit: int) -> str | None:
             published = str(
                 item.get("published_date") or item.get("date") or item.get("time") or ""
             ).strip()
-            snippet = str(item.get("content") or item.get("snippet") or "").strip()
-            snippet = " ".join(snippet.split())[:_SEARCH_RESULT_SNIPPET_LIMIT]
+            snippet = _compact_search_snippet(
+                str(item.get("content") or item.get("snippet") or ""),
+                query=query,
+                title=title,
+            )
             lines.append(f"\nresult {index}:")
             if title:
                 lines.append(f"title: {title}")

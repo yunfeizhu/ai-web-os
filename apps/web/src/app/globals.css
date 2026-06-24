@@ -177,7 +177,7 @@ button:disabled {
   --font-mono: "JetBrains Mono", "SF Mono", "Menlo", monospace;
 
   /* ── Layout ──────────────────────────── */
-  --taskbar-h: 68px;
+  --taskbar-h: 96px;
   --dock-radius: 22px;
 
   /* ── Shadows (macOS-style) ───────────── */
@@ -557,6 +557,17 @@ body {
 .win-restore {
   animation: windowRestore 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   transform-origin: center bottom;
+}
+
+@keyframes dockTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* ── Focus ring ─────────────────────────── */

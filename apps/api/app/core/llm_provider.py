@@ -533,11 +533,12 @@ async def agent_loop(
         description = tool_schema_description(tool)
         tool_description_by_name[name] = description
         tool_capability_by_name[name] = infer_tool_capability(name, description, parameters)
+    delegate_tool_available = "delegate_task" in tool_capability_by_name
     successful_search_count = 0
     disabled_tool_capabilities: set[str] = set()
 
     effective_system_prompt = system_prompt or ""
-    if not is_subagent and agent_mode != "single":
+    if not is_subagent and agent_mode != "single" and delegate_tool_available:
         effective_system_prompt = (
             f"{effective_system_prompt}\n\n{build_supervisor_prompt(agent_mode)}"
             if effective_system_prompt
@@ -586,6 +587,9 @@ async def agent_loop(
             "result": result,
             "error": error,
         }
+        capability = tool_capability_by_name.get(parsed_call["name"])
+        if capability:
+            event["capability"] = capability
         event.update({key: value for key, value in extra.items() if value is not None})
         if workflow_plan and not event.get("internal"):
             workflow_tool_results.append(event)

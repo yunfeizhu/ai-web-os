@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useWindowStore } from "@/stores/windowStore";
 import type { InstalledApp } from "@/types/app";
+import { getMacosAppIconSrc } from "./appIconAssets";
 import * as Icons from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -32,6 +33,7 @@ export function DesktopIcon({ app }: { app: InstalledApp }) {
   const { manifest } = app;
   const IconComponent = getIcon(manifest.icon);
   const { bg } = ICON_STYLE[manifest.id] ?? FALLBACK;
+  const iconSrc = getMacosAppIconSrc(manifest.id);
 
   return (
     <button
@@ -57,23 +59,43 @@ export function DesktopIcon({ app }: { app: InstalledApp }) {
       {/* 图标：hover 时上浮 + 轻微放大 + 阴影加深 */}
       <div
         style={{
-          width: 54,
-          height: 54,
-          borderRadius: 13,
-          background: bg,
+          width: 60,
+          height: 60,
+          borderRadius: iconSrc ? 0 : 15,
+          background: iconSrc ? "transparent" : bg,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
           transform: hovered ? "translateY(-5px) scale(1.06)" : "translateY(0) scale(1)",
           transition: "transform 0.22s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.22s ease",
-          boxShadow: hovered
-            ? "0 10px 28px rgba(0,0,0,0.28), 0 4px 10px rgba(0,0,0,0.16), 0 1px 3px rgba(0,0,0,0.1)"
-            : "0 2px 8px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.1)",
+          boxShadow: iconSrc
+            ? "none"
+            : hovered
+              ? "0 10px 28px rgba(0,0,0,0.28), 0 4px 10px rgba(0,0,0,0.16), 0 1px 3px rgba(0,0,0,0.1)"
+              : "0 2px 8px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.1)",
           // 轻微高光边缘
-          border: "0.5px solid rgba(255,255,255,0.18)",
+          border: iconSrc ? "none" : "0.5px solid rgba(255,255,255,0.18)",
         }}
       >
-        <IconComponent size={28} color="#fff" strokeWidth={1.6} />
+        {iconSrc ? (
+          <img
+            src={iconSrc}
+            alt=""
+            draggable={false}
+            style={{
+              width: "100%",
+              height: "100%",
+              display: "block",
+              objectFit: "contain",
+              pointerEvents: "none",
+              filter: hovered
+                ? "drop-shadow(0 11px 18px rgba(0,0,0,0.36))"
+                : "drop-shadow(0 5px 9px rgba(0,0,0,0.26))",
+            }}
+          />
+        ) : (
+          <IconComponent size={28} color="#fff" strokeWidth={1.6} />
+        )}
       </div>
 
       {/* 标签：hover 时出现胶囊背景 */}

@@ -356,6 +356,18 @@ async def run_subagents_parallel(
     """Run specialist agents concurrently and merge their event streams."""
     normalized = normalize_subagent_specs(specs)
     if not normalized:
+        yield (
+            "subagent_result",
+            {
+                "subagentId": "invalid-delegate-task",
+                "agentName": "invalid_delegate_task",
+                "role": "research",
+                "task": "",
+                "answer": "",
+                "failed": True,
+                "error": "no_valid_subagent_tasks",
+            },
+        )
         return
 
     runnable = normalized[:MAX_PARALLEL_SUBAGENTS]

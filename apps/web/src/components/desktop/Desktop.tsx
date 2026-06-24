@@ -5,16 +5,12 @@ import { WindowManager } from "@/components/window/WindowManager";
 import { AvatarPet } from "./AvatarPet";
 import { Dock } from "./Dock";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
-import { DesktopIcon } from "./DesktopIcon";
-import {
-  DESKTOP_ICON_GRID_ITEM_STYLE,
-  DESKTOP_ICON_GRID_STYLE,
-} from "./desktopIconLayout";
 import { useDesktopStore } from "@/stores/desktopStore";
 import { useWindowStore } from "@/stores/windowStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 import { BUILTIN_APPS } from "@/lib/app-registry";
 import { DesktopClock } from "./DesktopClock";
+import { DesktopWeatherWidget } from "./DesktopWeatherWidget";
 import { API_BASE } from "@/lib/backend";
 
 // macOS 风格壁纸 — Unsplash 免费可商用
@@ -26,7 +22,7 @@ const WALLPAPERS = {
 };
 
 export function Desktop() {
-  const { wallpaper, apps, registerApp } = useDesktopStore();
+  const { wallpaper, registerApp } = useDesktopStore();
   const openWindow = useWindowStore((s) => s.openWindow);
   const windows = useWindowStore((s) => s.windows);
   const hasMaximized = Object.values(windows).some((w) => w.state === "maximized");
@@ -125,8 +121,6 @@ export function Desktop() {
     { label: "显示设置", onClick: () => openWindow("settings", "设置", "Settings") },
   ];
 
-  const desktopApps = Object.values(apps);
-
   // 当前壁纸 URL
   const wpUrl = wallpaper
     || WALLPAPERS["sonoma-light"];
@@ -152,19 +146,7 @@ export function Desktop() {
 
       {/* 桌面时钟 — 左上角 */}
       <DesktopClock />
-
-      {/* Desktop icon grid — 先纵向排列；高度不足时向左新增列。 */}
-      <div
-        data-desktop-blocker="true"
-        className="absolute top-3 right-3"
-        style={DESKTOP_ICON_GRID_STYLE}
-      >
-        {desktopApps.map((app) => (
-          <div key={app.manifest.id} style={DESKTOP_ICON_GRID_ITEM_STYLE}>
-            <DesktopIcon app={app} />
-          </div>
-        ))}
-      </div>
+      <DesktopWeatherWidget />
 
       {/* Window layer */}
       <WindowManager />

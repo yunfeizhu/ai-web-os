@@ -1,6 +1,10 @@
 import { create } from "zustand";
 import type { WindowState, WindowDisplayState } from "@/types/window";
 import { generateId } from "@/lib/utils";
+import {
+  clampWindowRectToWorkArea,
+  getResponsiveInitialWindowLayout,
+} from "@/components/window/windowLayout";
 
 interface WindowManagerState {
   windows: Record<string, WindowState>;
@@ -45,19 +49,6 @@ type OpenWindowOptions = Partial<WindowState> & {
 const DEFAULT_SIZE = { width: 960, height: 680 };
 const DEFAULT_MIN_SIZE = { width: 400, height: 300 };
 
-const TASKBAR_H = 68; // 与 CSS --taskbar-h 保持一致（Dock 高度）
-
-function getCenteredPosition(width: number, height: number, offset: number) {
-  if (typeof window === "undefined")
-    return { x: 100 + offset, y: 100 + offset };
-  const availW = window.innerWidth;
-  const availH = window.innerHeight - TASKBAR_H;
-  return {
-    x: Math.max(0, Math.round((availW - width) / 2) + offset),
-    y: Math.max(0, Math.round((availH - height) / 2) + offset),
-  };
-}
-
 export const useWindowStore = create<WindowManagerState>((set, get) => ({
   windows: {},
   focusOrder: [],
@@ -84,10 +75,19 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
     }
 
     const id = generateId();
-    const size = options?.size ?? DEFAULT_SIZE;
     const offset = Object.keys(state.windows).length * 30;
-    const position =
-      options?.position ?? getCenteredPosition(size.width, size.height, offset);
+    const initialLayout = getResponsiveInitialWindowLayout({
+      preferredSize: options?.size ?? DEFAULT_SIZE,
+      minSize: options?.minSize ?? DEFAULT_MIN_SIZE,
+      offset,
+    });
+    const initialRect = options?.position
+      ? clampWindowRectToWorkArea({
+          position: options.position,
+          size: initialLayout.size,
+          minSize: initialLayout.minSize,
+        })
+      : initialLayout;
 
     const newWindow: WindowState = {
       id,
@@ -95,9 +95,9 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
       instanceKey: options?.instanceKey,
       title,
       icon,
-      position,
-      size,
-      minSize: options?.minSize ?? DEFAULT_MIN_SIZE,
+      position: initialRect.position,
+      size: initialRect.size,
+      minSize: initialLayout.minSize,
       state: "normal",
       zIndex: state.nextZIndex,
       isFocused: true,
@@ -250,6 +250,11 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
           Object.entries(s.windows).map(([k, w]) => {
             if (k !== id) return [k, { ...w, isFocused: false }];
             const snap = w.preMaximizeSnapshot;
+            const rect = clampWindowRectToWorkArea({
+              position: snap?.position ?? w.position,
+              size: snap?.size ?? w.size,
+              minSize: w.minSize,
+            });
             return [
               k,
               {
@@ -257,8 +262,8 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
                 state: "normal" as const,
                 isFocused: true,
                 zIndex: s.nextZIndex,
-                // 还原位置和尺寸
-                ...(snap ? { position: snap.position, size: snap.size } : {}),
+                position: rect.position,
+                size: rect.size,
                 preMaximizeSnapshot: undefined,
               },
             ];
@@ -286,7 +291,14 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
       windows: {
         ...s.windows,
         [id]: s.windows[id]
-          ? { ...s.windows[id], position: { x, y } }
+          ? {
+              ...s.windows[id],
+              ...clampWindowRectToWorkArea({
+                position: { x, y },
+                size: s.windows[id].size,
+                minSize: s.windows[id].minSize,
+              }),
+            }
           : s.windows[id],
       },
     }));
@@ -297,7 +309,14 @@ export const useWindowStore = create<WindowManagerState>((set, get) => ({
       windows: {
         ...s.windows,
         [id]: s.windows[id]
-          ? { ...s.windows[id], size: { width, height } }
+          ? {
+              ...s.windows[id],
+              ...clampWindowRectToWorkArea({
+                position: s.windows[id].position,
+                size: { width, height },
+                minSize: s.windows[id].minSize,
+              }),
+            }
           : s.windows[id],
       },
     }));

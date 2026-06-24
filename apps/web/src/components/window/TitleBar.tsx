@@ -1,6 +1,8 @@
 "use client";
 
 import type { WindowState } from "@/types/window";
+import { Maximize2, Minus, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 interface TitleBarProps {
   window: WindowState;
@@ -25,21 +27,24 @@ export function TitleBar({ window: win, onClose, onMinimize, onToggleMaximize }:
       {/* Traffic-light buttons */}
       <div className="flex items-center gap-2 mr-3 group/tl">
         <TrafficLight
+          ariaLabel="关闭"
           color={win.isFocused ? "#FF5F57" : "var(--traffic-disabled)"}
           hoverColor="#FF3B30"
-          symbol="×"
+          Icon={X}
           onClick={onClose}
         />
         <TrafficLight
+          ariaLabel="最小化"
           color={win.isFocused ? "#FEBC2E" : "var(--traffic-disabled)"}
           hoverColor="#FFB800"
-          symbol="−"
+          Icon={Minus}
           onClick={onMinimize}
         />
         <TrafficLight
+          ariaLabel="最大化"
           color={win.isFocused ? "#28C840" : "var(--traffic-disabled)"}
           hoverColor="#1AAD30"
-          symbol="⤢"
+          Icon={Maximize2}
           onClick={(e) => { e.stopPropagation(); onToggleMaximize(); }}
         />
       </div>
@@ -61,12 +66,19 @@ export function TitleBar({ window: win, onClose, onMinimize, onToggleMaximize }:
 }
 
 function TrafficLight({
-  color, hoverColor, symbol, onClick,
+  ariaLabel, color, hoverColor, Icon, onClick,
 }: {
-  color: string; hoverColor: string; symbol: string; onClick: (e: React.MouseEvent) => void;
+  ariaLabel: string;
+  color: string;
+  hoverColor: string;
+  Icon: LucideIcon;
+  onClick: (e: React.MouseEvent) => void;
 }) {
   return (
     <button
+      type="button"
+      aria-label={ariaLabel}
+      data-window-control={ariaLabel}
       onClick={onClick}
       className="w-3.5 h-3.5 rounded-full flex items-center justify-center transition-all duration-100
         group-hover/tl:opacity-100"
@@ -77,12 +89,13 @@ function TrafficLight({
       onMouseEnter={(e) => (e.currentTarget.style.background = hoverColor)}
       onMouseLeave={(e) => (e.currentTarget.style.background = color)}
     >
-      <span
-        className="opacity-0 group-hover/tl:opacity-100 transition-opacity select-none"
-        style={{ fontSize: 10, fontWeight: 900, lineHeight: 1, color: "rgba(0,0,0,0.65)", marginTop: "-0.5px" }}
-      >
-        {symbol}
-      </span>
+      <Icon
+        aria-hidden="true"
+        className="opacity-0 group-hover/tl:opacity-100 transition-opacity"
+        size={8}
+        strokeWidth={3.2}
+        style={{ color: "rgba(0,0,0,0.66)" }}
+      />
     </button>
   );
 }

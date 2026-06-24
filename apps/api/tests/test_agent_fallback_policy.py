@@ -3,6 +3,7 @@ from app.core.agent_harness import (
     decide_fallback_policy,
     fallback_trace_payload,
     guard_tool_call,
+    validate_tool_result,
 )
 
 
@@ -63,6 +64,16 @@ def test_ok_validation_has_no_fallback_action():
     assert decision.action == "none"
     assert decision.retry_original_tool is False
     assert decision.system_hint == ""
+
+
+def test_mcp_answer_with_empty_results_is_still_valid():
+    validation = validate_tool_result(
+        tool_name="mcp_tavily_search",
+        result='{"answer":"沪深300今日收盘上涨 1.2%，收于 3650 点。","results":[]}',
+        error=False,
+    )
+
+    assert validation.ok is True
 
 
 def test_fallback_trace_payload_exposes_action_and_hint():

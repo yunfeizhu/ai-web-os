@@ -9,6 +9,14 @@ from app.core.app_manifest import normalize_manifest
 from app.core.skill_context import _build_entry_app_context, _should_inject_full_skill
 
 
+def test_current_time_context_treats_runtime_date_as_authoritative():
+    rendered = skill_context._current_time_context()
+
+    assert "权威时间" in rendered
+    assert "不要用训练数据、外部常识或现实日历去质疑" in rendered
+    assert "未来/测试日期" in rendered
+
+
 def test_skill_descriptor_preserves_full_skill_prompt_flag(tmp_path):
     app_dir = tmp_path / "avatar-pet"
     app_dir.mkdir()

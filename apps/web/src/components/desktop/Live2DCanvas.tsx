@@ -3,7 +3,10 @@
 import { useEffect, useRef } from "react";
 
 import { getLive2DExpressionPlan } from "@/apps/avatar-pet/emotion-map";
-import type { AvatarEmotion } from "@/apps/avatar-pet/emotion-parser";
+import type {
+  AvatarEmotion,
+  AvatarMotion,
+} from "@/apps/avatar-pet/emotion-parser";
 import {
   classifyLive2DSource,
   loadAvatarZip,
@@ -11,7 +14,7 @@ import {
   resolveAvatarModelSource,
   type PreparedZipModel,
 } from "@/apps/avatar-pet/live2d-loader";
-import { useAvatarStore } from "@/stores/avatarStore";
+import { type AvatarMotionRequest, useAvatarStore } from "@/stores/avatarStore";
 
 type PixiModule = typeof import("pixi.js");
 type Live2DModule = typeof import("pixi-live2d-display/cubism4");
@@ -35,6 +38,7 @@ type RuntimeState = {
 type Live2DCanvasProps = {
   modelUrl: string;
   emotion: AvatarEmotion;
+  motionRequest?: AvatarMotionRequest | null;
 };
 
 type Live2DInteractionModel = Pick<
@@ -61,6 +65,12 @@ const MIN_RENDER_RESOLUTION = 2;
 const MAX_RENDER_RESOLUTION = 3;
 const LIVE2D_FORCE_MOTION_PRIORITY = 3;
 const LIVE2D_INTERACTION_EXPRESSIONS = ["happy", "smile", "surprised"] as const;
+const AVATAR_MOTION_TO_LIVE2D: Record<
+  AvatarMotion,
+  { group: string; index: number }
+> = {
+  heart: { group: "", index: 3 },
+};
 const LIVE2D_DEFAULT_TAP_MOTION_GROUPS = [
   "Tap@Body",
   "TapBody",
@@ -373,6 +383,23 @@ export async function playLive2DInteraction(
   return false;
 }
 
+export async function playLive2DAvatarMotion(
+  model: Pick<Live2DModelInstance, "motion">,
+  motion: AvatarMotion,
+): Promise<boolean> {
+  const plan = AVATAR_MOTION_TO_LIVE2D[motion];
+
+  try {
+    return await model.motion(
+      plan.group,
+      plan.index,
+      LIVE2D_FORCE_MOTION_PRIORITY,
+    );
+  } catch {
+    return false;
+  }
+}
+
 function enableLive2DPointerInteraction(model: Live2DModelInstance) {
   const capabilities = getLive2DModelCapabilities(model);
   model.interactive = true;
@@ -397,14 +424,20 @@ function enableLive2DPointerInteraction(model: Live2DModelInstance) {
   };
 }
 
-export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
+export function Live2DCanvas({
+  modelUrl,
+  emotion,
+  motionRequest = null,
+}: Live2DCanvasProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const modelRef = useRef<Live2DModelInstance | null>(null);
   const emotionRef = useRef(emotion);
+  const motionRequestRef = useRef(motionRequest);
   const modelSourceType = useAvatarStore((state) => state.modelSourceType);
   const localModelName = useAvatarStore((state) => state.localModelName);
   const setLive2DError = useAvatarStore((state) => state.setLive2DError);
   emotionRef.current = emotion;
+  motionRequestRef.current = motionRequest;
 
   useEffect(() => {
     let disposed = false;
@@ -522,6 +555,12 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
         modelRef.current = model;
         publishRuntimeState(null);
         await applyEmotion(model, emotionRef.current);
+        if (motionRequestRef.current) {
+          await playLive2DAvatarMotion(
+            model,
+            motionRequestRef.current.motion,
+          );
+        }
       } catch {
         resizeObserver?.disconnect();
         cleanupPointerInteraction?.();
@@ -584,6 +623,25 @@ export function Live2DCanvas({ modelUrl, emotion }: Live2DCanvasProps) {
       disposed = true;
     };
   }, [emotion]);
+
+  useEffect(() => {
+    const model = modelRef.current;
+    if (!model || !motionRequest) return;
+
+    let disposed = false;
+
+    const playMotion = async () => {
+      await playLive2DAvatarMotion(model, motionRequest.motion);
+    };
+
+    void playMotion().catch(() => {
+      if (disposed) return;
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, [motionRequest?.motion, motionRequest?.sequence]);
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-lg">

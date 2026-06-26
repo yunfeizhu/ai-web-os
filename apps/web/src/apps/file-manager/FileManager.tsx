@@ -6,23 +6,14 @@ import {
   Copy,
   Download,
   ExternalLink,
-  FileArchive,
-  FileAudio2,
-  FileCode2,
-  FileCog,
-  FileImage,
-  FileJson,
   FilePenLine,
   FileSpreadsheet,
-  FileSymlink,
   FileText,
-  FileVideo,
-  Folder,
   FolderPlus,
-  HardDrive,
   LayoutGrid,
   List,
   Loader2,
+  MoreHorizontal,
   MoveRight,
   Pencil,
   PenTool,
@@ -69,8 +60,29 @@ type ActionState =
   | null;
 
 const PREVIEW_DELAY_MS = 180;
+const MACOS_FILE_MANAGER_ICON_SRC = {
+  folder: "/icons/macos/folder.png",
+  drive: "/icons/macos/file-manager/drive.png",
+  document: "/icons/macos/file-manager/document.png",
+  image: "/icons/macos/file-manager/image.png",
+  archive: "/icons/macos/file-manager/archive.png",
+  audio: "/icons/macos/file-manager/audio.png",
+  video: "/icons/macos/file-manager/video.png",
+  spreadsheet: "/icons/macos/file-manager/spreadsheet.png",
+  code: "/icons/macos/file-manager/code.png",
+  json: "/icons/macos/file-manager/json.png",
+  config: "/icons/macos/file-manager/config.png",
+  shortcut: "/icons/macos/file-manager/shortcut.png",
+  whiteboard: "/icons/macos/file-manager/whiteboard.png",
+} as const;
 
-export function FileManager() {
+type FileManagerIconKind = keyof typeof MACOS_FILE_MANAGER_ICON_SRC;
+
+interface FileManagerProps {
+  appState?: Record<string, unknown>;
+}
+
+export function FileManager({ appState }: FileManagerProps) {
   const [tree, setTree] = useState<TreeNode[]>([]);
   const [rootName, setRootName] = useState("主目录");
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -94,6 +106,7 @@ export function FileManager() {
   const [loading, setLoading] = useState(false);
   const [action, setAction] = useState<ActionState>(null);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [toolbarMenuOpen, setToolbarMenuOpen] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -105,6 +118,10 @@ export function FileManager() {
   const textEditorApp = useDesktopStore((state) => state.apps["text-editor"]);
   const documentEditorApp = useDesktopStore((state) => state.apps["document-editor"]);
   const whiteboardApp = useDesktopStore((state) => state.apps["whiteboard"]);
+  const initialPath =
+    typeof appState?.initialPath === "string" && appState.initialPath
+      ? appState.initialPath
+      : "/";
 
   const MENU_W = 164;
   const MENU_H = 220; // 最大预估高度（5 项 × ~40px + padding）
@@ -153,6 +170,10 @@ export function FileManager() {
       ...parts.map((_, index) => `/${parts.slice(0, index + 1).join("/")}`),
     ];
   }, [currentPath]);
+
+  useEffect(() => {
+    setToolbarMenuOpen(false);
+  }, [selected?.id]);
 
   const loadTree = async () => {
     const data = await apiFetch<{ tree: TreeNode[]; root_name: string }>(
@@ -306,8 +327,8 @@ export function FileManager() {
 
   useEffect(() => {
     loadTree();
-    loadEntries("/");
-  }, []);
+    loadEntries(initialPath);
+  }, [initialPath]);
 
   useEffect(() => {
     if (!selected || selected.kind !== "file" || selectedPreviewKind === "unsupported") {
@@ -487,112 +508,53 @@ export function FileManager() {
       />
 
       <div
-        className="flex items-center gap-2 border-b px-4 py-2"
+        data-testid="file-manager-toolbar"
+        className="flex min-h-11 items-center gap-2 border-b px-3 py-1.5"
         style={{
           borderColor: "var(--border)",
-          background: "var(--panel-bg-soft)",
+          background:
+            "linear-gradient(180deg, rgba(255,255,255,0.72), rgba(247,248,250,0.58))",
+          backdropFilter: "blur(18px) saturate(150%)",
+          WebkitBackdropFilter: "blur(18px) saturate(150%)",
         }}
       >
-        <ActionButton
-          icon={<FolderPlus size={13} />}
-          label="新建文件夹"
-          onClick={() => setAction({ type: "new-folder", value: "" })}
-        />
-        <ActionButton
-          icon={<FileText size={13} />}
-          label="新建文本文件"
-          onClick={() => setAction({ type: "new-text-file", value: "Untitled.txt" })}
-        />
-        <ActionButton
-          icon={<Upload size={13} />}
-          label="上传"
-          onClick={() => fileInputRef.current?.click()}
-        />
-        <ActionButton
-          icon={
-            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          }
-          label="刷新"
-          onClick={refresh}
-        />
+        <ToolbarGroup>
+          <ToolbarIconButton
+            icon={<FolderPlus size={17} />}
+            label="新建文件夹"
+            onClick={() => setAction({ type: "new-folder", value: "" })}
+          />
+          <ToolbarIconButton
+            icon={<FileText size={17} />}
+            label="新建文本文件"
+            onClick={() => setAction({ type: "new-text-file", value: "Untitled.txt" })}
+          />
+        </ToolbarGroup>
+
+        <ToolbarGroup>
+          <ToolbarIconButton
+            icon={<Upload size={17} />}
+            label="上传"
+            onClick={() => fileInputRef.current?.click()}
+          />
+          <ToolbarIconButton
+            icon={<RefreshCw size={16} className={loading ? "animate-spin" : ""} />}
+            label="刷新"
+            onClick={refresh}
+          />
+        </ToolbarGroup>
+
         <div className="ml-auto flex items-center gap-2">
-          <ActionButton
-            icon={<LayoutGrid size={13} />}
-            label={viewMode === "grid" ? "网格视图" : "切换网格"}
-            onClick={() => setViewMode("grid")}
-          />
-          <ActionButton
-            icon={<List size={13} />}
-            label={viewMode === "list" ? "列表视图" : "切换列表"}
-            onClick={() => setViewMode("list")}
-          />
+          <ViewModeControl viewMode={viewMode} onChange={setViewMode} />
           {selected && !selectedIsDrive && (
-            <>
-              {selectedIsEditableText && (
-                <ActionButton
-                  icon={<FileText size={13} />}
-                  label="打开编辑器"
-                  onClick={() => openTextEditor(selected)}
-                />
-              )}
-              {isDocumentEditorFile(selected) && (
-                <ActionButton
-                  icon={<FilePenLine size={13} />}
-                  label="打开文档编辑器"
-                  onClick={() => openDocumentEditor(selected)}
-                />
-              )}
-              {selectedIsEditableSpreadsheet && (
-                <ActionButton
-                  icon={<FileSpreadsheet size={13} />}
-                  label="打开表格编辑器"
-                  onClick={() => openSpreadsheetEditor(selected)}
-                />
-              )}
-              {isWhiteboardFile(selected) && (
-                <ActionButton
-                  icon={<PenTool size={13} />}
-                  label="打开白板"
-                  onClick={() => openWhiteboardEditor(selected)}
-                />
-              )}
-              {selectedCanOpenExternally && (
-                <ActionButton
-                  icon={<ExternalLink size={13} />}
-                  label="打开文件"
-                  onClick={() => openExternalFile(selected)}
-                />
-              )}
-              {selectedShouldDownloadDirectly && (
-                <ActionButton
-                  icon={<Download size={13} />}
-                  label="下载文件"
-                  onClick={() => downloadFile(selected)}
-                />
-              )}
-              <ActionButton
-                icon={<Pencil size={13} />}
-                label="重命名"
-                onClick={() =>
-                  setAction({ type: "rename", value: selected.name })
-                }
+            <ToolbarGroup>
+              <ToolbarIconButton
+                data-testid="file-manager-toolbar-more"
+                icon={<MoreHorizontal size={18} />}
+                label="更多操作"
+                onClick={() => setToolbarMenuOpen((open) => !open)}
               />
-              <ActionButton
-                icon={<MoveRight size={13} />}
-                label="移动"
-                onClick={() => setAction({ type: "move", value: currentPath })}
-              />
-              <ActionButton
-                icon={<Copy size={13} />}
-                label="复制"
-                onClick={() => setAction({ type: "copy", value: currentPath })}
-              />
-              <ActionButton
-                icon={<Trash2 size={13} />}
-                label="删除"
-                onClick={deleteSelected}
-              />
-            </>
+            </ToolbarGroup>
           )}
         </div>
       </div>
@@ -986,6 +948,80 @@ export function FileManager() {
         </aside>
       </div>
 
+      {toolbarMenuOpen && selected && !selectedIsDrive && (
+        <div
+          className="absolute inset-0 z-40"
+          onClick={() => setToolbarMenuOpen(false)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setToolbarMenuOpen(false);
+          }}
+        >
+          <div
+            data-testid="file-manager-toolbar-menu"
+            className="absolute right-3 top-12 w-[172px] rounded-xl p-1.5"
+            style={{
+              background: "var(--surface-solid)",
+              boxShadow: "var(--shadow-window)",
+              border: "0.5px solid var(--border)",
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <ContextMenuButton
+              label={
+                selected.kind === "dir"
+                  ? "打开目录"
+                  : selectedIsEditableText
+                    ? "打开文本编辑器"
+                    : isDocumentEditorFile(selected)
+                      ? "打开文档编辑器"
+                      : selectedIsEditableSpreadsheet
+                        ? "打开表格编辑器"
+                        : isWhiteboardFile(selected)
+                          ? "打开白板"
+                          : selectedCanOpenExternally
+                            ? "打开文件"
+                            : "下载文件"
+              }
+              onClick={() => {
+                openEntry(selected);
+                setToolbarMenuOpen(false);
+              }}
+            />
+            <ContextMenuButton
+              label="重命名"
+              onClick={() => {
+                setAction({ type: "rename", value: selected.name });
+                setToolbarMenuOpen(false);
+              }}
+            />
+            <ContextMenuButton
+              label="复制"
+              onClick={() => {
+                setAction({ type: "copy", value: currentPath });
+                setToolbarMenuOpen(false);
+              }}
+            />
+            <ContextMenuButton
+              label="移动"
+              onClick={() => {
+                setAction({ type: "move", value: currentPath });
+                setToolbarMenuOpen(false);
+              }}
+            />
+            <ContextMenuButton
+              label="删除"
+              danger
+              onClick={async () => {
+                await deleteSelected();
+                setToolbarMenuOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {contextMenu && (
         <div
           className="absolute inset-0 z-50"
@@ -1117,6 +1153,78 @@ function ActionButton({
   );
 }
 
+function ToolbarGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="inline-flex h-8 items-center rounded-[13px] p-[2px]"
+      style={{
+        background: "rgba(255,255,255,0.62)",
+        border: "0.5px solid rgba(0,0,0,0.08)",
+        boxShadow:
+          "0 1px 2px rgba(0,0,0,0.06), inset 0 1px 0 rgba(255,255,255,0.82)",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ToolbarIconButton({
+  icon,
+  label,
+  onClick,
+  active = false,
+  "data-testid": testId,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  "data-testid"?: string;
+}) {
+  return (
+    <button
+      data-testid={testId}
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="inline-flex h-7 w-8 items-center justify-center rounded-[10px] transition-colors [&_svg]:shrink-0"
+      style={{
+        background: active ? "rgba(0,0,0,0.11)" : "transparent",
+        color: active ? "var(--t1)" : "var(--t2)",
+        boxShadow: active ? "inset 0 0 0 0.5px rgba(0,0,0,0.08)" : "none",
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function ViewModeControl({
+  viewMode,
+  onChange,
+}: {
+  viewMode: "grid" | "list";
+  onChange: (mode: "grid" | "list") => void;
+}) {
+  return (
+    <ToolbarGroup>
+      <ToolbarIconButton
+        icon={<LayoutGrid size={17} />}
+        label="网格视图"
+        active={viewMode === "grid"}
+        onClick={() => onChange("grid")}
+      />
+      <ToolbarIconButton
+        icon={<List size={17} />}
+        label="列表视图"
+        active={viewMode === "list"}
+        onClick={() => onChange("list")}
+      />
+    </ToolbarGroup>
+  );
+}
+
 function TreeView({
   nodes,
   currentPath,
@@ -1139,7 +1247,11 @@ function TreeView({
           color: currentPath === "/" ? "var(--t1)" : "var(--t2)",
         }}
       >
-        <HardDrive size={14} />
+        <FileManagerIconImage
+          kind="drive"
+          size={18}
+          testId="file-manager-drive-icon-image"
+        />
         {rootName}
       </button>
       {nodes.map((node) => (
@@ -1178,7 +1290,19 @@ function TreeNodeItem({
           color: currentPath === node.path ? "var(--t1)" : "var(--t2)",
         }}
       >
-        {isDrivePath(node.path) ? <HardDrive size={14} /> : <Folder size={14} />}
+        {isDrivePath(node.path) ? (
+          <FileManagerIconImage
+            kind="drive"
+            size={18}
+            testId="file-manager-drive-icon-image"
+          />
+        ) : (
+          <FileManagerIconImage
+            kind="folder"
+            size={18}
+            testId="file-manager-folder-icon-image"
+          />
+        )}
         <span className="truncate">{node.name}</span>
       </button>
       {node.children.map((child) => (
@@ -1191,6 +1315,35 @@ function TreeNodeItem({
         />
       ))}
     </div>
+  );
+}
+
+function FileManagerIconImage({
+  kind,
+  size,
+  testId,
+}: {
+  kind: FileManagerIconKind;
+  size: number;
+  testId?: string;
+}) {
+  return (
+    <img
+      data-testid={testId}
+      data-icon-kind={kind}
+      src={MACOS_FILE_MANAGER_ICON_SRC[kind]}
+      alt=""
+      draggable={false}
+      style={{
+        width: size,
+        height: size,
+        objectFit: "contain",
+        display: "inline-block",
+        flex: "0 0 auto",
+        filter: "drop-shadow(0 1px 1px rgba(15, 23, 42, 0.16))",
+        verticalAlign: "middle",
+      }}
+    />
   );
 }
 
@@ -1356,14 +1509,12 @@ function EntryCard({
       }}
     >
       <div
-        className="mb-2 flex h-8 w-8 items-center justify-center rounded-lg"
+        className="mb-2 flex h-11 w-11 items-center justify-center"
         style={{
-          background: "var(--control-bg)",
-          color: getEntryAccentColor(entry),
-          border: "0.5px solid var(--border)",
+          background: "transparent",
         }}
       >
-        {getEntryIcon(entry, 18)}
+        {getEntryIcon(entry, 38)}
       </div>
       <div className="truncate text-[14px] font-medium">{entry.name}</div>
       <div className="mt-1 text-[12px]" style={{ color: "var(--t3)" }}>
@@ -1401,8 +1552,8 @@ function EntryRow({
         borderColor: "var(--border)",
       }}
     >
-      <span style={{ color: getEntryAccentColor(entry) }}>
-        {getEntryIcon(entry, 16)}
+      <span className="flex h-6 w-6 items-center justify-center">
+        {getEntryIcon(entry, 22)}
       </span>
       <span className="flex-1 truncate">{entry.name}</span>
       <span style={{ color: "var(--t3)" }}>
@@ -1543,42 +1694,55 @@ function getEntryTypeLabel(entry: FileEntry | null) {
   return getFileVisualMeta(entry).label;
 }
 
-function getEntryAccentColor(entry: FileEntry) {
-  if (isDriveEntry(entry)) return "#64748b";
-  if (entry.kind === "dir") return "#ffb020";
-  return getFileVisualMeta(entry).color;
-}
-
 function getEntryIcon(entry: FileEntry, size: number) {
-  if (isDriveEntry(entry)) return <HardDrive size={size} />;
-  if (entry.kind === "dir") return <Folder size={size} />;
+  if (isDriveEntry(entry)) {
+    return (
+      <FileManagerIconImage
+        kind="drive"
+        size={size}
+        testId="file-manager-drive-icon-image"
+      />
+    );
+  }
+  if (entry.kind === "dir") {
+    return (
+      <FileManagerIconImage
+        kind="folder"
+        size={size + 4}
+        testId="file-manager-folder-icon-image"
+      />
+    );
+  }
 
   const meta = getFileVisualMeta(entry);
+  const iconKind = meta.kind;
   switch (meta.kind) {
     case "image":
-      return <FileImage size={size} />;
     case "document":
-      return <FilePenLine size={size} />;
     case "json":
-      return <FileJson size={size} />;
     case "code":
-      return <FileCode2 size={size} />;
     case "spreadsheet":
-      return <FileSpreadsheet size={size} />;
     case "whiteboard":
-      return <PenTool size={size} />;
     case "archive":
-      return <FileArchive size={size} />;
     case "audio":
-      return <FileAudio2 size={size} />;
     case "video":
-      return <FileVideo size={size} />;
     case "shortcut":
-      return <FileSymlink size={size} />;
     case "config":
-      return <FileCog size={size} />;
+      return (
+        <FileManagerIconImage
+          kind={iconKind}
+          size={size}
+          testId="file-manager-entry-icon-image"
+        />
+      );
     default:
-      return <FileText size={size} />;
+      return (
+        <FileManagerIconImage
+          kind="document"
+          size={size}
+          testId="file-manager-entry-icon-image"
+        />
+      );
   }
 }
 
@@ -1600,7 +1764,7 @@ function getFileVisualMeta(entry: FileEntry) {
     return { kind: "image", color: "#0ea5e9", label: "图片" } as const;
   }
   if (mime === "application/pdf" || ext === "pdf") {
-    return { kind: "text", color: "#ef4444", label: "PDF 文档" } as const;
+    return { kind: "document", color: "#ef4444", label: "PDF 文档" } as const;
   }
   if (
     ["ppt", "pptx", "pps", "ppsx", "key"].includes(ext) ||
@@ -1608,7 +1772,7 @@ function getFileVisualMeta(entry: FileEntry) {
     mime.includes("ms-powerpoint") ||
     mime.includes("presentation")
   ) {
-    return { kind: "text", color: "#f97316", label: "演示文稿" } as const;
+    return { kind: "document", color: "#f97316", label: "演示文稿" } as const;
   }
   if (
     ["doc", "docx", "rtf", "odt", "pages"].includes(ext) ||
@@ -1616,7 +1780,7 @@ function getFileVisualMeta(entry: FileEntry) {
     mime.includes("msword") ||
     mime.includes("rtf")
   ) {
-    return { kind: "text", color: "#2563eb", label: "文档" } as const;
+    return { kind: "document", color: "#2563eb", label: "文档" } as const;
   }
   if (mime.startsWith("audio/") || ["mp3", "wav", "flac", "aac", "ogg", "m4a"].includes(ext)) {
     return { kind: "audio", color: "#f59e0b", label: "音频" } as const;
@@ -1640,11 +1804,11 @@ function getFileVisualMeta(entry: FileEntry) {
     return { kind: "config", color: "#64748b", label: "配置文件" } as const;
   }
   if (["txt", "md", "log"].includes(ext) || mime.startsWith("text/")) {
-    return { kind: "text", color: "#38bdf8", label: "文本文件" } as const;
+    return { kind: "document", color: "#38bdf8", label: "文本文件" } as const;
   }
 
   return {
-    kind: "text",
+    kind: "document",
     color: "#38bdf8",
     label: entry.mime_type || "文件",
   } as const;

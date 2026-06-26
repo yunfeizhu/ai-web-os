@@ -5,6 +5,12 @@
       "source": "anthropics/skills",
       "sourceType": "github",
       "computedHash": "063a0e6448123cd359ad0044cc46b0e490cc7964d45ef4bb9fd842bd2ffbca67"
+    },
+    "guizang-ppt-skill": {
+      "source": "op7418/guizang-ppt-skill",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "ad696d69fe2f7f120e6e739168751f9f39c69b9fdb2ed14f40ec1e1066a2cfe0"
     }
   }
 }

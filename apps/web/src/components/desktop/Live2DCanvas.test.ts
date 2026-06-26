@@ -8,6 +8,7 @@ import {
   getLive2DInteractionMotionGroups,
   getLive2DModelCapabilities,
   getLive2DRenderResolution,
+  playLive2DAvatarMotion,
   playLive2DInteraction,
 } from "./Live2DCanvas";
 import { Live2DCanvas } from "./Live2DCanvas";
@@ -217,6 +218,34 @@ describe("Live2D click interactions", () => {
     ).resolves.toBe(true);
 
     expect(expressions).toEqual(["happy", "smile", "surprised", "exp_01"]);
+  });
+
+  it("plays the Mao Pro heart motion from the unnamed special motion group", async () => {
+    const calls: Array<{
+      group: string;
+      index: number | undefined;
+      priority: number | undefined;
+    }> = [];
+    const model = {
+      motion: async (
+        group: string,
+        index?: number,
+        priority?: number,
+      ) => {
+        calls.push({ group, index, priority });
+        return group === "" && index === 3;
+      },
+      expression: async () => false,
+    };
+
+    await expect(
+      playLive2DAvatarMotion(
+        model as unknown as Parameters<typeof playLive2DAvatarMotion>[0],
+        "heart",
+      ),
+    ).resolves.toBe(true);
+
+    expect(calls).toEqual([{ group: "", index: 3, priority: 3 }]);
   });
 });
 

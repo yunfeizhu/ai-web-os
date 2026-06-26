@@ -61,6 +61,9 @@ export function Dock() {
   const openWindow = useWindowStore((s) => s.openWindow);
   const apps = useDesktopStore((s) => s.apps);
 
+  const getDockContentLeft = () =>
+    (dockRef.current?.getBoundingClientRect().left ?? 0) + 16;
+
   const handleDockClick = (appId: string) => {
     // 查找该 app 是否已有打开的窗口
     const existingWin = Object.values(windows).find(
@@ -87,8 +90,8 @@ export function Dock() {
     DOCK_APPS,
     new Set(Object.keys(apps)),
   );
-  const getDockContentLeft = () =>
-    (dockRef.current?.getBoundingClientRect().left ?? 0) + 16;
+
+  if (dockAppIds.length === 0) return null;
 
   return (
     <>

@@ -5,10 +5,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   Loader2,
-  Mail,
   MailPlus,
   Paperclip,
   PencilLine,
+  Plus,
   RefreshCw,
   Save,
   Send,
@@ -541,64 +541,86 @@ export function MailApp({ appState }: MailAppProps) {
 
   return (
     <div
+      data-testid="mail-macos-shell"
       data-desktop-blocker="true"
-      className="flex h-full min-w-0 overflow-hidden rounded-[28px]"
+      className="flex h-full min-w-0 overflow-hidden"
       style={{
         color: "var(--t1)",
         background:
-          "radial-gradient(circle at top right, rgba(34,197,94,0.12), transparent 24%), linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.98))",
+          "linear-gradient(180deg, rgba(247,247,249,0.96), rgba(239,240,244,0.98))",
       }}
     >
       <aside
-        className="flex w-[280px] shrink-0 flex-col border-r px-4 py-4"
-        style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.82)" }}
+        data-testid="mail-sidebar"
+        className="flex w-[258px] shrink-0 flex-col border-r px-3 py-3"
+        style={{
+          borderColor: "rgba(0,0,0,0.08)",
+          background: "rgba(237,238,242,0.74)",
+          backdropFilter: "blur(28px) saturate(170%)",
+          WebkitBackdropFilter: "blur(28px) saturate(170%)",
+        }}
       >
-        <div className="flex items-center gap-2">
-          <Mail size={18} color="#15803d" />
-          <div>
-            <div className="text-[12px] font-medium" style={{ color: "#15803d" }}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div
+              data-testid="mail-sidebar-kicker"
+              className="text-[12px] font-medium"
+              style={{ color: "var(--accent)" }}
+            >
               收件中心
             </div>
-            <div className="text-[22px] font-semibold">邮件</div>
+            <div
+              data-testid="mail-sidebar-title"
+              className="mt-0.5 truncate text-[24px] font-semibold leading-tight"
+            >
+              邮件
+            </div>
           </div>
-        </div>
-
-        <div className="mt-4 flex gap-2">
-          <button
-            className="inline-flex flex-1 items-center justify-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium text-white"
-            style={{ background: "linear-gradient(135deg, #22c55e, #15803d)" }}
-            onClick={openNewCompose}
-          >
-            <MailPlus size={15} />
-            写邮件
-          </button>
-          <button
-            className="rounded-full border px-3 py-2"
-            style={pillStyle()}
-            onClick={() => openAccountEditor(activeAccount || undefined)}
-          >
-            <Settings2 size={15} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              aria-label="写邮件"
+              title="写邮件"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[9px]"
+              style={toolbarIconButtonStyle}
+              onClick={openNewCompose}
+            >
+              <MailPlus size={16} />
+            </button>
+            <button
+              aria-label="邮箱设置"
+              title="邮箱设置"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[9px]"
+              style={toolbarIconButtonStyle}
+              onClick={() => openAccountEditor(activeAccount || undefined)}
+            >
+              <Settings2 size={16} />
+            </button>
+          </div>
         </div>
 
         <div className="mt-5 flex items-center justify-between">
-          <div className="text-[12px] font-medium" style={{ color: "#64748b" }}>
+          <div className="text-[12px] font-medium" style={{ color: "var(--t2)" }}>
             邮箱账户
           </div>
           <button
-            className="text-[12px] font-medium"
-            style={{ color: "#15803d" }}
+            aria-label="新增邮箱账户"
+            title="新增邮箱账户"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-[8px]"
+            style={toolbarIconButtonStyle}
             onClick={() => openAccountEditor()}
           >
-            新增
+            <Plus size={15} />
           </button>
         </div>
 
-        <div className="mt-3 flex flex-col gap-2">
+        <div
+          className="mt-2 overflow-hidden rounded-[12px] border"
+          style={{ borderColor: "rgba(0,0,0,0.06)", background: "rgba(255,255,255,0.66)" }}
+        >
           {accounts.length === 0 ? (
             <div
-              className="rounded-[24px] border border-dashed px-4 py-5 text-[13px] leading-6"
-              style={{ borderColor: "rgba(15,23,42,0.1)", color: "var(--t3)" }}
+              className="px-3 py-4 text-[13px] leading-6"
+              style={{ color: "var(--t3)" }}
             >
               还没有邮箱账户。先填写收件与发信服务器信息，就可以同步和发送邮件。
             </div>
@@ -606,15 +628,17 @@ export function MailApp({ appState }: MailAppProps) {
             accounts.map((account) => (
               <button
                 key={account.id}
+                data-testid="mail-account-row"
                 onClick={() => setActiveAccountId(account.id)}
-                className="rounded-[22px] border px-4 py-3 text-left"
+                className="w-full px-3 py-2.5 text-left transition-colors"
                 style={{
-                  borderColor:
-                    account.id === activeAccountId ? "rgba(34,197,94,0.22)" : "rgba(15,23,42,0.08)",
+                  borderRadius: "10px",
+                  borderTop: account === accounts[0] ? undefined : "0.5px solid rgba(0,0,0,0.055)",
+                  color: "var(--t1)",
                   background:
                     account.id === activeAccountId
-                      ? "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(255,255,255,0.92))"
-                      : "rgba(248,250,252,0.88)",
+                      ? "rgba(0,122,255,0.12)"
+                      : "transparent",
                 }}
               >
                 <div className="truncate text-[14px] font-semibold">{account.label}</div>
@@ -632,16 +656,20 @@ export function MailApp({ appState }: MailAppProps) {
       </aside>
 
       <section className="flex min-w-0 flex-1">
-        <div className="flex w-[380px] shrink-0 flex-col border-r" style={{ borderColor: "rgba(15,23,42,0.08)" }}>
+        <div
+          data-testid="mail-message-list-column"
+          className="flex shrink-0 flex-col border-r"
+          style={{ width: 330, borderColor: "rgba(0,0,0,0.08)", background: "rgba(250,250,252,0.78)" }}
+        >
           <div
-            className="border-b px-4 py-3"
-            style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.72)" }}
+            className="border-b px-3 py-2.5"
+            style={{ borderColor: "rgba(0,0,0,0.07)", background: "rgba(255,255,255,0.68)" }}
           >
             <div className="flex items-center gap-2">
               {MAIL_FOLDERS.map((folder) => (
                 <button
                   key={folder.id}
-                  className="rounded-full border px-3 py-2 text-[12px] font-medium"
+                  className="rounded-[9px] border px-2.5 py-1.5 text-[12px] font-medium"
                   style={pillStyle(activeFolder === folder.id)}
                   onClick={() => setActiveFolder(folder.id)}
                 >
@@ -649,18 +677,19 @@ export function MailApp({ appState }: MailAppProps) {
                 </button>
               ))}
               <button
-                className="ml-auto inline-flex items-center gap-2 rounded-full border px-3 py-2 text-[12px]"
+                className="ml-auto inline-flex h-8 w-8 items-center justify-center rounded-[9px] border text-[12px]"
                 style={pillStyle()}
                 onClick={() => void syncAllFolders()}
                 disabled={!activeAccountId || syncing}
+                aria-label="同步邮件"
+                title="同步"
               >
                 {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                同步
               </button>
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
             {loading ? (
               <div className="flex h-full items-center justify-center gap-3 text-[13px]" style={{ color: "var(--t3)" }}>
                 <Loader2 size={16} className="animate-spin" />
@@ -668,25 +697,25 @@ export function MailApp({ appState }: MailAppProps) {
               </div>
             ) : messages.length === 0 ? (
               <div
-                className="rounded-[24px] border border-dashed px-4 py-5 text-[13px] leading-6"
-                style={{ borderColor: "rgba(15,23,42,0.1)", color: "var(--t3)" }}
+                className="rounded-[12px] border border-dashed px-3 py-4 text-[13px] leading-6"
+                style={{ borderColor: "rgba(0,0,0,0.1)", color: "var(--t3)", background: "rgba(255,255,255,0.5)" }}
               >
                 {MAIL_FOLDERS.find((folder) => folder.id === activeFolder)?.emptyText}
               </div>
             ) : (
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1.5">
                 {messages.map((message) => (
                   <button
                     key={message.id}
                     onClick={() => setSelectedMessageId(message.id)}
-                    className="rounded-[22px] border px-4 py-3 text-left"
+                    className="rounded-[12px] border px-3 py-2.5 text-left"
                     style={{
                       borderColor:
-                        message.id === selectedMessageId ? "rgba(34,197,94,0.22)" : "rgba(15,23,42,0.08)",
+                        message.id === selectedMessageId ? "rgba(0,122,255,0.18)" : "rgba(0,0,0,0.075)",
                       background:
                         message.id === selectedMessageId
-                          ? "linear-gradient(135deg, rgba(34,197,94,0.12), rgba(255,255,255,0.96))"
-                          : "rgba(255,255,255,0.88)",
+                          ? "rgba(0,122,255,0.09)"
+                          : "rgba(255,255,255,0.82)",
                     }}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -694,13 +723,13 @@ export function MailApp({ appState }: MailAppProps) {
                         {message.subject || "(无主题)"}
                       </span>
                       {!message.seen && activeFolder === "inbox" && (
-                        <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
                       )}
                     </div>
                     <div className="mt-1 truncate text-[12px]" style={{ color: "var(--t3)" }}>
                       {activeFolder === "sent" ? (message.recipients || "未填写收件人") : message.sender || "未知发件人"}
                     </div>
-                    <div className="mt-2 line-clamp-2 text-[13px] leading-6" style={{ color: "var(--t2)" }}>
+                    <div className="mt-1.5 line-clamp-2 text-[13px] leading-5" style={{ color: "var(--t2)" }}>
                       {message.snippet || "暂无摘要"}
                     </div>
                     {!!message.attachments?.length && (
@@ -719,17 +748,17 @@ export function MailApp({ appState }: MailAppProps) {
         <div className="min-w-0 flex-1 px-5 py-4">
           {!selectedMessage ? (
             <div
-              className="flex h-full items-center justify-center rounded-[32px] border border-dashed text-[14px]"
-              style={{ borderColor: "rgba(15,23,42,0.1)", color: "var(--t3)" }}
+              className="flex h-full items-center justify-center rounded-[14px] border border-dashed text-[14px]"
+              style={{ borderColor: "rgba(0,0,0,0.1)", color: "var(--t3)", background: "rgba(255,255,255,0.56)" }}
             >
               选择一封邮件查看详情。
             </div>
           ) : (
             <div
-              className="flex h-full flex-col overflow-hidden rounded-[32px] border"
-              style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.88)" }}
+              className="flex h-full flex-col overflow-hidden rounded-[14px] border"
+              style={{ borderColor: "rgba(0,0,0,0.075)", background: "rgba(255,255,255,0.86)" }}
             >
-                <div className="border-b px-5 py-4" style={{ borderColor: "rgba(15,23,42,0.08)" }}>
+                <div className="border-b px-5 py-4" style={{ borderColor: "rgba(0,0,0,0.07)" }}>
                   <div className="flex items-start gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="text-[22px] font-semibold">{selectedMessage.subject || "(无主题)"}</div>
@@ -786,9 +815,9 @@ export function MailApp({ appState }: MailAppProps) {
 
                 <aside
                   className="border-l px-4 py-4"
-                  style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(248,250,252,0.9)" }}
+                  style={{ borderColor: "rgba(0,0,0,0.07)", background: "rgba(246,247,249,0.86)" }}
                 >
-                  <div className="text-[12px] font-medium" style={{ color: "#64748b" }}>
+                  <div className="text-[12px] font-medium" style={{ color: "var(--t2)" }}>
                     智能助手
                   </div>
                   <div className="mt-2 text-[18px] font-semibold">
@@ -797,8 +826,8 @@ export function MailApp({ appState }: MailAppProps) {
                   {activeFolder === "drafts" ? (
                     <button
                       onClick={() => openDraftComposer(selectedMessage)}
-                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-[13px] font-medium text-white"
-                      style={{ background: "linear-gradient(135deg, #22c55e, #15803d)" }}
+                      className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[10px] px-4 py-2.5 text-[13px] font-medium text-white"
+                      style={primaryActionStyle}
                     >
                       <PencilLine size={15} />
                       继续编辑草稿
@@ -808,8 +837,8 @@ export function MailApp({ appState }: MailAppProps) {
                       <button
                         onClick={() => void summarizeMessage()}
                         disabled={summarizing}
-                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-[13px] font-medium text-white"
-                        style={{ background: "linear-gradient(135deg, #22c55e, #15803d)", opacity: summarizing ? 0.7 : 1 }}
+                        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-[10px] px-4 py-2.5 text-[13px] font-medium text-white"
+                        style={{ ...primaryActionStyle, opacity: summarizing ? 0.7 : 1 }}
                       >
                         {summarizing ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
                         总结这封邮件
@@ -817,7 +846,7 @@ export function MailApp({ appState }: MailAppProps) {
                       <button
                         onClick={() => void draftReply()}
                         disabled={replyDrafting}
-                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border px-4 py-3 text-[13px] font-medium"
+                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-[10px] border px-4 py-2.5 text-[13px] font-medium"
                         style={{ ...pillStyle(), opacity: replyDrafting ? 0.7 : 1 }}
                       >
                         {replyDrafting ? <Loader2 size={15} className="animate-spin" /> : <PencilLine size={15} />}
@@ -827,8 +856,8 @@ export function MailApp({ appState }: MailAppProps) {
                   )}
 
                   <div
-                    className="mt-5 rounded-[24px] border px-4 py-4 text-[13px] leading-6"
-                    style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.84)" }}
+                    className="mt-5 rounded-[12px] border px-4 py-4 text-[13px] leading-6"
+                    style={{ borderColor: "rgba(0,0,0,0.075)", background: "rgba(255,255,255,0.78)" }}
                   >
                     {summaryText ? (
                       <div
@@ -855,7 +884,7 @@ export function MailApp({ appState }: MailAppProps) {
             <div className="mt-4 grid gap-3">
               <div
                 className="rounded-[20px] border px-3 py-3 text-[12px] leading-6"
-                style={{ borderColor: "rgba(34,197,94,0.12)", background: "rgba(240,253,244,0.9)", color: "#166534" }}
+                style={{ borderColor: "rgba(0,122,255,0.12)", background: "rgba(0,122,255,0.06)", color: "var(--t2)" }}
               >
                 邮箱配置只保存在本机 `~/.ai-web-os/mail.json`，不会写入服务器数据库。
               </div>
@@ -890,7 +919,7 @@ export function MailApp({ appState }: MailAppProps) {
                 <button className="rounded-full border px-4 py-2 text-[13px]" style={pillStyle()} onClick={() => setAccountModalOpen(false)}>
                   取消
                 </button>
-                <button className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium text-white" style={{ background: "linear-gradient(135deg, #22c55e, #15803d)" }} onClick={() => void saveAccount()}>
+                <button className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium text-white" style={primaryActionStyle} onClick={() => void saveAccount()}>
                   {savingAccount ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                   保存账户
                 </button>
@@ -924,7 +953,7 @@ export function MailApp({ appState }: MailAppProps) {
                 {savingDraft ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                 保存草稿
               </button>
-              <button className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium text-white" style={{ background: "linear-gradient(135deg, #22c55e, #15803d)" }} onClick={() => void sendMail()} disabled={sending || savingDraft}>
+              <button className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium text-white" style={primaryActionStyle} onClick={() => void sendMail()} disabled={sending || savingDraft}>
                 {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
                 发送
               </button>
@@ -984,12 +1013,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function pillStyle(active = false) {
   return {
-    borderColor: active ? "rgba(34,197,94,0.18)" : "rgba(15,23,42,0.08)",
-    background: active ? "rgba(34,197,94,0.08)" : "rgba(248,250,252,0.92)",
+    borderColor: active ? "rgba(0,122,255,0.18)" : "rgba(0,0,0,0.08)",
+    background: active ? "rgba(0,122,255,0.09)" : "rgba(255,255,255,0.72)",
+    color: active ? "var(--accent)" : "var(--t2)",
   } as const;
 }
 
 const fieldStyle = {
-  borderColor: "rgba(15,23,42,0.08)",
-  background: "rgba(248,250,252,0.92)",
+  borderColor: "rgba(0,0,0,0.08)",
+  background: "rgba(255,255,255,0.78)",
 };
+
+const toolbarIconButtonStyle = {
+  border: "0.5px solid rgba(0,0,0,0.08)",
+  background: "rgba(255,255,255,0.66)",
+  color: "var(--t2)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.58)",
+} as const;
+
+const primaryActionStyle = {
+  background: "var(--accent)",
+  color: "#fff",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.24)",
+} as const;

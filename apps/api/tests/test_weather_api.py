@@ -37,22 +37,21 @@ OPEN_METEO_SAMPLE = {
 }
 
 
-FREE_API_GEOCODER_SAMPLE = {
+TENCENT_GEOCODER_SAMPLE = {
     "status": 0,
-    "msg": {
-        "status": 0,
-        "message": "Success",
-        "result": {
-            "address_component": {
-                "nation": "中国",
-                "province": "浙江省",
-                "city": "杭州市",
-                "district": "临平区",
-            },
-            "ad_info": {
-                "district": "临平区",
-            },
-        }
+    "message": "query ok",
+    "result": {
+        "address_component": {
+            "nation": "中国",
+            "province": "浙江省",
+            "city": "杭州市",
+            "district": "临平区",
+            "street": "迎宾路",
+        },
+        "ad_info": {
+            "name": "中国，浙江省，杭州市，临平区",
+            "adcode": "330113",
+        },
     },
 }
 
@@ -69,10 +68,10 @@ def test_weather_summary_maps_open_meteo_payload_and_district(monkeypatch):
     async def fake_reverse_geocode(latitude: float, longitude: float):
         assert latitude == 30.42
         assert longitude == 120.3
-        return FREE_API_GEOCODER_SAMPLE, "https://www.free-api.com/urltask"
+        return TENCENT_GEOCODER_SAMPLE, "https://apis.map.qq.com/ws/geocoder/v1/"
 
     monkeypatch.setattr(weather_api, "_fetch_open_meteo_weather_payload", fake_fetch)
-    monkeypatch.setattr(weather_api, "_fetch_free_api_reverse_geocode_payload", fake_reverse_geocode)
+    monkeypatch.setattr(weather_api, "_fetch_tencent_reverse_geocode_payload", fake_reverse_geocode)
 
     app = FastAPI()
     app.include_router(weather_api.router, prefix="/api/v1/weather")
@@ -100,6 +99,50 @@ def test_weather_summary_maps_open_meteo_payload_and_district(monkeypatch):
     }
     assert payload["hourly"][-1]["time"] == "21时"
     assert payload["hourly"][-1]["icon"] == "cloud"
+
+
+def test_tencent_reverse_geocoder_uses_configured_key(monkeypatch):
+    class FakeSettings:
+        tencent_map_key = "test-map-key"
+
+    requests: list[dict] = []
+
+    class FakeResponse:
+        url = "https://apis.map.qq.com/ws/geocoder/v1/?location=30.42,120.3&key=test-map-key"
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return TENCENT_GEOCODER_SAMPLE
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, *, params, headers):
+            requests.append({"url": url, "params": params, "headers": headers})
+            return FakeResponse()
+
+    monkeypatch.setattr(weather_api, "get_settings", lambda: FakeSettings())
+    monkeypatch.setattr(weather_api.httpx, "AsyncClient", FakeAsyncClient)
+
+    payload, source_url = weather_api.asyncio.run(
+        weather_api._fetch_tencent_reverse_geocode_payload(30.42, 120.3)
+    )
+
+    assert requests[0]["url"] == "https://apis.map.qq.com/ws/geocoder/v1/"
+    assert requests[0]["params"]["location"] == "30.42,120.3"
+    assert requests[0]["params"]["key"] == "test-map-key"
+    assert source_url == "https://apis.map.qq.com/ws/geocoder/v1/"
+    assert "test-map-key" not in source_url
+    assert weather_api._tencent_district(payload) == "临平区"
 
 
 def test_weather_summary_returns_bad_gateway_when_provider_fails(monkeypatch):

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { WindowState, WindowDisplayState } from "@/types/window";
+import type { WindowDisplayState, WindowState } from "@/types/window";
 import { generateId } from "@/lib/utils";
 import {
   clampWindowRectToWorkArea,

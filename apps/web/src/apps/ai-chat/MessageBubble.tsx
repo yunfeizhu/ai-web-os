@@ -245,14 +245,16 @@ function MessageBubbleView({ message, onRetry }: Props) {
 
   if (isUser) {
     return (
-      <div className="flex justify-end px-4 py-1.5">
+      <div className="flex justify-end px-5 py-1.5">
         <div
-          className="max-w-[70%] whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed"
+          className="max-w-[72%] whitespace-pre-wrap rounded-[20px] px-4 py-2.5 text-[14px] leading-relaxed"
           style={{
-            background: "var(--accent)",
+            background: "linear-gradient(180deg, #39A7FF, #007AFF)",
             color: "#fff",
             wordBreak: "break-word",
-            borderBottomRightRadius: 4,
+            borderBottomRightRadius: 6,
+            boxShadow:
+              "0 10px 24px rgba(0,122,255,0.2), inset 0 1px 0 rgba(255,255,255,0.25)",
           }}
         >
           {message.content}
@@ -296,19 +298,23 @@ function MessageBubbleView({ message, onRetry }: Props) {
 
   return (
     <div
-      className="flex px-4"
-      style={{ paddingTop: 6, paddingBottom: 28 }}
+      className="flex px-5"
+      style={{ paddingTop: 6, paddingBottom: 30 }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <div
-        className="mr-3 mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full"
+        className="mr-3 mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px]"
         style={{
-          background: "linear-gradient(135deg,#a78bfa,#6366f1)",
+          background:
+            "linear-gradient(145deg, rgba(255,255,255,0.96), rgba(220,232,255,0.78))",
+          border: "0.5px solid rgba(0,0,0,0.08)",
+          boxShadow:
+            "0 8px 18px rgba(30,64,175,0.12), inset 0 1px 0 rgba(255,255,255,0.88)",
           flexShrink: 0,
         }}
       >
-        <Sparkles size={14} color="white" strokeWidth={1.8} />
+        <Sparkles size={16} color="#0A84FF" strokeWidth={1.8} />
       </div>
 
       <div className="relative min-w-0 flex-1">
@@ -324,8 +330,15 @@ function MessageBubbleView({ message, onRetry }: Props) {
         />
         <WorkflowSummary summary={message.workflowSummary} />
         <div
-          className="markdown text-[14px] leading-relaxed"
-          style={{ color: "var(--t1)", wordBreak: "break-word" }}
+          className="markdown rounded-[18px] px-4 py-3 text-[14px] leading-relaxed"
+          style={{
+            color: "var(--t1)",
+            wordBreak: "break-word",
+            background: "rgba(255,255,255,0.62)",
+            border: "0.5px solid rgba(0,0,0,0.07)",
+            boxShadow:
+              "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.7)",
+          }}
         >
           <MarkdownBody content={message.content} />
           {message.streaming && <StreamingDots />}

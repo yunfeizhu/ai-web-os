@@ -84,6 +84,9 @@ services:
       - "6080"
     environment:
       BROWSER_STORAGE_ROOT: /data/browser-state
+      BROWSER_ALLOWED_ORIGINS: "${BROWSER_ALLOWED_ORIGINS:-http://localhost:14000,http://127.0.0.1:14000}"
+      BROWSER_GLOBAL_STORAGE_ENABLED: "${BROWSER_GLOBAL_STORAGE_ENABLED:-false}"
+      BROWSER_VNC_PASSWORD: "${BROWSER_VNC_PASSWORD:-}"
     volumes:
       - ./data/browser-state:/data/browser-state
     healthcheck:

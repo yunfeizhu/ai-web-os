@@ -109,9 +109,14 @@ function ProviderCard({ def }: { def: ProviderDef }) {
   };
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `0.5px solid ${isConfigured ? def.color + "50" : "var(--border)"}`, background: "var(--panel-bg-soft)" }}>
-      <button className="w-full flex items-center gap-3 px-4 py-3 text-left" onClick={handleExpand}>
-        <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: isConfigured ? def.color : "rgba(0,0,0,0.1)" }}>
+    <div className="settings-provider-row overflow-hidden" style={{ border: `0.5px solid ${isConfigured ? def.color + "50" : "var(--border)"}`, background: "var(--panel-bg-soft)" }}>
+      <button
+        className="settings-provider-trigger w-full flex items-center gap-3 px-4 py-3 text-left"
+        onClick={handleExpand}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? "收起" : "展开"} ${def.name} 配置`}
+      >
+        <div className="settings-provider-icon w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: isConfigured ? def.color : "rgba(0,0,0,0.1)" }}>
           {def.name.slice(0, 2).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
@@ -127,7 +132,7 @@ function ProviderCard({ def }: { def: ProviderDef }) {
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
+        <div className="settings-provider-details px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
           <ProviderForm
             baseUrl={baseUrl} setBaseUrl={setBaseUrl}
             defaultBaseUrl={def.defaultBaseUrl}
@@ -226,9 +231,14 @@ function CustomProviderCard({ id }: { id: string }) {
   };
 
   return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `0.5px solid ${cfg.apiKey ? CUSTOM_COLOR + "50" : "var(--border)"}`, background: "var(--panel-bg-soft)" }}>
-      <button className="w-full flex items-center gap-3 px-4 py-3 text-left" onClick={handleExpand}>
-        <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: cfg.apiKey ? CUSTOM_COLOR : "rgba(0,0,0,0.1)" }}>
+    <div className="settings-provider-row overflow-hidden" style={{ border: `0.5px solid ${cfg.apiKey ? CUSTOM_COLOR + "50" : "var(--border)"}`, background: "var(--panel-bg-soft)" }}>
+      <button
+        className="settings-provider-trigger w-full flex items-center gap-3 px-4 py-3 text-left"
+        onClick={handleExpand}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? "收起" : "展开"} ${cfg.name ?? "自定义 Provider"} 配置`}
+      >
+        <div className="settings-provider-icon w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: cfg.apiKey ? CUSTOM_COLOR : "rgba(0,0,0,0.1)" }}>
           {(cfg.name ?? "?").slice(0, 2).toUpperCase()}
         </div>
         <div className="flex-1 min-w-0">
@@ -246,7 +256,7 @@ function CustomProviderCard({ id }: { id: string }) {
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
+        <div className="settings-provider-details px-4 pb-4 flex flex-col gap-3" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
           {/* 名称 */}
           <div className="pt-3">
             <label className="text-[13px] font-medium mb-1 block" style={{ color: "var(--t3)" }}>名称</label>
@@ -306,7 +316,7 @@ function AddCustomProviderForm({ onAdd }: { onAdd: () => void }) {
     return (
       <button
         onClick={() => setOpen(true)}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] w-full transition-colors"
+        className="settings-add-row flex w-full items-center gap-1.5 px-3 py-2 text-[13px] transition-colors"
         style={{ border: "0.5px dashed rgba(0,0,0,0.15)", color: "var(--t3)" }}
         onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.03)")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
@@ -317,7 +327,7 @@ function AddCustomProviderForm({ onAdd }: { onAdd: () => void }) {
   }
 
   return (
-    <div className="rounded-xl px-4 py-3 flex flex-col gap-2" style={{ border: "0.5px solid #8B5CF650", background: "#8B5CF606" }}>
+    <div className="settings-provider-row px-4 py-3 flex flex-col gap-2" style={{ border: "0.5px solid #8B5CF650", background: "#8B5CF606" }}>
       <p className="text-[13px] font-medium" style={{ color: "var(--t1)" }}>新建自定义 Provider</p>
       <div className="flex gap-2">
         <input
@@ -473,8 +483,8 @@ function EmbeddingSection() {
 
   if (!editing && embeddingConfig) {
     return (
-      <div className="rounded-xl px-4 py-3 flex items-center gap-3" style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}>
-        <div className="w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: "#0EA5E9" }}>
+    <div className="settings-provider-row px-4 py-3 flex items-center gap-3" style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}>
+        <div className="settings-provider-icon w-8 h-8 rounded-lg shrink-0 flex items-center justify-center text-[13px] font-bold text-white" style={{ background: "#0EA5E9" }}>
           EM
         </div>
         <div className="flex-1 min-w-0">
@@ -486,14 +496,26 @@ function EmbeddingSection() {
             {embeddingConfig.model} · {embeddingConfig.dims}d
           </span>
         </div>
-        <button onClick={() => {
+        <button
+          onClick={() => {
           setModel(embeddingConfig.model); setBaseUrl(embeddingConfig.baseUrl);
           setApiKey(embeddingConfig.apiKey); setDims(String(embeddingConfig.dims));
           setName(embeddingConfig.name ?? ""); setTestResult(null); setEditing(true);
-        }} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[13px]" style={{ color: "var(--t3)", background: "var(--control-bg)" }}>
-          <PencilLine size={12} /> 修改
+        }}
+          className="settings-icon-button settings-edit-button flex shrink-0 items-center justify-center rounded-full"
+          style={{ color: "var(--t2)", background: "var(--control-bg)" }}
+          aria-label="修改 Embedding 模型配置"
+          title="修改"
+        >
+          <PencilLine size={14} />
         </button>
-        <button onClick={() => setEmbeddingConfig(null)} className="px-2 py-1 rounded-lg text-[13px]" style={{ color: "var(--red)" }}>
+        <button
+          onClick={() => setEmbeddingConfig(null)}
+          className="settings-icon-button settings-danger-icon-button flex shrink-0 items-center justify-center rounded-full"
+          style={{ color: "var(--red)" }}
+          aria-label="删除 Embedding 模型配置"
+          title="删除"
+        >
           <Trash2 size={13} />
         </button>
       </div>
@@ -501,7 +523,7 @@ function EmbeddingSection() {
   }
 
   return (
-    <div className="rounded-xl px-4 pb-4 flex flex-col gap-3" style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}>
+    <div className="settings-provider-row px-4 pb-4 flex flex-col gap-3" style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}>
       <div className="pt-3 flex items-center justify-between">
         <p className="text-[13px] font-medium" style={{ color: "var(--t2)" }}>配置 Embedding 模型</p>
         <div className="relative">
@@ -765,13 +787,22 @@ function ModelSelector({ fetchedModels, enabledModels, color, customInput, setCu
 
 // ── 分组折叠面板 ──────────────────────────────────────
 
-function GroupPanel({ title, description, defaultOpen = false, children }: {
-  title: string; description: string; defaultOpen?: boolean; children: React.ReactNode;
+function GroupPanel({ title, description, defaultOpen = false, testId, variant, children }: {
+  title: string; description: string; defaultOpen?: boolean; testId?: string; variant?: string; children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="rounded-2xl overflow-hidden" style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}>
-      <button className="w-full flex items-center justify-between px-5 py-4 text-left" onClick={() => setOpen((v) => !v)}>
+    <div
+      className="settings-group-panel overflow-hidden"
+      data-testid={testId}
+      data-variant={variant}
+      style={{ border: "0.5px solid var(--border)", background: "var(--panel-bg-soft)" }}
+    >
+      <button
+        className="w-full flex items-center justify-between px-5 py-4 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
         <div>
           <p className="text-[15px] font-semibold" style={{ color: "var(--t1)" }}>{title}</p>
           <p className="text-[13px] mt-0.5" style={{ color: "var(--t3)" }}>{description}</p>
@@ -779,7 +810,7 @@ function GroupPanel({ title, description, defaultOpen = false, children }: {
         {open ? <ChevronUp size={15} color="var(--t3)" /> : <ChevronDown size={15} color="var(--t3)" />}
       </button>
       {open && (
-        <div className="px-4 pb-4 flex flex-col gap-2" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
+        <div className="settings-group-body px-4 pb-4 flex flex-col gap-2" style={{ borderTop: "0.5px solid var(--border-faint)" }}>
           <div className="pt-2" />
           {children}
         </div>
@@ -804,7 +835,13 @@ export function ApiKeyConfig() {
         所有 API Key 仅保存在本地浏览器中，不会上传到服务器。
       </p>
 
-      <GroupPanel title="LLM 模型提供商" description="配置大语言模型的 API Key 与可用模型" defaultOpen>
+      <GroupPanel
+        title="LLM 模型提供商"
+        description="配置大语言模型的 API Key 与可用模型"
+        defaultOpen
+        testId="llm-provider-group"
+        variant="macos-grouped-list"
+      >
         {PROVIDERS.map((p) => <ProviderCard key={p.id} def={p} />)}
 
         {/* 自定义 Provider */}

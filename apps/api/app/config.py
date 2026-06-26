@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     python_exec_docker_image: str = "python:3.11-slim"
     python_exec_timeout_sec: int = 5
     app_timezone: str = "Asia/Shanghai"
+    tencent_map_key: str = ""
 
     # 安全
     secret_key: str = "change-me-in-production"

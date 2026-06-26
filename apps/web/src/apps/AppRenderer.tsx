@@ -94,11 +94,11 @@ interface AppRendererProps {
 export function AppRenderer({ appId, appState, windowId }: AppRendererProps) {
   switch (appId) {
     case "settings":
-      return <Settings />;
+      return <Settings appState={appState} />;
     case "ai-chat":
       return withNativeAppTheme(<AiChat />);
     case "file-manager":
-      return withNativeAppTheme(<FileManager />);
+      return withNativeAppTheme(<FileManager appState={appState} />);
     case "terminal":
       return <Terminal windowId={windowId} />;
     case "browser":

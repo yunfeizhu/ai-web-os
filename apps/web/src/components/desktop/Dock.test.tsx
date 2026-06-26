@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -65,6 +66,59 @@ describe("Dock", () => {
     expect(item?.style.height).toBe(`${DOCK_BASE_ICON_SIZE}px`);
     expect(indicator).not.toBeNull();
     expect(indicator?.style.position).toBe("absolute");
+  });
+
+  it("does not render the Dock shell before app data is available", () => {
+    useDesktopStore.setState({
+      wallpaper: "",
+      theme: "dark",
+      icons: [],
+      taskbarPins: [],
+      apps: {},
+    });
+    useWindowStore.setState({
+      windows: {},
+      focusOrder: [],
+      nextZIndex: 101,
+      closeGuards: {},
+    });
+
+    act(() => {
+      root.render(<Dock />);
+    });
+
+    expect(container.querySelector('[data-desktop-blocker="true"]')).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
+  });
+
+  it("requests focused windows to minimize without storing Dock animation targets", async () => {
+    await act(async () => {
+      root.render(<Dock />);
+    });
+
+    const button = container.querySelector('button[title="设置"]') as HTMLButtonElement | null;
+    expect(button).not.toBeNull();
+
+    await act(async () => {
+      button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const windowState = useWindowStore.getState().windows["settings-window"];
+    expect(windowState.pendingMinimize).toBe(true);
+    expect("dockAnimationTarget" in windowState).toBe(false);
+  });
+
+  it("uses lightweight scale animations instead of Dock-targeted genie effects", () => {
+    const css = readFileSync("src/app/globals.css", "utf8");
+
+    expect(css).toContain("@keyframes windowMinimize");
+    expect(css).toContain("@keyframes windowRestore");
+    expect(css).toContain("animation: windowMinimize 0.22s");
+    expect(css).toContain("animation: windowRestore 0.25s");
+    expect(css).not.toContain("@keyframes windowGenieMinimize");
+    expect(css).not.toContain("@keyframes windowGenieRestore");
+    expect(css).not.toContain("--window-dock-dx");
+    expect(css).not.toContain("clip-path");
   });
 });
 

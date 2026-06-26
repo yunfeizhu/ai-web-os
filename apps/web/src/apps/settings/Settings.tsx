@@ -1,18 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import {
-  BookOpen,
-  Bot,
-  Boxes,
-  Brain,
-  Download,
-  Info,
-  KeyRound,
-  Palette,
-  SmilePlus,
-  Upload,
-} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Download, Search, Upload } from "lucide-react";
 
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import { AvatarSettings } from "./AvatarSettings";
@@ -32,15 +21,64 @@ type Tab =
   | "extensions"
   | "about";
 
-const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: "api-keys", label: "模型与密钥", icon: <KeyRound size={15} /> },
-  { id: "appearance", label: "外观", icon: <Palette size={15} /> },
-  { id: "avatar", label: "虚拟伙伴", icon: <SmilePlus size={15} /> },
-  { id: "memory", label: "记忆", icon: <Brain size={15} /> },
-  { id: "knowledge", label: "知识库", icon: <BookOpen size={15} /> },
-  { id: "channels", label: "渠道接入", icon: <Bot size={15} /> },
-  { id: "extensions", label: "扩展能力", icon: <Boxes size={15} /> },
-  { id: "about", label: "关于", icon: <Info size={15} /> },
+const TAB_IDS: Tab[] = [
+  "api-keys",
+  "appearance",
+  "avatar",
+  "memory",
+  "knowledge",
+  "channels",
+  "extensions",
+  "about",
+];
+
+function isTab(value: unknown): value is Tab {
+  return typeof value === "string" && TAB_IDS.includes(value as Tab);
+}
+
+function readInitialTab(appState?: Record<string, unknown>): Tab {
+  return isTab(appState?.initialTab) ? appState.initialTab : "api-keys";
+}
+
+const SETTINGS_ICON_BASE = "/icons/settings";
+
+const TABS: { id: Tab; label: string; iconSrc: string }[] = [
+  {
+    id: "api-keys",
+    label: "模型与密钥",
+    iconSrc: `${SETTINGS_ICON_BASE}/models.png`,
+  },
+  {
+    id: "appearance",
+    label: "外观",
+    iconSrc: `${SETTINGS_ICON_BASE}/appearance.png`,
+  },
+  {
+    id: "avatar",
+    label: "虚拟伙伴",
+    iconSrc: `${SETTINGS_ICON_BASE}/avatar.png`,
+  },
+  {
+    id: "memory",
+    label: "记忆",
+    iconSrc: `${SETTINGS_ICON_BASE}/memory.png`,
+  },
+  {
+    id: "knowledge",
+    label: "知识库",
+    iconSrc: `${SETTINGS_ICON_BASE}/knowledge.png`,
+  },
+  {
+    id: "channels",
+    label: "渠道接入",
+    iconSrc: `${SETTINGS_ICON_BASE}/channels.png`,
+  },
+  {
+    id: "extensions",
+    label: "扩展能力",
+    iconSrc: `${SETTINGS_ICON_BASE}/extensions.png`,
+  },
+  { id: "about", label: "关于", iconSrc: `${SETTINGS_ICON_BASE}/about.png` },
 ];
 
 // ── 本地配置 localStorage 键列表（需随 store 同步更新）
@@ -100,43 +138,96 @@ function importConfig(file: File, onDone: (ok: boolean, msg: string) => void) {
   reader.readAsText(file);
 }
 
-export function Settings() {
-  const [tab, setTab] = useState<Tab>("api-keys");
+interface SettingsProps {
+  appState?: Record<string, unknown>;
+}
+
+export function Settings({ appState }: SettingsProps) {
+  const [tab, setTab] = useState<Tab>(() => readInitialTab(appState));
+  const [query, setQuery] = useState("");
+  const visibleTabs = TABS.filter((tabItem) =>
+    tabItem.label.toLowerCase().includes(query.trim().toLowerCase()),
+  );
+
+  useEffect(() => {
+    if (isTab(appState?.initialTab)) {
+      setTab(appState.initialTab);
+    }
+  }, [appState]);
 
   return (
-    <div className="settings-root flex h-full" style={{ color: "var(--t1)" }}>
+    <div
+      className="settings-root settings-macos flex h-full overflow-hidden"
+      style={{ color: "var(--t1)" }}
+    >
       <nav
-        className="flex w-[180px] shrink-0 flex-col gap-0.5 p-2"
-        style={{
-          borderRight: "0.5px solid var(--border)",
-          background: "var(--panel-bg-soft)",
-        }}
+        className="settings-sidebar flex w-[236px] shrink-0 flex-col px-4 pb-4 pt-5"
       >
-        {TABS.map((tabItem) => (
-          <button
-            key={tabItem.id}
-            onClick={() => setTab(tabItem.id)}
-            className="flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-[14px] font-medium transition-colors"
-            style={{
-              background: tab === tabItem.id ? "var(--accent)" : "transparent",
-              color: tab === tabItem.id ? "#fff" : "var(--t2)",
-            }}
-          >
-            {tabItem.icon}
-            {tabItem.label}
-          </button>
-        ))}
+        <label className="settings-search mb-4 flex h-9 items-center gap-2 rounded-[11px] px-3">
+          <Search
+            aria-hidden="true"
+            className="settings-search-icon h-[13px] w-[13px] shrink-0"
+            strokeWidth={2.15}
+          />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[14px] outline-none"
+            placeholder="搜索"
+          />
+        </label>
+
+        <div className="settings-account mb-5 flex items-center gap-3 rounded-[14px] px-2.5 py-2.5">
+          <div className="settings-account-avatar flex h-10 w-10 shrink-0 items-center justify-center">
+            <img
+              src={`${SETTINGS_ICON_BASE}/account.png`}
+              alt=""
+              className="h-10 w-10"
+              draggable={false}
+            />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[15px] font-semibold">AI-Web OS</div>
+            <div className="truncate text-[12px]">本地账户</div>
+          </div>
+        </div>
+
+        <div className="settings-nav-scroll min-h-0 flex-1 overflow-y-auto">
+          <div className="mb-2 px-2 text-[12px] font-semibold">系统设置</div>
+          <div className="space-y-1">
+            {(visibleTabs.length ? visibleTabs : TABS).map((tabItem) => (
+              <button
+                key={tabItem.id}
+                onClick={() => setTab(tabItem.id)}
+                className="settings-nav-button flex h-[34px] w-full items-center gap-2.5 rounded-[9px] px-2.5 text-left text-[14px] font-medium transition-colors"
+                data-active={tab === tabItem.id}
+              >
+                <span className="settings-nav-icon flex h-6 w-6 shrink-0 items-center justify-center">
+                  <img
+                    src={tabItem.iconSrc}
+                    alt=""
+                    className="h-6 w-6"
+                    draggable={false}
+                  />
+                </span>
+                <span className="min-w-0 truncate">{tabItem.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
       </nav>
 
-      <div className="flex-1 overflow-y-auto p-5">
-        {tab === "api-keys" && <ApiKeyConfig />}
-        {tab === "appearance" && <ThemeConfig />}
-        {tab === "avatar" && <AvatarSettings />}
-        {tab === "memory" && <MemoryManager />}
-        {tab === "knowledge" && <KnowledgeBase />}
-        {tab === "channels" && <ChannelSettings />}
-        {tab === "extensions" && <ExtensionCenter />}
-        {tab === "about" && <AboutPanel />}
+      <div className="settings-content flex-1 overflow-y-auto">
+        <div className="settings-content-inner mx-auto w-full max-w-[900px] px-8 pb-10 pt-7">
+          {tab === "api-keys" && <ApiKeyConfig />}
+          {tab === "appearance" && <ThemeConfig />}
+          {tab === "avatar" && <AvatarSettings />}
+          {tab === "memory" && <MemoryManager />}
+          {tab === "knowledge" && <KnowledgeBase />}
+          {tab === "channels" && <ChannelSettings />}
+          {tab === "extensions" && <ExtensionCenter />}
+          {tab === "about" && <AboutPanel />}
+        </div>
       </div>
     </div>
   );
@@ -318,7 +409,7 @@ function AboutPanel() {
 export function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <h2
-      className="mb-4 text-[16px] font-semibold"
+      className="settings-section-title mb-4 text-[22px] font-semibold"
       style={{ color: "var(--t1)" }}
     >
       {children}

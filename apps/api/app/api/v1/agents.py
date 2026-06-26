@@ -440,3 +440,35 @@ async def complete(
     ):
         content += token
     return {"content": content}
+
+
+@router.post("/complete/stream")
+async def complete_stream(
+    req: CompleteRequest,
+    x_api_key: str = Header(..., alias="X-Api-Key"),
+):
+    async def generate():
+        try:
+            async for token in stream_chat(
+                model=req.model,
+                messages=[{"role": "user", "content": req.message}],
+                api_key=x_api_key,
+                provider_id=req.provider_id,
+                compat_type=req.compat_type,
+                system_prompt=req.system_prompt,
+                api_base=req.api_base,
+            ):
+                yield f"data: {json.dumps({'token': token}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'x_error': user_facing_error_message(e)}, ensure_ascii=False)}\n\n"
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )

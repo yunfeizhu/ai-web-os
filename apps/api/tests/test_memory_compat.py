@@ -1,11 +1,34 @@
 import asyncio
 import builtins
+from types import SimpleNamespace
 
 from app.core import memory
 
 
-def test_collection_name_for_embedding_keeps_legacy_format():
-    assert memory.collection_name_for_embedding("BAAI/bge-m3", 1024) == "ai_os_mem_bge_m3_1024"
+def test_init_memory_manager_never_imports_legacy_qdrant_memories(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.setenv("AI_NATIVE_OS_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("AI_NATIVE_OS_IMPORT_LEGACY_MEMORY", "true")
+    monkeypatch.setattr(memory, "_manager", None)
+    called = False
+
+    def fake_import(manager, **kwargs):
+        nonlocal called
+        called = True
+        manager.write_memory_markdown(
+            manager.read_memory_markdown()
+            + "\n## 事实与背景\n\n- 旧版 Qdrant 脏数据\n"
+        )
+        return SimpleNamespace(imported=1)
+
+    monkeypatch.setattr(memory, "import_legacy_qdrant_memories", fake_import, raising=False)
+
+    manager = memory.init_memory_manager(llm_model="x")
+
+    assert called is False
+    assert "旧版 Qdrant 脏数据" not in manager.read_memory_markdown()
 
 
 def test_ensure_memory_manager_returns_markdown_without_embedding_or_api_key(

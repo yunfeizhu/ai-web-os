@@ -29,28 +29,16 @@ describe("DesktopWeatherWidget", () => {
     localStorage.clear();
   });
 
-  it("renders a skeleton before live data arrives", () => {
+  it("does not render before live data arrives", () => {
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => undefined)));
 
     act(() => {
       root.render(<DesktopWeatherWidget />);
     });
 
-    const widget = container.querySelector('[data-testid="desktop-weather-widget"]');
-    const widgetElement = widget as HTMLElement | null;
-
-    expect(widget).not.toBeNull();
-    expect(widgetElement?.style.width).toBe("360px");
-    expect(widgetElement?.style.padding).toBe("14px 14px 12px");
-    expect(container.querySelector('[data-testid="weather-skeleton"]')).not.toBeNull();
-    expect(widget?.textContent).toContain("获取中");
-    expect(widget?.textContent).not.toContain("当前位置");
-    expect(widget?.textContent).not.toContain("余杭区");
-    expect(widget?.textContent).not.toContain("25°");
-    expect(widget?.textContent).not.toContain("微雨");
-    expect(widget?.textContent).not.toContain("最高");
-    expect(widget?.textContent).not.toContain("最低");
-    expect(widget?.textContent).not.toContain("19:05");
+    expect(container.querySelector('[data-testid="desktop-weather-widget"]')).toBeNull();
+    expect(container.querySelector('[data-testid="weather-skeleton"]')).toBeNull();
+    expect(container.textContent).toBe("");
   });
 
   it("keeps the first render stable when cached weather exists", () => {
@@ -73,8 +61,7 @@ describe("DesktopWeatherWidget", () => {
 
     const html = renderToString(<DesktopWeatherWidget />);
 
-    expect(html).toContain("weather-skeleton");
-    expect(html).toContain("获取中");
+    expect(html).toBe("");
     expect(html).not.toContain("临平区");
     expect(html).not.toContain("27°");
   });
@@ -184,6 +171,65 @@ describe("DesktopWeatherWidget", () => {
     expect(widget?.textContent).toContain("29°");
     expect(fetchMock).not.toHaveBeenCalled();
     expect(getCurrentPosition).not.toHaveBeenCalled();
+  });
+
+  it("ignores cached weather when the cached location is generic", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          source: "open-meteo",
+          sourceUrl: "https://api.open-meteo.com/v1/forecast",
+          location: "临平区",
+          resolvedLocation: "30.41875,120.29861",
+          currentTemp: "26°",
+          condition: "阴",
+          conditionIcon: "cloud",
+          highTemp: "27°",
+          lowTemp: "22°",
+          hourly: [
+            { time: "11时", temperature: "26°", condition: "阴", icon: "cloud" },
+          ],
+          updatedAt: "2026-06-25T10:35:36+08:00",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+    vi.stubGlobal("fetch", fetchMock);
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: undefined,
+    });
+    localStorage.setItem(
+      "ai-web-os.desktop.weather.summary",
+      JSON.stringify({
+        cachedAt: 1_000_000 - 5 * 60 * 1000,
+        weather: {
+          location: "当前位置",
+          currentTemp: "26°",
+          condition: "阴",
+          conditionIcon: "cloud",
+          highTemp: "27°",
+          lowTemp: "22°",
+          hourly: [
+            { time: "11时", temperature: "26°", condition: "阴", icon: "cloud" },
+          ],
+        },
+      }),
+    );
+
+    await act(async () => {
+      root.render(<DesktopWeatherWidget />);
+    });
+    await act(async () => {
+      await flushPromises();
+    });
+
+    const widget = container.querySelector('[data-testid="desktop-weather-widget"]');
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(widget?.textContent).toContain("临平区");
+    expect(widget?.textContent).not.toContain("当前位置");
   });
 });
 

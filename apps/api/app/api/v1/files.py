@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.file_manager import (
     build_directory_tree,
     copy_entry,
+    create_desktop_folder,
     create_folder,
     delete_entry,
     get_entry_by_id,
@@ -43,6 +44,10 @@ def build_content_disposition(filename: str, disposition: str = "inline") -> str
 class CreateFolderRequest(BaseModel):
     parent: str = "/"
     name: str
+
+
+class CreateDesktopFolderRequest(BaseModel):
+    name: str = "新建文件夹"
 
 
 class UpdateContentRequest(BaseModel):
@@ -116,6 +121,18 @@ async def get_file_content(path: str, db: AsyncSession = Depends(get_db)):
 async def make_folder(data: CreateFolderRequest, db: AsyncSession = Depends(get_db)):
     try:
         entry = await create_folder(db, data.parent, data.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return serialize_entry(entry)
+
+
+@router.post("/desktop/folders")
+async def make_desktop_folder(
+    data: CreateDesktopFolderRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        entry = await create_desktop_folder(db, data.name)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return serialize_entry(entry)

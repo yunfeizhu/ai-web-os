@@ -87,6 +87,8 @@ export function DesktopWeatherWidget() {
     };
   }, []);
 
+  if (weatherState.status !== "ready") return null;
+
   return (
     <section
       aria-label="桌面天气"
@@ -111,13 +113,7 @@ export function DesktopWeatherWidget() {
         textShadow: "0 2px 12px rgba(0,0,0,0.28)",
       }}
     >
-      {weatherState.status === "ready" ? (
-        <WeatherContent weather={weatherState.weather} />
-      ) : weatherState.status === "error" ? (
-        <WeatherUnavailable />
-      ) : (
-        <WeatherSkeleton />
-      )}
+      <WeatherContent weather={weatherState.weather} />
     </section>
   );
 }
@@ -170,68 +166,6 @@ function WeatherContent({ weather }: { weather: DesktopWeatherSummary }) {
         ))}
       </div>
     </>
-  );
-}
-
-function WeatherSkeleton() {
-  return (
-    <div data-testid="weather-skeleton" className="animate-pulse">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-1.5 text-[18px] font-bold leading-none">
-            <span>获取中</span>
-            <LocationArrowIcon size={12} />
-          </div>
-          <div className="mt-3 h-12 w-24 rounded-md bg-white/20" />
-        </div>
-
-        <div className="flex flex-col items-end pt-1 text-right">
-          <div className="flex flex-col items-center gap-1">
-            <div className="h-7 w-9 rounded-full bg-white/24" />
-            <div className="h-4 w-11 rounded-full bg-white/20" />
-          </div>
-          <div className="mt-4 flex items-end gap-2">
-            <div className="h-4 w-5 rounded bg-white/18" />
-            <div className="h-7 w-12 rounded bg-white/22" />
-            <div className="h-4 w-5 rounded bg-white/18" />
-            <div className="h-7 w-12 rounded bg-white/22" />
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-6 gap-1">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="flex min-w-0 flex-col items-center gap-1.5">
-            <div className="h-3 w-8 rounded-full bg-white/18" />
-            <div className="h-6 w-7 rounded-full bg-white/24" />
-            <div className="h-4 w-8 rounded-full bg-white/20" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function WeatherUnavailable() {
-  return (
-    <div data-testid="weather-unavailable" className="flex min-h-[108px] flex-col justify-between">
-      <div>
-        <div className="flex items-center gap-1.5 text-[18px] font-bold leading-none">
-          <span>天气暂不可用</span>
-          <LocationArrowIcon size={12} />
-        </div>
-        <div className="mt-4 h-12 w-24 rounded-md bg-white/14" />
-      </div>
-      <div className="grid grid-cols-6 gap-1 opacity-70">
-        {Array.from({ length: 6 }).map((_, index) => (
-          <div key={index} className="flex min-w-0 flex-col items-center gap-1.5">
-            <div className="h-3 w-8 rounded-full bg-white/14" />
-            <div className="h-6 w-7 rounded-full bg-white/16" />
-            <div className="h-4 w-8 rounded-full bg-white/14" />
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
@@ -344,13 +278,20 @@ function readCachedWeather(): DesktopWeatherSummary | null {
     ) {
       return null;
     }
-    return normalizeWeatherSummary(parsed.weather);
+    const weather = normalizeWeatherSummary(parsed.weather);
+    if (isGenericWeatherLocation(weather.location)) {
+      return null;
+    }
+    return weather;
   } catch {
     return null;
   }
 }
 
 function writeCachedWeather(weather: DesktopWeatherSummary) {
+  if (isGenericWeatherLocation(weather.location)) {
+    return;
+  }
   try {
     window.localStorage.setItem(
       WEATHER_CACHE_STORAGE_KEY,
@@ -362,6 +303,10 @@ function writeCachedWeather(weather: DesktopWeatherSummary) {
   } catch {
     // Local storage can be unavailable in privacy modes; the widget can still refresh live data.
   }
+}
+
+function isGenericWeatherLocation(location: string) {
+  return location.trim() === "当前位置";
 }
 
 function normalizeWeatherSummary(payload: WeatherSummaryApiResponse): DesktopWeatherSummary {

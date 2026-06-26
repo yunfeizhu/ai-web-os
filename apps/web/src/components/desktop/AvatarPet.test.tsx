@@ -10,13 +10,35 @@ import { AvatarPet } from "./AvatarPet";
   .IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("react-rnd", () => ({
-  Rnd: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="avatar-pet-rnd">{children}</div>
+  Rnd: ({
+    children,
+    style,
+  }: {
+    children: React.ReactNode;
+    style?: React.CSSProperties;
+  }) => (
+    <div data-testid="avatar-pet-rnd" style={style}>
+      {children}
+    </div>
   ),
 }));
 
 vi.mock("./AvatarBubble", () => ({
-  AvatarBubble: () => <div data-testid="avatar-bubble">bubble</div>,
+  AvatarBubble: ({
+    maxHeight,
+    width,
+  }: {
+    maxHeight?: number;
+    width?: number;
+  }) => (
+    <div
+      data-testid="avatar-bubble"
+      data-max-height={maxHeight}
+      data-width={width}
+    >
+      bubble
+    </div>
+  ),
 }));
 
 vi.mock("./Live2DCanvas", () => ({
@@ -28,6 +50,15 @@ describe("AvatarPet", () => {
   let root: Root;
 
   beforeEach(() => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      value: 1280,
+    });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      value: 820,
+    });
+
     window.localStorage.clear();
     useAvatarStore.setState({
       visible: true,
@@ -59,6 +90,9 @@ describe("AvatarPet", () => {
       root.render(<AvatarPet />);
     });
 
+    const rnd = container.querySelector<HTMLElement>(
+      '[data-testid="avatar-pet-rnd"]',
+    );
     const shell = container.querySelector<HTMLElement>(
       '[data-testid="avatar-pet-shell"]',
     );
@@ -66,6 +100,8 @@ describe("AvatarPet", () => {
       '[data-testid="avatar-pet-stage"]',
     );
     const buttons = container.querySelectorAll("button");
+
+    expect(rnd?.style.zIndex).toBe("10000");
 
     expect(shell).not.toBeNull();
     expect(shell?.style.background).toBe("transparent");
@@ -148,5 +184,38 @@ describe("AvatarPet", () => {
     expect(
       container.querySelector('[data-testid="avatar-bubble"]'),
     ).not.toBeNull();
+  });
+
+  it("opens the chat bubble as a vertically centered side panel when space is available", () => {
+    useAvatarStore.setState({
+      position: { x: 40, y: 160 },
+      size: { width: 320, height: 460 },
+    });
+
+    act(() => {
+      root.render(<AvatarPet />);
+    });
+
+    const messageButton = container.querySelector<HTMLButtonElement>(
+      '[data-avatar-control="true"]',
+    );
+
+    act(() => {
+      messageButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const popover = container.querySelector<HTMLElement>(
+      '[data-testid="avatar-pet-bubble-popover"]',
+    );
+    const bubble = container.querySelector<HTMLElement>(
+      '[data-testid="avatar-bubble"]',
+    );
+
+    expect(popover).not.toBeNull();
+    expect(popover?.dataset.avatarBubblePlacement).toBe("right");
+    expect(popover?.style.left).toBe("calc(100% + 18px)");
+    expect(popover?.style.top).toBe("69px");
+    expect(bubble?.dataset.width).toBe("480");
+    expect(bubble?.dataset.maxHeight).toBe("460");
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { getLive2DExpressionPlan } from "./emotion-map";
 import {
   AVATAR_EMOTIONS,
+  parseAvatarCues,
   parseAvatarEmotions,
   stripAvatarEmotionTags,
 } from "./emotion-parser";
@@ -87,6 +88,45 @@ describe("parseAvatarEmotions", () => {
       currentEmotion: "relaxed",
     });
   });
+
+  it("removes blank lines left behind by a leading emotion tag", () => {
+    expect(parseAvatarEmotions("[emotion:sad]\n\n辛苦啦，先喘口气。")).toEqual({
+      text: "辛苦啦，先喘口气。",
+      emotions: ["sad"],
+      currentEmotion: "sad",
+    });
+  });
+});
+
+describe("parseAvatarCues", () => {
+  it("extracts emotion and motion tags while hiding them from chat text", () => {
+    expect(
+      parseAvatarCues("[emotion:happy][motion:heart]给你画个小爱心。"),
+    ).toEqual({
+      text: "给你画个小爱心。",
+      emotions: ["happy"],
+      currentEmotion: "happy",
+      motions: ["heart"],
+    });
+  });
+
+  it("supports an explicit closed-eye expression cue", () => {
+    expect(parseAvatarCues("[emotion:closed]我闭上眼睛啦。")).toEqual({
+      text: "我闭上眼睛啦。",
+      emotions: ["closed"],
+      currentEmotion: "closed",
+      motions: [],
+    });
+  });
+
+  it("strips unknown motion tags without triggering actions", () => {
+    expect(parseAvatarCues("[motion:dance]先不跳舞。")).toEqual({
+      text: "先不跳舞。",
+      emotions: [],
+      currentEmotion: "neutral",
+      motions: [],
+    });
+  });
 });
 
 describe("stripAvatarEmotionTags", () => {
@@ -94,6 +134,10 @@ describe("stripAvatarEmotionTags", () => {
     expect(
       stripAvatarEmotionTags("[emotion:happy]你好[emotion:excited]呀"),
     ).toBe("你好呀");
+  });
+
+  it("does not leave leading blank lines after stripping an opening tag", () => {
+    expect(stripAvatarEmotionTags("[emotion:relaxed]\n\n我在。")).toBe("我在。");
   });
 });
 
@@ -104,6 +148,39 @@ describe("getLive2DExpressionPlan", () => {
 
       expect(plan.expressionNames.length).toBeGreaterThan(0);
       expect(plan.motionGroups.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("includes numbered Mao Pro expression fallbacks", () => {
+    expect(getLive2DExpressionPlan("neutral").expressionNames).toContain(
+      "exp_01",
+    );
+    expect(getLive2DExpressionPlan("happy").expressionNames).toContain(
+      "exp_04",
+    );
+    expect(getLive2DExpressionPlan("sad").expressionNames).toEqual(
+      expect.arrayContaining(["exp_05", "exp_07"]),
+    );
+    expect(getLive2DExpressionPlan("angry").expressionNames).toContain(
+      "exp_08",
+    );
+    expect(getLive2DExpressionPlan("surprised").expressionNames).toContain(
+      "exp_07",
+    );
+    expect(getLive2DExpressionPlan("relaxed").expressionNames).toContain(
+      "exp_01",
+    );
+    expect(getLive2DExpressionPlan("closed").expressionNames).toEqual(
+      expect.arrayContaining(["exp_02", "exp_03"]),
+    );
+  });
+
+  it("does not use closed-eye Mao Pro expressions for persistent chat emotions", () => {
+    for (const emotion of AVATAR_EMOTIONS.filter((item) => item !== "closed")) {
+      const expressionNames = getLive2DExpressionPlan(emotion).expressionNames;
+
+      expect(expressionNames).not.toContain("exp_02");
+      expect(expressionNames).not.toContain("exp_03");
     }
   });
 });

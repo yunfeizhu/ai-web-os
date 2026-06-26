@@ -34,6 +34,24 @@ def _read_int_env(name: str, default: int) -> int:
         return default
 
 
+def _read_bool_env(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"", "0", "false", "no", "off"}
+
+
+def _read_csv_env(name: str, default: str) -> list[str]:
+    values = [
+        item.strip()
+        for item in os.environ.get(name, default).split(",")
+        if item.strip()
+    ]
+    if "*" in values and not _read_bool_env("BROWSER_ALLOW_ANY_ORIGIN", False):
+        values = [value for value in values if value != "*"]
+    return values
+
+
 def _normalize_site_url(raw_url: str) -> str:
     trimmed = raw_url.strip()
     if not trimmed:
@@ -175,6 +193,17 @@ TIMEZONE_ID = os.environ.get("BROWSER_TIMEZONE", "Asia/Shanghai")
 COLOR_SCHEME = os.environ.get("BROWSER_COLOR_SCHEME", "light")
 STORAGE_ROOT = Path(os.environ.get("BROWSER_STORAGE_ROOT", "/data/browser-state"))
 STORAGE_STATE_PATH = STORAGE_ROOT / "default-storage-state.json"
+BROWSER_GLOBAL_STORAGE_ENABLED = _read_bool_env("BROWSER_GLOBAL_STORAGE_ENABLED", False)
+DEFAULT_BROWSER_ALLOWED_ORIGINS = (
+    "http://localhost:3000,http://127.0.0.1:3000,"
+    "http://localhost:13000,http://127.0.0.1:13000,"
+    "http://localhost:14000,http://127.0.0.1:14000,"
+    "http://localhost:16080,http://127.0.0.1:16080"
+)
+BROWSER_ALLOWED_ORIGINS = _read_csv_env(
+    "BROWSER_ALLOWED_ORIGINS",
+    DEFAULT_BROWSER_ALLOWED_ORIGINS,
+)
 ACCEPT_LANGUAGE = os.environ.get(
     "BROWSER_ACCEPT_LANGUAGE",
     "zh-CN,zh;q=0.9,en;q=0.8",
@@ -287,7 +316,7 @@ class BrowserRuntime:
         }
         if storage_state is not None:
             options["storage_state"] = storage_state
-        elif STORAGE_STATE_PATH.exists():
+        elif BROWSER_GLOBAL_STORAGE_ENABLED and STORAGE_STATE_PATH.exists():
             options["storage_state"] = str(STORAGE_STATE_PATH)
         return options
 
@@ -348,10 +377,30 @@ class BrowserRuntime:
         context.on("page", lambda new_page: asyncio.create_task(self._attach_tab(session, new_page)))
 
     async def _persist_storage_state(self, session: BrowserSession) -> None:
+        if not BROWSER_GLOBAL_STORAGE_ENABLED:
+            return
         try:
             await session.context.storage_state(path=str(STORAGE_STATE_PATH))
         except Exception:
             pass
+
+    def _normalize_navigation_url(self, raw_url: str) -> str:
+        url = raw_url.strip()
+        if not url:
+            raise RuntimeErrorMessage(
+                "Navigation URL is required. Browser navigation only supports http/https URLs."
+            )
+        if url == "about:blank":
+            return url
+        if not urlparse(url).scheme:
+            url = f"https://{url}"
+
+        parsed = urlparse(url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise RuntimeErrorMessage(
+                "Browser navigation only supports http/https URLs and about:blank."
+            )
+        return url
 
     def _normalize_storage_state(self, raw_state: Any) -> dict[str, Any]:
         if isinstance(raw_state, list):
@@ -654,11 +703,16 @@ class BrowserRuntime:
     async def navigate(self, session_id: str, url: str) -> dict[str, Any]:
         session = self._get_session(session_id)
         tab = self._get_active_tab(session)
+        normalized_url = self._normalize_navigation_url(url)
         started_at = time.perf_counter()
         try:
-            await tab.page.goto(url, wait_until="domcontentloaded", timeout=20000)
+            await tab.page.goto(normalized_url, wait_until="domcontentloaded", timeout=20000)
             await self._sync_tab(tab)
-            self._log(session, "navigate", f"{url} ({time.perf_counter() - started_at:.2f}s)")
+            self._log(
+                session,
+                "navigate",
+                f"{normalized_url} ({time.perf_counter() - started_at:.2f}s)",
+            )
         except Exception as exc:
             session.last_error = f"Navigate failed: {exc}"
             self._log(session, "navigate_error", session.last_error)
@@ -1147,7 +1201,7 @@ runtime = BrowserRuntime()
 app = FastAPI(title="AI-Web OS Browser Runtime", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=BROWSER_ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

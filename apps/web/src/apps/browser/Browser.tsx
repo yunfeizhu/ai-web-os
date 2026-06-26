@@ -16,7 +16,6 @@ import {
   SendHorizontal,
   Sparkles,
   Trash2,
-  UserRound,
   X,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
@@ -25,7 +24,12 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import type { Components } from "react-markdown";
 
-import { apiFetch, API_BASE, completeOnce } from "@/lib/backend";
+import {
+  apiFetch,
+  API_BASE,
+  completeOnce,
+  completeOnceStream,
+} from "@/lib/backend";
 import { useWindowStore } from "@/stores/windowStore";
 import { useSettingsStore } from "@/stores/settingsStore";
 
@@ -134,6 +138,8 @@ interface BrowserAutomationAction {
 interface QuickBrowserCommandResult {
   actions: BrowserAutomationAction[];
   followupPrompt?: string;
+  intentKind?: BrowserIntent["kind"];
+  researchQuery?: string;
 }
 
 interface BrowserAgentStepPlan {
@@ -141,6 +147,14 @@ interface BrowserAgentStepPlan {
   reply: string;
   action: BrowserAutomationAction | null;
 }
+
+type BrowserIntent =
+  | { kind: "research_query"; query: string; answerMode: "synthesize" }
+  | { kind: "page_question"; question: string }
+  | { kind: "search_only"; query: string; followupPrompt?: string }
+  | { kind: "navigate"; target: string; followupPrompt?: string }
+  | { kind: "page_action"; actions: BrowserAutomationAction[] }
+  | { kind: "browser_agent"; task: string };
 
 const browserMarkdownComponents: Components = {
   code({ className, children, ...props }) {
@@ -188,6 +202,9 @@ const browserMarkdownComponents: Components = {
     );
   },
 };
+
+const BROWSER_AGENT_PLAN_TIMEOUT_MS = 30000;
+const BROWSER_RESEARCH_SYNTHESIS_TIMEOUT_MS = 90000;
 
 function normalizeUrl(input: string) {
   const trimmed = input.trim();
@@ -237,6 +254,24 @@ function readChatMessages(value: unknown): BrowserChatMessage[] {
     }
     return [];
   });
+}
+
+export function findBrowserRetryPrompt(
+  messages: BrowserChatMessage[],
+  assistantMessageId: string,
+) {
+  const assistantIndex = messages.findIndex(
+    (message) => message.id === assistantMessageId,
+  );
+  if (assistantIndex <= 0) return "";
+
+  for (let index = assistantIndex - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "user" && message.content.trim()) {
+      return message.content.trim();
+    }
+  }
+  return "";
 }
 
 function formatBrowserErrorMessage(
@@ -312,6 +347,7 @@ function parseBrowserAgentStep(raw: string): BrowserAgentStepPlan {
       parsed.action && typeof parsed.action === "object" ? parsed.action : null,
   };
 }
+
 function resolveNavigationTarget(rawTarget: string) {
   const cleaned = rawTarget.trim().replace(/[。；;，,]+$/g, "");
   const knownTargets: Record<string, string> = {
@@ -346,43 +382,168 @@ function resolveNavigationTarget(rawTarget: string) {
   return `https://www.baidu.com/s?wd=${encodeURIComponent(cleaned)}`;
 }
 
-function parseQuickBrowserCommand(
-  input: string,
-): QuickBrowserCommandResult | null {
-  const command = input.trim();
+function resolveSearchTarget(rawQuery: string) {
+  const query = rawQuery.trim().replace(/[。；;，,]+$/g, "");
+  return query ? `https://www.baidu.com/s?wd=${encodeURIComponent(query)}` : "";
+}
+
+function cleanBrowserCommandText(value: string) {
+  return value.trim().replace(/\s+/g, " ").replace(/[。；;，,]+$/g, "");
+}
+
+function splitCommandAndFollowup(
+  command: string,
+): { head: string; followupPrompt?: string } {
+  const match = command.match(/^(.+?)(?:[，。,;；]+|(?:然后|再)\s*)(.+)$/);
+  if (!match) return { head: command };
+
+  const head = cleanBrowserCommandText(match[1]);
+  const followupPrompt = cleanBrowserCommandText(match[2]);
+  return followupPrompt ? { head, followupPrompt } : { head };
+}
+
+function readCommandBody(command: string, prefixes: string[]) {
+  const sortedPrefixes = [...prefixes].sort((a, b) => b.length - a.length);
+  for (const prefix of sortedPrefixes) {
+    if (command.startsWith(prefix)) {
+      const body = cleanBrowserCommandText(command.slice(prefix.length));
+      if (body) return body;
+    }
+  }
+  return "";
+}
+
+function parseChinesePageNumber(value: string) {
+  const normalized = value.trim().replace(/\s+/g, "").replace(/两/g, "二");
+  if (/^\d+$/.test(normalized)) return Number(normalized);
+
+  const digitMap: Record<string, number> = {
+    一: 1,
+    二: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+  };
+
+  if (digitMap[normalized]) return digitMap[normalized];
+  if (normalized === "十") return 10;
+
+  const tenMatch = normalized.match(/^([一二三四五六七八九])?十([一二三四五六七八九])?$/);
+  if (!tenMatch) return null;
+
+  const tens = tenMatch[1] ? digitMap[tenMatch[1]] : 1;
+  const ones = tenMatch[2] ? digitMap[tenMatch[2]] : 0;
+  return tens * 10 + ones;
+}
+
+function readTargetPageNumber(command: string) {
+  const pageNumberPattern = "([0-9一二两三四五六七八九十]+)";
+  const triggeredMatch =
+    command.match(
+      new RegExp(
+        `(?:切到|翻到|跳到|打开|去|看|看看|点|点击)\\s*(?:第\\s*${pageNumberPattern}\\s*页|${pageNumberPattern}\\s*页)`,
+      ),
+    ) ||
+    command.match(
+      new RegExp(
+        `^(?:第\\s*${pageNumberPattern}\\s*页|${pageNumberPattern}\\s*页)(?:看看|看一下|看下|看看下)?$`,
+      ),
+    );
+
+  const rawNumber = triggeredMatch?.[1] || triggeredMatch?.[2] || "";
+  const pageNumber = rawNumber ? parseChinesePageNumber(rawNumber) : null;
+  return pageNumber && pageNumber > 0 ? pageNumber : null;
+}
+
+function hasCurrentPageCue(command: string) {
+  return /(?:当前页面|这个页面|本页|这页|页面上|网页上|浏览器|右边|左边|上面|下面|这里|侧边栏|榜单|页面内容|网页内容)/.test(
+    command,
+  );
+}
+
+function hasSummaryCue(command: string) {
+  return /(?:总结|概括|归纳|梳理|提炼|摘要|这个页面讲了什么|这页讲了什么|页面讲了什么|网页讲了什么|说说.*页面|页面.*内容)/.test(
+    command,
+  );
+}
+
+function startsWithExplicitRemoteTask(head: string, command: string) {
+  if (hasCurrentPageCue(command)) return false;
+  return Boolean(
+    readCommandBody(head, [
+      "百度一下",
+      "搜一下",
+      "搜一搜",
+      "搜索",
+      "查找",
+      "查询",
+      "帮我查一下",
+      "帮我查查",
+      "查一下",
+      "查一查",
+      "了解一下",
+      "打开",
+      "访问",
+      "进入",
+    ]),
+  );
+}
+
+function isVisiblePageQuestion(command: string) {
+  const asksVisibleContent =
+    /(?:看下|看一下|看看|告诉我|列出|读一下|是什么|有哪些|前\s*\d+|前[一二两三四五六七八九十]+|排名|榜|热搜)/.test(
+      command,
+    );
+  const baiduHotSearchQuestion =
+    /(?:百度)?热搜.*(?:前\s*\d+|前[一二两三四五六七八九十]+|是什么|有哪些|榜|排名)/.test(
+      command,
+    ) || /百度热搜/.test(command);
+
+  return (
+    (hasCurrentPageCue(command) && (asksVisibleContent || hasSummaryCue(command))) ||
+    baiduHotSearchQuestion ||
+    hasSummaryCue(command)
+  );
+}
+
+export function detectLocalBrowserIntent(input: string): BrowserIntent | null {
+  const command = cleanBrowserCommandText(input);
   if (!command) return null;
 
-  const openAndAskMatch = command.match(
-    /^(?:打开|访问|进入)\s+(.+?)(?:[，。,\s]+|然后\s*|再\s*)(.+)$/,
-  );
-  if (openAndAskMatch) {
-    return {
-      actions: [
-        {
-          action: "navigate",
-          url: resolveNavigationTarget(openAndAskMatch[1].trim()),
-        },
-        { action: "wait_for", timeout_ms: 1800 },
-      ],
-      followupPrompt: openAndAskMatch[2].trim(),
-    };
+  const { head, followupPrompt } = splitCommandAndFollowup(command);
+  if (
+    isVisiblePageQuestion(command) &&
+    !startsWithExplicitRemoteTask(head, command)
+  ) {
+    return { kind: "page_question", question: command };
   }
 
-  const openMatch = command.match(/^(?:打开|访问|进入)\s+(.+)$/);
-  if (openMatch) {
-    return {
-      actions: [
-        {
-          action: "navigate",
-          url: resolveNavigationTarget(openMatch[1].trim()),
-        },
-      ],
-    };
+  const searchQuery = readCommandBody(head, [
+    "百度一下",
+    "搜一下",
+    "搜一搜",
+    "搜索",
+    "查找",
+    "查询",
+    "百度",
+  ]);
+  if (searchQuery) {
+    return { kind: "search_only", query: searchQuery, followupPrompt };
+  }
+
+  const navigationTarget = readCommandBody(head, ["打开", "访问", "进入"]);
+  if (navigationTarget) {
+    return { kind: "navigate", target: navigationTarget, followupPrompt };
   }
 
   const clickMatch = command.match(/^(?:点击|点开|点一下)\s+(.+)$/);
   if (clickMatch) {
     return {
+      kind: "page_action",
       actions: [{ action: "click", selector: `text=${clickMatch[1].trim()}` }],
     };
   }
@@ -395,39 +556,343 @@ function parseQuickBrowserCommand(
     if (typeTextMatch[2]) {
       actions.push({ action: "press", key: "Enter" });
     }
-    return { actions };
+    return { kind: "page_action", actions };
   }
 
   if (/^(?:按回车|回车|enter)$/i.test(command)) {
-    return { actions: [{ action: "press", key: "Enter" }] };
+    return { kind: "page_action", actions: [{ action: "press", key: "Enter" }] };
   }
 
   if (/^(?:按tab|tab)$/i.test(command)) {
-    return { actions: [{ action: "press", key: "Tab" }] };
+    return { kind: "page_action", actions: [{ action: "press", key: "Tab" }] };
   }
 
   if (/^(?:按esc|esc|escape)$/i.test(command)) {
-    return { actions: [{ action: "press", key: "Escape" }] };
+    return {
+      kind: "page_action",
+      actions: [{ action: "press", key: "Escape" }],
+    };
   }
 
   if (/^(?:向下滚动|下滑|往下滚|下滚一点)$/.test(command)) {
-    return { actions: [{ action: "wheel", delta_y: 900 }] };
+    return { kind: "page_action", actions: [{ action: "wheel", delta_y: 900 }] };
   }
 
   if (/^(?:向上滚动|上滑|往上滚|上滚一点)$/.test(command)) {
-    return { actions: [{ action: "wheel", delta_y: -900 }] };
+    return { kind: "page_action", actions: [{ action: "wheel", delta_y: -900 }] };
   }
 
   const waitMatch = command.match(/^(?:等待|等)\s*(\d+)\s*秒$/);
   if (waitMatch) {
     return {
+      kind: "page_action",
       actions: [
         { action: "wait_for", timeout_ms: Number(waitMatch[1]) * 1000 },
       ],
     };
   }
 
+  const targetPageNumber = readTargetPageNumber(command);
+  if (targetPageNumber) {
+    return {
+      kind: "page_action",
+      actions: [
+        { action: "click", selector: `text=${targetPageNumber}` },
+        { action: "wait_for", timeout_ms: 1500 },
+      ],
+    };
+  }
+
+  if (
+    /(?:下一页|下页|后一页|往后翻|向后翻|翻页|翻到下一页|切到下一页)/.test(
+      command,
+    )
+  ) {
+    return {
+      kind: "page_action",
+      actions: [
+        { action: "click", selector: "text=下一页" },
+        { action: "wait_for", timeout_ms: 1500 },
+      ],
+    };
+  }
+
+  if (
+    /(?:上一页|上页|前一页|往前翻|向前翻|翻到上一页|切到上一页)/.test(
+      command,
+    )
+  ) {
+    return {
+      kind: "page_action",
+      actions: [
+        { action: "click", selector: "text=上一页" },
+        { action: "wait_for", timeout_ms: 1500 },
+      ],
+    };
+  }
+
+  const researchQuery = readCommandBody(command, [
+    "帮我查一下",
+    "帮我查查",
+    "帮我看看",
+    "查一下",
+    "查一查",
+    "了解一下",
+    "看一下",
+    "看看",
+  ]);
+  if (researchQuery) {
+    return {
+      kind: "research_query",
+      query: researchQuery,
+      answerMode: "synthesize",
+    };
+  }
+
+  if (
+    /(?:是什么|有哪些|多少|结果|赛程|排名|价格|天气|新闻|资料|攻略|时间|名单|比分|战绩|汇率|股价)/.test(
+      command,
+    )
+  ) {
+    return {
+      kind: "research_query",
+      query: command,
+      answerMode: "synthesize",
+    };
+  }
+
   return null;
+}
+
+export function buildBrowserCommandFromIntent(
+  intent: BrowserIntent,
+): QuickBrowserCommandResult | null {
+  switch (intent.kind) {
+    case "search_only": {
+      const url = resolveSearchTarget(intent.query);
+      return url
+        ? {
+            actions: [{ action: "navigate", url }],
+            followupPrompt: intent.followupPrompt,
+            intentKind: intent.kind,
+          }
+        : null;
+    }
+    case "research_query": {
+      const url = resolveSearchTarget(intent.query);
+      return url
+        ? {
+            actions: [{ action: "navigate", url }],
+            intentKind: intent.kind,
+            researchQuery: intent.query,
+          }
+        : null;
+    }
+    case "page_question":
+      return null;
+    case "navigate":
+      return {
+        actions: [
+          {
+            action: "navigate",
+            url: resolveNavigationTarget(intent.target),
+          },
+          ...(intent.followupPrompt
+            ? [{ action: "wait_for", timeout_ms: 1800 } as BrowserAutomationAction]
+            : []),
+        ],
+        followupPrompt: intent.followupPrompt,
+        intentKind: intent.kind,
+      };
+    case "page_action":
+      return { actions: intent.actions, intentKind: intent.kind };
+    case "browser_agent":
+      return null;
+    default:
+      return null;
+  }
+}
+
+export function parseBrowserIntentClassification(
+  raw: string,
+  fallbackTask: string,
+): BrowserIntent | null {
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const payload = fenced?.[1] ?? trimmed;
+
+  let parsed: Record<string, unknown>;
+  try {
+    const value = JSON.parse(payload);
+    if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+    parsed = value as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+
+  const kind = typeof parsed.kind === "string" ? parsed.kind : "";
+  const query = cleanBrowserCommandText(
+    typeof parsed.query === "string" ? parsed.query : "",
+  );
+  const task = cleanBrowserCommandText(
+    typeof parsed.task === "string" ? parsed.task : fallbackTask,
+  );
+  const question = cleanBrowserCommandText(
+    typeof parsed.question === "string" ? parsed.question : fallbackTask,
+  );
+
+  if (kind === "research_query") {
+    return {
+      kind,
+      query: query || cleanBrowserCommandText(fallbackTask),
+      answerMode: "synthesize",
+    };
+  }
+  if (kind === "page_question") {
+    return { kind, question: question || cleanBrowserCommandText(fallbackTask) };
+  }
+  if (kind === "search_only" && query) {
+    return { kind, query };
+  }
+  if (kind === "navigate") {
+    const target = cleanBrowserCommandText(
+      typeof parsed.target === "string"
+        ? parsed.target
+        : typeof parsed.url === "string"
+          ? parsed.url
+          : "",
+    );
+    return target ? { kind, target } : null;
+  }
+  if (kind === "browser_agent") {
+    return { kind, task: task || fallbackTask };
+  }
+
+  return null;
+}
+
+function buildBrowserIntentPrompt(command: string) {
+  return [
+    "请把用户给浏览器助手的请求分类成一个 JSON 对象。",
+    "只输出 JSON，不要 Markdown，不要解释。",
+    "",
+    "可选 kind：",
+    '- research_query: 用户要查资料、查新闻、查天气、查结果、查价格、了解某件事，并希望得到回答。',
+    "- page_question: 用户问当前浏览器页面、当前可见区域、页面右侧/左侧/上方/下方已有内容。",
+    "- search_only: 用户只要求搜索关键词或打开搜索结果页。",
+    "- navigate: 用户要求打开/访问某个网站或 URL。",
+    "- page_action: 用户明确要求点击、输入、按键、滚动等当前页面动作。",
+    "- browser_agent: 用户要求完成复杂网页流程，比如登录、填表、下单、多步操作。",
+    "",
+    "字段：",
+    '{"kind":"research_query|page_question|search_only|navigate|page_action|browser_agent","query":"资料查询或搜索词","question":"当前页面问题","target":"网站或URL","task":"复杂任务原文"}',
+    "",
+    "示例：",
+    '用户：查一下2026世界杯每一组的比赛结果 -> {"kind":"research_query","query":"2026世界杯每一组的比赛结果"}',
+    '用户：看下右边的百度热搜前十名 -> {"kind":"page_question","question":"看下右边的百度热搜前十名"}',
+    '用户：搜索杭州天气 -> {"kind":"search_only","query":"杭州天气"}',
+    '用户：打开知乎 -> {"kind":"navigate","target":"知乎"}',
+    '用户：点击登录 -> {"kind":"page_action"}',
+    '用户：帮我登录网站并下载发票 -> {"kind":"browser_agent","task":"帮我登录网站并下载发票"}',
+    "",
+    `用户：${command}`,
+  ].join("\n");
+}
+
+async function classifyBrowserIntentWithModel(command: string) {
+  const result = await withBrowserTaskTimeout(
+    completeOnce(
+      buildBrowserIntentPrompt(command),
+      "你是浏览器助手的意图分类器。你的任务是把用户输入分类成稳定 JSON，不能执行网页操作。",
+    ),
+    8000,
+    "浏览器意图识别超过 8 秒。",
+  );
+  return parseBrowserIntentClassification(result.content, command);
+}
+
+export function parseQuickBrowserCommand(
+  input: string,
+): QuickBrowserCommandResult | null {
+  const intent = detectLocalBrowserIntent(input);
+  return intent ? buildBrowserCommandFromIntent(intent) : null;
+}
+
+function browserActionSignature(action: BrowserAutomationAction) {
+  return JSON.stringify({
+    action: action.action,
+    url: action.url ? cleanBrowserCommandText(action.url) : "",
+    selector: action.selector ? cleanBrowserCommandText(action.selector) : "",
+    text: action.text ? cleanBrowserCommandText(action.text) : "",
+    key: action.key ? cleanBrowserCommandText(action.key) : "",
+    delta_x: action.delta_x ?? 0,
+    delta_y: action.delta_y ?? 0,
+    press_enter: Boolean(action.press_enter),
+  });
+}
+
+export function shouldStopForRepeatedBrowserAction(
+  previousActions: BrowserAutomationAction[],
+  nextAction: BrowserAutomationAction,
+  maxConsecutiveRepeats = 2,
+) {
+  const nextSignature = browserActionSignature(nextAction);
+  let repeatCount = 1;
+
+  for (let index = previousActions.length - 1; index >= 0; index -= 1) {
+    if (browserActionSignature(previousActions[index]) !== nextSignature) break;
+    repeatCount += 1;
+  }
+
+  return repeatCount > maxConsecutiveRepeats;
+}
+
+export function buildResearchFallbackAnswer(query: string, content: string) {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => cleanBrowserCommandText(line))
+    .filter((line) => line.length >= 2)
+    .filter((line) => !/^(查看更多|展开|收起|广告|登录|百度一下)$/.test(line));
+  const uniqueLines = Array.from(new Set(lines)).slice(0, 10);
+
+  if (uniqueLines.length === 0) {
+    return [
+      "搜索结果页已经打开，但页面可抽取文本不足，暂时没法整理出可靠答案。",
+      `你可以在浏览器里查看当前搜索结果，或换个更具体的查询：${query}`,
+    ].join("\n");
+  }
+
+  return [
+    "资料整理超时了，我先把当前搜索结果页里能读取到的关键信息列出来：",
+    "",
+    ...uniqueLines.map((line) => `- ${line}`),
+    "",
+    "这不是最终归纳版答案，只是基于当前页面可见文本的快速摘录。",
+  ].join("\n");
+}
+
+function buildPageQuestionFallbackAnswer(question: string, content: string) {
+  const lines = content
+    .split(/\r?\n/)
+    .map((line) => cleanBrowserCommandText(line))
+    .filter((line) => line.length >= 2)
+    .filter((line) => !/^(查看更多|展开|收起|广告|登录|百度一下)$/.test(line));
+  const uniqueLines = Array.from(new Set(lines)).slice(0, 12);
+
+  if (uniqueLines.length === 0) {
+    return [
+      "我读取了当前页面，但可抽取文本不足，暂时没法从当前页面回答这个问题。",
+      `问题：${question}`,
+    ].join("\n");
+  }
+
+  return [
+    "我先根据当前页面能读取到的内容列出来：",
+    "",
+    ...uniqueLines.map((line) => `- ${line}`),
+    "",
+    "如果你要更精确的某个区域，可以直接说“只看右侧榜单”。",
+  ].join("\n");
 }
 
 function formatSelectorLabel(selector?: string | null) {
@@ -464,6 +929,29 @@ function describeBrowserAction(action: BrowserAutomationAction) {
 function sleep(ms: number) {
   return new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
+  });
+}
+
+export function withBrowserTaskTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message = "浏览器任务规划等待超时，请稍后重试。",
+) {
+  return new Promise<T>((resolve, reject) => {
+    const timer = globalThis.setTimeout(() => {
+      reject(new Error(message));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        globalThis.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        globalThis.clearTimeout(timer);
+        reject(error);
+      },
+    );
   });
 }
 
@@ -1527,6 +2015,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
     let finalReply = "";
     let requiresHuman = false;
     const stepLogs: string[] = [];
+    const plannedActions: BrowserAutomationAction[] = [];
 
     callbacks?.onStatus?.("正在读取当前页面");
 
@@ -1534,33 +2023,37 @@ export function Browser({ appState, windowId }: BrowserProps) {
       callbacks?.onStatus?.(`正在规划第 ${step} 步`);
       const browserState = await fetchBrowserState(sessionId);
       const pageContext = await readSessionContext(sessionId);
-      const planResult = await completeOnce(
-        [
-          "你是一个浏览器任务代理，需要在真实浏览器中逐步完成用户目标。",
-          `用户目标：${goal}`,
-          `当前步骤：${step}/6`,
-          stepLogs.length > 0
-            ? `已执行步骤：\n${stepLogs.join("\n")}`
-            : "已执行步骤：暂无",
-          "",
-          "当前页面状态 JSON：",
-          browserState,
-          "",
-          "当前页面正文预览：",
-          pageContext.content,
-          "",
-          "请只输出 JSON，不要输出 Markdown，不要输出解释。",
-          "JSON 结构：",
-          '{"status":"continue|done|need_user","reply":"给用户看的中文说明","action":{"action":"navigate|click|type|type_text|press|wait_for|wheel","url":"可选","selector":"可选","text":"可选","key":"可选","timeout_ms":10000,"delta_x":0,"delta_y":900,"press_enter":false}}',
-          "",
-          "规则：",
-          '1. 如果要点文本按钮或链接，selector 优先写成 "text=文字"。',
-          "2. 每次只给一个 action。",
-          "3. 如果任务已经完成，status=done，action=null。",
-          "4. 如果遇到登录、验证码、支付、人工确认等，status=need_user。",
-          "5. 如果页面正文里已经能回答用户问题，也可以直接 done。",
-        ].join("\n"),
-        "你是 AI-Web OS 的浏览器任务代理。目标是安全、稳妥地完成网页任务。",
+      const planResult = await withBrowserTaskTimeout(
+        completeOnce(
+          [
+            "你是一个浏览器任务代理，需要在真实浏览器中逐步完成用户目标。",
+            `用户目标：${goal}`,
+            `当前步骤：${step}/6`,
+            stepLogs.length > 0
+              ? `已执行步骤：\n${stepLogs.join("\n")}`
+              : "已执行步骤：暂无",
+            "",
+            "当前页面状态 JSON：",
+            browserState,
+            "",
+            "当前页面正文预览：",
+            pageContext.content,
+            "",
+            "请只输出 JSON，不要输出 Markdown，不要输出解释。",
+            "JSON 结构：",
+            '{"status":"continue|done|need_user","reply":"给用户看的中文说明","action":{"action":"navigate|click|type|type_text|press|wait_for|wheel","url":"可选","selector":"可选","text":"可选","key":"可选","timeout_ms":10000,"delta_x":0,"delta_y":900,"press_enter":false}}',
+            "",
+            "规则：",
+            '1. 如果要点文本按钮或链接，selector 优先写成 "text=文字"。',
+            "2. 每次只给一个 action。",
+            "3. 如果任务已经完成，status=done，action=null。",
+            "4. 如果遇到登录、验证码、支付、人工确认等，status=need_user。",
+            "5. 如果页面正文里已经能回答用户问题，也可以直接 done。",
+          ].join("\n"),
+          "你是 AI-Web OS 的浏览器任务代理。目标是安全、稳妥地完成网页任务。",
+        ),
+        BROWSER_AGENT_PLAN_TIMEOUT_MS,
+        "浏览器任务规划超过 30 秒，可能是模型响应太慢。请稍后重试，或者换成更直接的指令。",
       );
 
       const plan = parseBrowserAgentStep(planResult.content);
@@ -1579,6 +2072,14 @@ export function Browser({ appState, windowId }: BrowserProps) {
         }
         break;
       }
+
+      if (shouldStopForRepeatedBrowserAction(plannedActions, plan.action)) {
+        finalReply =
+          "我检测到浏览器代理正在重复执行同一个动作，已经先停下来，避免继续把同样内容输入到页面里。你可以换个更具体的目标，或者直接让我打开搜索结果页。";
+        callbacks?.onStatus?.("已停止重复动作");
+        break;
+      }
+      plannedActions.push(plan.action);
 
       callbacks?.onActionStart?.(
         `第 ${step} 步 · ${describeBrowserAction(plan.action)}`,
@@ -1602,8 +2103,167 @@ export function Browser({ appState, windowId }: BrowserProps) {
     };
   };
 
-  const handleAskPage = async () => {
-    const content = chatInput.trim();
+  const resolveBrowserIntentForTask = async (
+    command: string,
+    callbacks?: {
+      onStatus?: (status: string) => void;
+      onClassifierFallback?: (message: string) => void;
+    },
+  ): Promise<BrowserIntent> => {
+    const localIntent = detectLocalBrowserIntent(command);
+    if (localIntent) return localIntent;
+
+    callbacks?.onStatus?.("正在识别任务意图");
+    try {
+      const modelIntent = await classifyBrowserIntentWithModel(command);
+      if (modelIntent) return modelIntent;
+    } catch (error) {
+      callbacks?.onClassifierFallback?.(
+        formatBrowserErrorMessage(error, "意图识别失败，改用浏览器代理。"),
+      );
+    }
+
+    return { kind: "browser_agent", task: command };
+  };
+
+  const synthesizeResearchAnswer = async (
+    sessionId: string,
+    query: string,
+    callbacks?: {
+      onToken?: (token: string) => void;
+    },
+  ) => {
+    const pageContext = await readSessionContext(sessionId);
+    const prompt = [
+      `用户要查询：${query}`,
+      "",
+      "下面是当前浏览器搜索结果页或网页正文预览：",
+      pageContext.content.slice(0, 2500),
+      "",
+      "请基于上面的网页内容用中文回答用户。",
+      "如果内容不足以得出结论，请明确说明还需要打开更多结果，不要编造。",
+      "如果问题涉及实时或未来事件，请说明回答依据当前搜索结果页内容。",
+    ].join("\n");
+    const systemPrompt =
+      "你是浏览器助手的信息整理器。你只能依据给定网页内容回答，不能编造没有依据的事实。";
+    let streamedContent = "";
+    let acceptsStreamTokens = true;
+
+    try {
+      if (callbacks?.onToken) {
+        const result = await withBrowserTaskTimeout(
+          completeOnceStream(prompt, systemPrompt, (token) => {
+            if (!acceptsStreamTokens) return;
+            streamedContent += token;
+            callbacks.onToken?.(token);
+          }),
+          BROWSER_RESEARCH_SYNTHESIS_TIMEOUT_MS,
+          "资料整理超过 90 秒，可能是模型响应太慢。请稍后重试。",
+        );
+        return (
+          (result.content || streamedContent).trim() ||
+          buildResearchFallbackAnswer(query, pageContext.content)
+        );
+      }
+
+      const result = await withBrowserTaskTimeout(
+        completeOnce(prompt, systemPrompt),
+        BROWSER_RESEARCH_SYNTHESIS_TIMEOUT_MS,
+        "资料整理超过 90 秒，可能是模型响应太慢。请稍后重试。",
+      );
+
+      return (
+        result.content.trim() ||
+        buildResearchFallbackAnswer(query, pageContext.content)
+      );
+    } catch {
+      acceptsStreamTokens = false;
+      const fallback = buildResearchFallbackAnswer(query, pageContext.content);
+      if (callbacks?.onToken && streamedContent.trim()) {
+        callbacks.onToken(`\n\n${fallback}`);
+        return `${streamedContent.trim()}\n\n${fallback}`;
+      }
+      return fallback;
+    }
+  };
+
+  const answerCurrentPageQuestion = async (
+    sessionId: string,
+    question: string,
+    callbacks?: {
+      onToken?: (token: string) => void;
+    },
+  ) => {
+    const pageContext = await readSessionContext(sessionId);
+    const prompt = [
+      `用户想了解当前浏览器页面里的内容：${question}`,
+      "",
+      `当前页面标题：${pageContext.title || "未知"}`,
+      `当前页面地址：${pageContext.url || "about:blank"}`,
+      "",
+      "当前页面可抽取文本：",
+      pageContext.content.slice(0, 3200),
+      "",
+      "请只依据当前页面文本回答用户，不要主动改写成搜索任务，也不要编造页面里没有的信息。",
+      "如果用户问某个榜单或列表的前几名，请尽量按当前页面文本中的顺序列出。",
+      "如果当前页面文本不足以回答，请明确说当前页面没有读取到足够信息。",
+    ].join("\n");
+    const systemPrompt =
+      "你是浏览器助手的当前页面阅读器。你的职责是回答当前浏览器页面里已经出现的内容，不能主动搜索或编造。";
+    let streamedContent = "";
+    let acceptsStreamTokens = true;
+
+    try {
+      if (callbacks?.onToken) {
+        const result = await withBrowserTaskTimeout(
+          completeOnceStream(prompt, systemPrompt, (token) => {
+            if (!acceptsStreamTokens) return;
+            streamedContent += token;
+            callbacks.onToken?.(token);
+          }),
+          BROWSER_RESEARCH_SYNTHESIS_TIMEOUT_MS,
+          "当前页面内容整理超过 90 秒，可能是模型响应太慢。请稍后重试。",
+        );
+        return (
+          (result.content || streamedContent).trim() ||
+          buildPageQuestionFallbackAnswer(question, pageContext.content)
+        );
+      }
+
+      const result = await withBrowserTaskTimeout(
+        completeOnce(prompt, systemPrompt),
+        BROWSER_RESEARCH_SYNTHESIS_TIMEOUT_MS,
+        "当前页面内容整理超过 90 秒，可能是模型响应太慢。请稍后重试。",
+      );
+      return (
+        result.content.trim() ||
+        buildPageQuestionFallbackAnswer(question, pageContext.content)
+      );
+    } catch {
+      acceptsStreamTokens = false;
+      const fallback = buildPageQuestionFallbackAnswer(
+        question,
+        pageContext.content,
+      );
+      if (callbacks?.onToken && streamedContent.trim()) {
+        callbacks.onToken(`\n\n${fallback}`);
+        return `${streamedContent.trim()}\n\n${fallback}`;
+      }
+      return fallback;
+    }
+  };
+
+  const handleClearBrowserChat = () => {
+    if (chatLoading) return;
+    setChatMessages([]);
+    setChatInput("");
+    setSummaryError("");
+  };
+
+  const handleAskPage = async (retryPrompt?: string) => {
+    if (chatLoading) return;
+
+    const content = (retryPrompt ?? chatInput).trim();
     if (!content) return;
 
     if (!activeSessionId) {
@@ -1634,11 +2294,55 @@ export function Browser({ appState, windowId }: BrowserProps) {
     setSummaryError("");
 
     try {
-      const quickCommand = parseQuickBrowserCommand(content);
+      const intent = await resolveBrowserIntentForTask(content, {
+        onStatus: (status) => setAssistantStatus(assistantId, status),
+        onClassifierFallback: (message) => pushAssistantEvent(assistantId, message),
+      });
+      const quickCommand = buildBrowserCommandFromIntent(intent);
       let assistantReply = "";
       let assistantNeedsHuman = false;
+      let assistantReplyAlreadyVisible = false;
 
-      if (quickCommand?.actions.length) {
+      if (intent.kind === "page_question") {
+        setAssistantStatus(assistantId, "正在读取当前页面");
+        await loadDetail(activeSessionId);
+        setAssistantStatus(assistantId, "正在流式整理当前页面");
+        let streamedPageReply = false;
+        assistantReply = await answerCurrentPageQuestion(
+          activeSessionId,
+          intent.question,
+          {
+            onToken: (token) => {
+              streamedPageReply = true;
+              appendAssistantContent(assistantId, token);
+            },
+          },
+        );
+        assistantReplyAlreadyVisible = streamedPageReply;
+      } else if (intent.kind === "research_query" && quickCommand?.actions.length) {
+        setAssistantStatus(assistantId, "正在打开搜索结果");
+        for (const action of quickCommand.actions) {
+          pushAssistantEvent(assistantId, describeBrowserAction(action));
+          const actionMessage = await executeAutomationAction(activeSessionId, action);
+          pushAssistantEvent(assistantId, actionMessage);
+        }
+        setAssistantStatus(assistantId, "正在读取搜索结果");
+        await loadDetail(activeSessionId);
+        await loadSessions();
+        setAssistantStatus(assistantId, "正在流式整理资料");
+        let streamedResearchReply = false;
+        assistantReply = await synthesizeResearchAnswer(
+          activeSessionId,
+          intent.query,
+          {
+            onToken: (token) => {
+              streamedResearchReply = true;
+              appendAssistantContent(assistantId, token);
+            },
+          },
+        );
+        assistantReplyAlreadyVisible = streamedResearchReply;
+      } else if (quickCommand?.actions.length) {
         setAssistantStatus(assistantId, "正在执行快捷网页操作");
         for (const action of quickCommand.actions) {
           pushAssistantEvent(assistantId, describeBrowserAction(action));
@@ -1667,7 +2371,8 @@ export function Browser({ appState, windowId }: BrowserProps) {
           setAssistantStatus(assistantId, "需要你继续操作");
         }
       } else {
-        const taskResult = await runBrowserTaskAgent(activeSessionId, content, {
+        const agentTask = intent.kind === "browser_agent" ? intent.task : content;
+        const taskResult = await runBrowserTaskAgent(activeSessionId, agentTask, {
           onStatus: (status) => setAssistantStatus(assistantId, status),
           onActionStart: (message) => pushAssistantEvent(assistantId, message),
           onActionFinish: (message) => pushAssistantEvent(assistantId, message),
@@ -1684,10 +2389,12 @@ export function Browser({ appState, windowId }: BrowserProps) {
         }
       }
 
-      if (!assistantNeedsHuman) {
+      if (!assistantNeedsHuman && !assistantReplyAlreadyVisible) {
         setAssistantStatus(assistantId, "正在整理回复");
       }
-      await streamAssistantText(assistantId, assistantReply);
+      if (!assistantReplyAlreadyVisible) {
+        await streamAssistantText(assistantId, assistantReply);
+      }
       finalizeAssistantMessage(
         assistantId,
         assistantNeedsHuman ? "需要你继续操作" : "本轮任务已完成",
@@ -1707,6 +2414,12 @@ export function Browser({ appState, windowId }: BrowserProps) {
     }
   };
 
+  const handleRetryBrowserMessage = (assistantMessageId: string) => {
+    const retryPrompt = findBrowserRetryPrompt(chatMessages, assistantMessageId);
+    if (!retryPrompt || chatLoading) return;
+    void handleAskPage(retryPrompt);
+  };
+
   return (
     <div
       className="relative flex h-full flex-col overflow-hidden"
@@ -1716,30 +2429,32 @@ export function Browser({ appState, windowId }: BrowserProps) {
       }}
     >
       <div
-        className="border-b px-4 py-2.5"
+        className="border-b px-4 py-2"
         style={{
-          borderColor: "var(--border)",
-          background: "var(--panel-bg-soft)",
+          borderColor: "rgba(18, 30, 56, 0.08)",
+          background:
+            "linear-gradient(180deg, rgba(250,251,253,0.88) 0%, rgba(241,244,249,0.82) 100%)",
+          backdropFilter: "blur(24px)",
         }}
       >
-        <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div
             className="flex items-center gap-2.5 text-[12px]"
             style={{ color: "var(--t2)" }}
           >
             <span
-              className="font-medium tracking-[0.06em]"
+              className="font-medium"
               style={{ color: "var(--t1)" }}
             >
               浏览器
             </span>
             <span
-              className="inline-flex items-center gap-1 rounded-full px-2.5 py-1"
+              className="inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text-[12px]"
               style={{
                 background: runtime.ready
-                  ? "rgba(34, 197, 94, 0.12)"
-                  : "rgba(255, 159, 10, 0.12)",
-                color: runtime.ready ? "#0a8f4d" : "#b86a00",
+                  ? "rgba(52, 199, 89, 0.13)"
+                  : "rgba(255, 149, 0, 0.13)",
+                color: runtime.ready ? "#16884a" : "#a85f00",
               }}
             >
               <Monitor size={12} />
@@ -1751,119 +2466,127 @@ export function Browser({ appState, windowId }: BrowserProps) {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPreciseControl((current) => !current)}
-              title={
-                preciseControl
-                  ? "已开启精准点击，更适合点小按钮和表单"
-                  : "开启后点击定位会更准确，适合处理细小控件"
-              }
-              className="inline-flex h-9 items-center justify-center rounded-2xl px-3 text-[13px]"
+            <div
+              className="inline-flex h-7 items-center overflow-hidden rounded-[9px] border"
               style={{
-                background: preciseControl
-                  ? "rgba(17, 92, 214, 0.12)"
-                  : "var(--control-bg)",
-                color: preciseControl ? "#0f56cf" : "var(--t2)",
-                border: "1px solid var(--border)",
+                borderColor: "rgba(18, 30, 56, 0.1)",
+                background: "rgba(255,255,255,0.64)",
+                boxShadow:
+                  "inset 0 1px 0 rgba(255,255,255,0.78), 0 1px 2px rgba(18, 30, 56, 0.04)",
               }}
             >
-              {preciseControl ? "精准点击开" : "精准点击"}
-            </button>
-            <button
-              type="button"
-              onClick={() => void loadRuntime()}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
-              style={{
-                background: "rgba(17, 92, 214, 0.08)",
-                color: "#0f56cf",
-              }}
-            >
-              <RefreshCw size={13} />
-              刷新状态
-            </button>
-            <button
-              type="button"
-              onClick={openCookieDialog}
-              disabled={!activeSessionId}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
-              style={{
-                background: "rgba(15, 23, 42, 0.06)",
-                color: activeSessionId ? "var(--t2)" : "var(--t3)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <Cookie size={13} />
-              导入 Cookie
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSaveLoginProfile()}
-              disabled={!activeSessionId || savingProfile}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
-              style={{
-                background: "rgba(15, 23, 42, 0.06)",
-                color: activeSessionId ? "var(--t2)" : "var(--t3)",
-                border: "1px solid var(--border)",
-                opacity: !activeSessionId || savingProfile ? 0.7 : 1,
-              }}
-            >
-              {savingProfile ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <Save size={13} />
-              )}
-              保存登录态
-            </button>
-            <button
-              type="button"
-              onClick={() => void openLibraryDialog("profiles")}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
-              style={{
-                background: "rgba(15, 23, 42, 0.06)",
-                color: "var(--t2)",
-                border: "1px solid var(--border)",
-              }}
-            >
-              <BookOpen size={13} />
-              资料库
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleSavePageToKnowledge()}
-              disabled={!activeSessionId || savingKnowledge}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px]"
-              style={{
-                background: "rgba(15, 92, 214, 0.08)",
-                color: activeSessionId ? "#0f56cf" : "var(--t3)",
-                border: "1px solid rgba(17, 92, 214, 0.08)",
-                opacity: !activeSessionId || savingKnowledge ? 0.7 : 1,
-              }}
-            >
-              {savingKnowledge ? (
-                <Loader2 size={13} className="animate-spin" />
-              ) : (
-                <BookOpen size={13} />
-              )}
-              存入知识库
-            </button>
+              <button
+                type="button"
+                onClick={() => setPreciseControl((current) => !current)}
+                title={
+                  preciseControl
+                    ? "关闭精准点击"
+                    : "开启精准点击，适合点小按钮和表单"
+                }
+                className="inline-flex h-7 w-8 items-center justify-center border-r transition-colors"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  background: preciseControl ? "rgba(0, 122, 255, 0.1)" : "transparent",
+                  color: preciseControl ? "#0a63d8" : "#5f6b7d",
+                }}
+              >
+                <Globe size={13} strokeWidth={1.9} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadRuntime()}
+                title="刷新状态"
+                className="inline-flex h-7 w-8 items-center justify-center border-r transition-colors"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  color: "#5f6b7d",
+                }}
+              >
+                <RefreshCw
+                  size={13}
+                  strokeWidth={1.9}
+                  className={runtimeLoading ? "animate-spin" : ""}
+                />
+              </button>
+              <button
+                type="button"
+                onClick={openCookieDialog}
+                disabled={!activeSessionId}
+                title="导入 Cookie"
+                className="inline-flex h-7 w-8 items-center justify-center border-r transition-colors disabled:opacity-40"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  color: "#5f6b7d",
+                }}
+              >
+                <Cookie size={13} strokeWidth={1.9} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSaveLoginProfile()}
+                disabled={!activeSessionId || savingProfile}
+                title="保存登录态"
+                className="inline-flex h-7 w-8 items-center justify-center border-r transition-colors disabled:opacity-40"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  color: "#5f6b7d",
+                }}
+              >
+                {savingProfile ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Save size={13} strokeWidth={1.9} />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => void openLibraryDialog("profiles")}
+                title="资料库"
+                className="inline-flex h-7 w-8 items-center justify-center border-r transition-colors"
+                style={{
+                  borderColor: "rgba(18, 30, 56, 0.08)",
+                  color: "#5f6b7d",
+                }}
+              >
+                <BookOpen size={13} strokeWidth={1.9} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSavePageToKnowledge()}
+                disabled={!activeSessionId || savingKnowledge}
+                title="存入知识库"
+                className="inline-flex h-7 w-8 items-center justify-center transition-colors disabled:opacity-40"
+                style={{
+                  color: activeSessionId ? "#0a63d8" : "#8f99a8",
+                }}
+              >
+                {savingKnowledge ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <BookOpen size={13} strokeWidth={1.9} />
+                )}
+              </button>
+            </div>
             <button
               type="button"
               onClick={() => void handleCreateSession()}
               disabled={!runtime.ready || creating}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-2xl px-3 text-[13px] font-medium"
+              title="新建会话"
+              className="inline-flex h-7 items-center justify-center gap-1.5 rounded-[9px] px-2.5 text-[12px] font-medium"
               style={{
-                background: "linear-gradient(135deg, #1677ff 0%, #0a57d6 100%)",
+                background: "linear-gradient(180deg, #1684ff 0%, #0870e8 100%)",
                 color: "#fff",
                 opacity: !runtime.ready || creating ? 0.6 : 1,
+                boxShadow:
+                  "0 4px 10px rgba(0, 112, 232, 0.22), inset 0 1px 0 rgba(255,255,255,0.28)",
               }}
             >
               {creating ? (
-                <Loader2 size={13} className="animate-spin" />
+                <Loader2 size={12} className="animate-spin" />
               ) : (
-                <Plus size={13} />
+                <Plus size={12} />
               )}
-              {creating ? "创建中…" : "新建会话"}
+              {creating ? "创建中" : "新建"}
             </button>
           </div>
         </div>
@@ -1889,40 +2612,40 @@ export function Browser({ appState, windowId }: BrowserProps) {
           </div>
         ) : null}
 
-        <div className="flex items-center gap-2">
+        <div className="mt-2.5 flex items-center gap-1.5">
           <button
             type="button"
             onClick={() => void runSessionAction("back")}
             disabled={!activeSessionId || reloading}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border"
             style={{
               borderColor: "var(--border)",
               background: "var(--control-bg)",
               color: activeSessionId ? "var(--t1)" : "var(--t3)",
             }}
           >
-            <ArrowLeft size={16} />
+            <ArrowLeft size={14} />
           </button>
 
           <button
             type="button"
             onClick={() => void runSessionAction("forward")}
             disabled={!activeSessionId || reloading}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border"
             style={{
               borderColor: "var(--border)",
               background: "var(--control-bg)",
               color: activeSessionId ? "var(--t1)" : "var(--t3)",
             }}
           >
-            <ArrowRight size={16} />
+            <ArrowRight size={14} />
           </button>
 
           <button
             type="button"
             onClick={() => void runSessionAction("reload")}
             disabled={!activeSessionId || reloading}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-xl border"
             style={{
               borderColor: "var(--border)",
               background: "var(--control-bg)",
@@ -1930,23 +2653,23 @@ export function Browser({ appState, windowId }: BrowserProps) {
             }}
           >
             {reloading ? (
-              <Loader2 size={16} className="animate-spin" />
+              <Loader2 size={14} className="animate-spin" />
             ) : (
-              <RefreshCw size={16} />
+              <RefreshCw size={14} />
             )}
           </button>
           <form
             onSubmit={handleNavigate}
-            className="flex min-w-0 flex-1 items-center gap-2"
+            className="flex min-w-0 flex-1 items-center gap-1.5"
           >
             <div
-              className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-2xl border px-3"
+              className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-xl border px-3"
               style={{
                 borderColor: "var(--border)",
                 background: "var(--input-bg)",
               }}
             >
-              <Globe size={15} style={{ color: "var(--t3)", flexShrink: 0 }} />
+              <Globe size={13} style={{ color: "var(--t3)", flexShrink: 0 }} />
               <input
                 value={urlInput}
                 onChange={(event) => setUrlInput(event.target.value)}
@@ -1962,7 +2685,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
                     ? "输入网址，例如 example.com"
                     : "先新建浏览器会话"
                 }
-                className="min-w-0 flex-1 bg-transparent text-[14px] outline-none"
+                className="min-w-0 flex-1 bg-transparent text-[13px] outline-none"
                 style={{ color: "var(--t1)" }}
                 disabled={!activeSessionId}
               />
@@ -1970,7 +2693,7 @@ export function Browser({ appState, windowId }: BrowserProps) {
             <button
               type="submit"
               disabled={!activeSessionId || navigating}
-              className="inline-flex h-10 items-center justify-center rounded-2xl px-4 text-[13px] font-medium"
+              className="inline-flex h-8 items-center justify-center rounded-xl px-3 text-[12px] font-medium"
               style={{
                 background: "linear-gradient(135deg, #1677ff 0%, #0a57d6 100%)",
                 color: "#fff",
@@ -2206,86 +2929,106 @@ export function Browser({ appState, windowId }: BrowserProps) {
 
           <aside className="min-h-0 min-w-0">
             <div
-              className="flex h-full min-h-0 flex-col overflow-hidden rounded-[30px] border"
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-[28px] border"
               style={{
                 borderColor: "var(--border)",
-                background: "var(--surface-solid)",
+                background:
+                  "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(244,247,252,0.88) 100%)",
                 backdropFilter: "blur(28px)",
-                boxShadow: "var(--shadow-window)",
+                boxShadow:
+                  "0 22px 58px rgba(20, 31, 52, 0.14), inset 0 1px 0 rgba(255,255,255,0.92)",
               }}
             >
               <div
-                className="shrink-0 border-b px-4 py-3"
+                className="shrink-0 px-5 pb-3 pt-4"
                 style={{
-                  borderColor: "var(--border)",
-                  background: "var(--panel-bg)",
+                  borderColor: "rgba(18, 30, 56, 0.08)",
                 }}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex min-w-0 items-center">
                     <div className="min-w-0">
                       <div
-                        className="truncate text-[13px] font-semibold tracking-[0.08em]"
+                        className="truncate text-[15px] font-semibold"
                         style={{ color: "var(--t1)" }}
                       >
                         浏览器助手
                       </div>
-                      <div className="truncate text-[11px]" style={{ color: "var(--t2)" }}>
+                      <div className="mt-0.5 truncate text-[12px]" style={{ color: "var(--t2)" }}>
                         用对话驱动真实浏览器
                       </div>
                     </div>
                   </div>
-                  <div
-                    className="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium"
-                    style={{
-                      background: activeSessionId
-                        ? "rgba(16, 185, 129, 0.1)"
-                        : "rgba(148, 163, 184, 0.14)",
-                      color: activeSessionId
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <div
+                      className="rounded-full px-2.5 py-1 text-[11px] font-medium"
+                      style={{
+                        background: activeSessionId
+                          ? "rgba(16, 185, 129, 0.1)"
+                          : "rgba(148, 163, 184, 0.14)",
+                        color: activeSessionId
                           ? "#0f8c68"
                           : "#64748b",
-                    }}
-                  >
-                    {activeSessionId ? "已连接" : "未连接"}
+                      }}
+                    >
+                      {activeSessionId ? "已连接" : "未连接"}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClearBrowserChat}
+                      disabled={chatLoading || chatMessages.length === 0}
+                      title="清空对话"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors"
+                      style={{
+                        background: "rgba(15, 23, 42, 0.05)",
+                        color:
+                          chatLoading || chatMessages.length === 0
+                            ? "#b3bdcb"
+                            : "#66748a",
+                        border: "1px solid rgba(18, 30, 56, 0.06)",
+                        opacity: chatLoading || chatMessages.length === 0 ? 0.72 : 1,
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </div>
                 </div>
               </div>
 
-              <div className="flex min-h-0 flex-1 flex-col p-3">
+              <div className="flex min-h-0 flex-1 flex-col">
                 <div
-                  className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[26px] border"
+                  className="flex min-h-0 flex-1 flex-col overflow-hidden"
                   style={{
-                    borderColor: "var(--border)",
-                    background: "var(--panel-bg-soft)",
-                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                    background:
+                      "linear-gradient(180deg, rgba(249,251,255,0.38) 0%, rgba(237,241,248,0.64) 100%)",
                   }}
                 >
                   <div
                     ref={chatScrollRef}
-                    className="browser-chat-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2.5 py-2.5"
+                    className="browser-chat-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-4 pb-3 pt-4"
                   >
-                    <div className="min-w-0 space-y-3">
+                    <div className="min-w-0 space-y-5">
                       {chatMessages.length > 0 ? (
                         chatMessages.map((message) =>
                           message.role === "user" ? (
                             <div
                               key={message.id}
-                              className="min-w-0 flex justify-end gap-2.5"
+                              className="min-w-0 flex justify-end"
                             >
                               <div
-                                className="min-w-0 max-w-[76%] rounded-[18px] px-3.5 py-2.5"
+                                className="min-w-0 max-w-[78%] rounded-[20px] rounded-tr-[7px] px-4 py-3"
                                 style={{
                                   background:
-                                    "linear-gradient(180deg, rgba(24, 82, 177, 0.26) 0%, rgba(18, 75, 166, 0.2) 100%)",
-                                  border: "1px solid rgba(96, 141, 255, 0.18)",
+                                    "linear-gradient(180deg, #dbe9ff 0%, #c9dcfb 100%)",
+                                  border: "1px solid rgba(94, 141, 210, 0.18)",
                                   boxShadow:
-                                    "0 12px 24px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255,255,255,0.08)",
+                                    "0 12px 28px rgba(61, 93, 143, 0.14), inset 0 1px 0 rgba(255,255,255,0.72)",
                                 }}
                               >
                                 <div
-                                  className="whitespace-pre-wrap break-words text-[13px] leading-6"
+                                  className="whitespace-pre-wrap break-words text-[14px] leading-6"
                                   style={{
-                                    color: "var(--t1)",
+                                    color: "#18253b",
                                     overflowWrap: "anywhere",
                                     wordBreak: "break-word",
                                   }}
@@ -2293,58 +3036,38 @@ export function Browser({ appState, windowId }: BrowserProps) {
                                   {message.content}
                                 </div>
                               </div>
-                              <div
-                                className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
-                                style={{
-                                  background: "var(--control-bg)",
-                                  border: "1px solid rgba(96, 141, 255, 0.18)",
-                                  boxShadow:
-                                    "0 10px 18px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255,255,255,0.08)",
-                                  color: "#4f7fe8",
-                                }}
-                              >
-                                <UserRound size={14} strokeWidth={1.9} />
-                              </div>
                             </div>
                           ) : (
-                            <div key={message.id} className="min-w-0 flex gap-2.5">
+                            <div key={message.id} className="min-w-0 flex gap-3">
                               <div
-                                className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[12px]"
+                                className="mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-[14px]"
                                 style={{
                                   background:
-                                    "radial-gradient(circle at top left, rgba(137,180,255,0.95) 0%, rgba(92,135,233,0.92) 45%, rgba(64,105,204,0.96) 100%)",
-                                  border: "1px solid rgba(78, 119, 213, 0.18)",
+                                    "linear-gradient(145deg, #6d8ef7 0%, #4666dd 100%)",
+                                  border: "1px solid rgba(84, 119, 220, 0.2)",
                                   boxShadow:
-                                    "0 12px 20px rgba(78, 119, 213, 0.22), inset 0 1px 0 rgba(255,255,255,0.24)",
+                                    "0 14px 24px rgba(72, 96, 190, 0.22), inset 0 1px 0 rgba(255,255,255,0.24)",
                                   color: "#ffffff",
                                 }}
                               >
                                 <Sparkles size={14} strokeWidth={1.9} />
                               </div>
-                              <div
-                                className="min-w-0 flex-1 rounded-[18px] border px-3.5 py-3"
-                                style={{
-                                  borderColor: "var(--border)",
-                                  background: "var(--panel-bg)",
-                                  boxShadow:
-                                    "0 16px 28px rgba(0, 0, 0, 0.16), inset 0 1px 0 rgba(255,255,255,0.06)",
-                                }}
-                              >
-                                <div className="flex min-w-0 items-center justify-between gap-3">
-                                  <div
-                                    className="min-w-0 truncate text-[10px] uppercase tracking-[0.08em]"
-                                    style={{ color: "var(--t3)" }}
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-1.5 flex min-w-0 items-center gap-2">
+                                  <span
+                                    className="min-w-0 truncate text-[12px] font-medium"
+                                    style={{ color: "#31405b" }}
                                   >
                                     浏览器助手
-                                  </div>
+                                  </span>
                                   {message.status ? (
                                     <div
-                                      className="shrink-0 inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-[11px] font-medium"
+                                      className="inline-flex min-w-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium"
                                       style={{
                                         background: message.streaming
-                                          ? "rgba(59, 130, 246, 0.1)"
-                                          : "rgba(148, 163, 184, 0.14)",
-                                        color: message.streaming ? "#2563eb" : "#64748b",
+                                          ? "rgba(65, 105, 225, 0.1)"
+                                          : "rgba(116, 129, 151, 0.11)",
+                                        color: message.streaming ? "#3a5ed7" : "#6b7890",
                                       }}
                                     >
                                       {message.streaming ? (
@@ -2356,58 +3079,81 @@ export function Browser({ appState, windowId }: BrowserProps) {
                                       {message.status}
                                     </div>
                                   ) : null}
+                                  {message.status === "执行失败" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        handleRetryBrowserMessage(message.id)
+                                      }
+                                      disabled={
+                                        chatLoading ||
+                                        !findBrowserRetryPrompt(
+                                          chatMessages,
+                                          message.id,
+                                        )
+                                      }
+                                      title="重试上一条任务"
+                                      className="inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-medium"
+                                      style={{
+                                        background: "rgba(15, 23, 42, 0.05)",
+                                        color: chatLoading ? "#a7b1c1" : "#60708f",
+                                        border: "1px solid rgba(18, 30, 56, 0.06)",
+                                      }}
+                                    >
+                                      <RefreshCw size={11} />
+                                      重试
+                                    </button>
+                                  ) : null}
                                 </div>
 
                                 {message.events?.length ? (
                                   <div
-                                    className="mt-3 min-w-0 rounded-[16px] border px-2.5 py-2.5"
+                                    className="browser-agent-timeline mb-3 ml-1 min-w-0 space-y-2.5 border-l pl-3"
                                     style={{
-                                      borderColor: "rgba(96, 165, 250, 0.14)",
-                                      background: "var(--panel-bg-soft)",
+                                      borderColor: "rgba(122, 145, 178, 0.22)",
                                     }}
                                   >
-                                    <div
-                                      className="mb-2 text-[10px] uppercase tracking-[0.08em]"
-                                      style={{ color: "var(--t3)" }}
-                                    >
-                                      实时进展
-                                    </div>
-                                    <div className="min-w-0 space-y-2">
-                                      {message.events.map((event, index) => (
-                                        <div
-                                          key={`${message.id}-event-${index}`}
-                                          className="min-w-0 flex gap-2"
-                                        >
-                                          <span
-                                            className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full"
-                                            style={{
-                                              background:
-                                                index === message.events!.length - 1 && message.streaming
-                                                  ? "#3b82f6"
-                                                  : "#a3b2c7",
-                                            }}
-                                          />
-                                          <div
-                                            className="min-w-0 whitespace-pre-wrap break-words text-[11px] leading-5"
-                                            style={{
-                                              color: "var(--t2)",
-                                              overflowWrap: "anywhere",
-                                              wordBreak: "break-word",
-                                            }}
-                                          >
-                                            {event}
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
+                                    {message.events.map((event, index) => (
+                                      <div
+                                        key={`${message.id}-event-${index}`}
+                                        className="browser-agent-timeline-item relative min-w-0 whitespace-pre-wrap break-words text-[12px] leading-5"
+                                        style={{
+                                          color:
+                                            index === message.events!.length - 1 && message.streaming
+                                              ? "#516aa3"
+                                              : "#7a8799",
+                                          overflowWrap: "anywhere",
+                                          wordBreak: "break-word",
+                                        }}
+                                      >
+                                        <span
+                                          className="absolute left-[-16px] top-[7px] h-1.5 w-1.5 rounded-full"
+                                          style={{
+                                            background:
+                                              index === message.events!.length - 1 && message.streaming
+                                                ? "#4f6feb"
+                                                : "#a9b5c8",
+                                            boxShadow:
+                                              index === message.events!.length - 1 && message.streaming
+                                                ? "0 0 0 4px rgba(79,111,235,0.12)"
+                                                : "none",
+                                          }}
+                                        />
+                                        {event}
+                                      </div>
+                                    ))}
                                   </div>
                                 ) : null}
 
                                 {message.content ? (
                                   <div
-                                    className="markdown mt-3 min-w-0 break-words text-[13px] leading-6"
+                                    className="markdown min-w-0 break-words rounded-[20px] rounded-tl-[7px] border px-4 py-3 text-[14px] leading-6"
                                     style={{
-                                      color: "var(--t1)",
+                                      color: "#202b3d",
+                                      borderColor: "rgba(18, 30, 56, 0.08)",
+                                      background: "rgba(255,255,255,0.78)",
+                                      boxShadow:
+                                        "0 14px 32px rgba(31, 44, 67, 0.1), inset 0 1px 0 rgba(255,255,255,0.86)",
                                       overflowWrap: "anywhere",
                                       wordBreak: "break-word",
                                     }}
@@ -2427,8 +3173,12 @@ export function Browser({ appState, windowId }: BrowserProps) {
                                   </div>
                                 ) : message.streaming ? (
                                   <div
-                                    className="mt-3 text-[13px] leading-6"
-                                    style={{ color: "var(--t2)" }}
+                                    className="inline-flex rounded-[18px] rounded-tl-[7px] border px-4 py-3 text-[14px] leading-6"
+                                    style={{
+                                      color: "#657186",
+                                      borderColor: "rgba(18, 30, 56, 0.08)",
+                                      background: "rgba(255,255,255,0.72)",
+                                    }}
                                   >
                                     正在生成响应
                                     <span className="browser-agent-ellipsis ml-1 inline-flex">
@@ -2444,34 +3194,33 @@ export function Browser({ appState, windowId }: BrowserProps) {
                         )
                       ) : (
                         <div
-                          className="rounded-[16px] border border-dashed px-3.5 py-3"
+                          className="mx-auto mt-8 max-w-[320px] px-3 text-center"
                           style={{
-                            borderColor: "var(--border-strong)",
-                            background: "var(--panel-bg)",
                             color: "var(--t2)",
                           }}
                         >
-                          <div className="flex items-start gap-2.5">
+                          <div className="flex flex-col items-center">
                             <div
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full"
+                              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[15px]"
                               style={{
-                                background: "var(--control-bg)",
-                                border: "1px solid var(--border)",
+                                background:
+                                  "linear-gradient(145deg, rgba(109,142,247,0.16), rgba(70,102,221,0.12))",
+                                border: "1px solid rgba(84, 119, 220, 0.16)",
                                 boxShadow:
-                                  "0 6px 14px rgba(0, 0, 0, 0.14), inset 0 1px 0 rgba(255,255,255,0.08)",
+                                  "0 12px 24px rgba(61, 80, 145, 0.12), inset 0 1px 0 rgba(255,255,255,0.78)",
                               }}
                             >
-                              <Monitor size={14} style={{ color: "var(--t3)" }} />
+                              <Sparkles size={16} style={{ color: "#526edb" }} />
                             </div>
-                            <div className="min-w-0 flex-1">
+                            <div className="mt-3 min-w-0">
                               <div
-                                className="text-[10px] uppercase tracking-[0.08em]"
-                                style={{ color: "var(--t3)" }}
+                                className="text-[13px] font-medium"
+                                style={{ color: "#344154" }}
                               >
-                                可以开始
+                                可以直接交给浏览器助手
                               </div>
                               <div
-                                className="mt-0.5 text-[12px] leading-5"
+                                className="mt-1 text-[12px] leading-5"
                                 style={{ color: "var(--t2)" }}
                               >
                                 直接说“打开知乎”或“在当前页面帮我总结重点”。
@@ -2485,15 +3234,15 @@ export function Browser({ appState, windowId }: BrowserProps) {
                   </div>
 
                   <div
-                    className="shrink-0 border-t px-2 py-2"
+                    className="shrink-0 px-4 pb-3 pt-1.5"
                     style={{
-                      borderColor: "var(--border)",
-                      background: "var(--panel-bg)",
+                      background:
+                        "linear-gradient(180deg, rgba(237,241,248,0) 0%, rgba(237,241,248,0.96) 38%, rgba(237,241,248,0.98) 100%)",
                     }}
                   >
                     {summaryError ? (
                       <div
-                        className="mb-3 rounded-[18px] px-3 py-3 text-[12px] leading-5"
+                        className="mb-3 rounded-[16px] px-3 py-3 text-[12px] leading-5"
                         style={{
                           background: "rgba(255, 92, 92, 0.08)",
                           color: "#d83b3b",
@@ -2505,12 +3254,12 @@ export function Browser({ appState, windowId }: BrowserProps) {
                     ) : null}
 
                     <div
-                      className="rounded-[22px] border p-1.5"
+                      className="rounded-[22px] border px-3 pb-2 pt-2.5"
                       style={{
-                        borderColor: "var(--border)",
-                        background: "var(--input-bg)",
+                        borderColor: "rgba(18, 30, 56, 0.09)",
+                        background: "rgba(255,255,255,0.86)",
                         boxShadow:
-                          "inset 0 1px 0 rgba(255,255,255,0.06), 0 10px 24px rgba(0, 0, 0, 0.14)",
+                          "0 16px 34px rgba(31, 44, 67, 0.12), inset 0 1px 0 rgba(255,255,255,0.92)",
                       }}
                     >
                       <textarea
@@ -2523,13 +3272,13 @@ export function Browser({ appState, windowId }: BrowserProps) {
                           }
                         }}
                         placeholder="告诉浏览器你想做什么"
-                        className="min-h-[68px] w-full resize-none rounded-[18px] border-0 bg-transparent px-3 py-2.5 text-[13px] outline-none"
+                        className="min-h-[44px] max-h-[120px] w-full resize-none border-0 bg-transparent px-1.5 py-1 text-[14px] leading-6 outline-none"
                         style={{
-                          color: "var(--t1)",
+                          color: "#202b3d",
                         }}
                       />
 
-                      <div className="mt-1.5 flex items-center justify-between gap-3 px-1.5 pb-0.5">
+                      <div className="mt-1 flex items-center justify-between gap-3">
                         <div
                           className="text-[11px]"
                           style={{ color: "var(--t3)" }}
@@ -2540,18 +3289,18 @@ export function Browser({ appState, windowId }: BrowserProps) {
                           type="button"
                           onClick={() => void handleAskPage()}
                           disabled={!chatInput.trim() || chatLoading}
-                          className="inline-flex h-9 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-medium"
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-full px-4 text-[13px] font-medium"
                           style={{
                             background:
                               !chatInput.trim() || chatLoading
-                                ? "var(--disabled-bg)"
-                                : "linear-gradient(180deg, #1e80ff 0%, #0f6ae6 100%)",
+                                ? "rgba(15, 23, 42, 0.06)"
+                                : "linear-gradient(180deg, #3f65f0 0%, #2d52d8 100%)",
                             color:
-                              !chatInput.trim() || chatLoading ? "var(--t3)" : "#fff",
+                              !chatInput.trim() || chatLoading ? "#a0a9b8" : "#fff",
                             boxShadow:
                               !chatInput.trim() || chatLoading
-                                ? "inset 0 1px 0 rgba(255,255,255,0.05)"
-                                : "0 14px 24px rgba(30, 128, 255, 0.24), inset 0 1px 0 rgba(255,255,255,0.28)",
+                                ? "none"
+                                : "0 12px 22px rgba(63, 101, 240, 0.24), inset 0 1px 0 rgba(255,255,255,0.3)",
                           }}
                         >
                           {chatLoading ? (

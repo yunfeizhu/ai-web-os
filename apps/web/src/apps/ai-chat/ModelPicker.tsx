@@ -49,12 +49,14 @@ export function ModelPicker({ value, onChange }: Props) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[13px] font-medium transition-colors"
+        className="flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium transition-colors"
         style={{
-          background: "var(--control-bg)",
-          border: "0.5px solid var(--border)",
+          background: "rgba(255,255,255,0.66)",
+          border: "0.5px solid rgba(0,0,0,0.08)",
           color: "var(--t2)",
           maxWidth: 240,
+          boxShadow:
+            "0 1px 2px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.8)",
         }}
       >
         {(providerDef || customProviderName) && (

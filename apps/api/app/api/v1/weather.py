@@ -18,21 +18,7 @@ router = APIRouter()
 DEFAULT_LATITUDE = 30.41875
 DEFAULT_LONGITUDE = 120.29861
 OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-FREE_API_GEOCODER_URL = "https://www.free-api.com/urltask"
-FREE_API_GEOCODER_CSRF_TOKEN = "t3HirziIsbWdyYSGwemjhjEhDkJl5KMHu9bwTDTQ"
-FREE_API_GEOCODER_COOKIE = (
-    "Hm_lvt_6188d53492b3951c5aa16a77f0b0e858=1782290023; "
-    "HMACCOUNT=8B5EE9475429B07A; "
-    "agree=1; "
-    "__gads=ID=4bacb3f17df88b69:T=1782290024:RT=1782296164:S=ALNI_MZG5Q0m2p9kXltdwgf9RquaW3nFmw; "
-    "__gpi=UID=000014825c5b6c8a:T=1782290024:RT=1782296164:S=ALNI_MYBfrMV2-YLHJZWfIuQQmamkK9zUw; "
-    "__eoi=ID=4ac2e5f54f0a82d1:T=1782290024:RT=1782296164:S=AA-AfjYDoMhZL-6RtI6OMFbqfXNR; "
-    "Hm_lpvt_6188d53492b3951c5aa16a77f0b0e858=1782296179; "
-    "FCCDCF=%5Bnull%2Cnull%2Cnull%2Cnull%2Cnull%2Cnull%2C%5B%5B32%2C%22%5B%5C%227ba14856-858e-46f7-bf6c-80d425d4af72%5C%22%2C%5B1782290027%2C147000000%5D%5D%22%5D%5D%5D; "
-    "FCNEC=%5B%5B%22AKsRol_jiZ79vFRyUjFIL4T2vw10dYdAPjhadc45CRKeJp5HPYz_j1utQaal2RC_5CkTmqfHRfH3GztylmARHRW8splE9iMZvTh3dab1olkNfgx53CXAYABaC8phYh4PiY1AcsFbzfS1HpSMnul8qdzC4qmNTLQzbQ%3D%3D%22%5D%5D; "
-    "XSRF-TOKEN=eyJpdiI6IkZQdE5YZTVcLzBFT2VKajJTZmdEbWJ3PT0iLCJ2YWx1ZSI6IjNYYVoyc3ZTXC9iamtHOVBzR1pvRHNHMk1YVThvWUNEaThVeGRuNzlWa01DWkREWml2NE5jSGRpRURDdEhsMFNOIiwibWFjIjoiMzI1ZTc3MDBiYzU1NjA1ZTkxY2ExMTEzNDI4MmI4ZWNkYTA0NjA4MDMzZmVlZTY5NmM5NjRhMTI2Y2Q1ODdmNiJ9; "
-    "laravel_session=eyJpdiI6ImVNVnpBalA4cjV3QmJCZHpycElSc0E9PSIsInZhbHVlIjoiV0pxMVlBR1huV2ZxaE1MYmRWR0lrZHQ4V3RWZmR1ZXlrV0N5d0FPOW5lSFNFNnNSUmU0WEFhTzR0c2d4bTM4cyIsIm1hYyI6ImUxNWYxY2ViMmIzYmFjZDRkMTVjY2E4YWM5NDRhMjgwNTk1MTgxMWQ1MmE4MzIxMTAxNjYzMzRlMTA1MWNiMmIifQ%3D%3D"
-)
+TENCENT_GEOCODER_URL = "https://apis.map.qq.com/ws/geocoder/v1/"
 
 WeatherIcon = Literal["rain", "night-rain", "cloud", "clear", "snow", "fog"]
 
@@ -66,7 +52,7 @@ async def get_weather_summary(
     try:
         weather_result, location_result = await asyncio.gather(
             _fetch_open_meteo_weather_payload(latitude, longitude),
-            _safe_fetch_free_api_location_name(latitude, longitude),
+            _safe_fetch_tencent_location_name(latitude, longitude),
         )
         payload, source_url = weather_result
     except Exception as exc:
@@ -137,63 +123,59 @@ def _build_weather_summary(
     )
 
 
-async def _safe_fetch_free_api_location_name(latitude: float, longitude: float) -> str:
+async def _safe_fetch_tencent_location_name(latitude: float, longitude: float) -> str:
     try:
-        payload, _source_url = await _fetch_free_api_reverse_geocode_payload(
+        payload, _source_url = await _fetch_tencent_reverse_geocode_payload(
             latitude,
             longitude,
         )
-        return _free_api_district(payload) or "当前位置"
+        return _tencent_district(payload) or "当前位置"
     except Exception:
         return "当前位置"
 
 
-async def _fetch_free_api_reverse_geocode_payload(
+async def _fetch_tencent_reverse_geocode_payload(
     latitude: float,
     longitude: float,
 ) -> tuple[dict[str, Any], str]:
+    key = get_settings().tencent_map_key.strip()
+    if not key:
+        raise RuntimeError("缺少 TENCENT_MAP_KEY")
+
     headers = {
         "User-Agent": "AI-Web-OS/1.0 weather widget",
         "Accept": "application/json",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Cookie": FREE_API_GEOCODER_COOKIE,
-        "x-csrf-token": FREE_API_GEOCODER_CSRF_TOKEN,
     }
-    data = {
+    params = {
         "location": f"{latitude},{longitude}",
-        "fzsid": "343",
+        "key": key,
     }
     async with httpx.AsyncClient(timeout=5, follow_redirects=True) as client:
-        response = await client.post(FREE_API_GEOCODER_URL, headers=headers, data=data)
+        response = await client.get(TENCENT_GEOCODER_URL, params=params, headers=headers)
         response.raise_for_status()
         payload = response.json()
         if not isinstance(payload, dict):
-            raise RuntimeError("free-api 返回非 JSON 对象")
-        message_payload = payload.get("msg")
-        if not isinstance(message_payload, dict):
-            raise RuntimeError("free-api 返回缺少 msg")
-        if payload.get("status") != 0 or message_payload.get("status") != 0:
-            message = str(message_payload.get("message") or "free-api 逆地理编码失败")
+            raise RuntimeError("腾讯地图返回非 JSON 对象")
+        if payload.get("status") != 0:
+            message = str(payload.get("message") or "腾讯地图逆地理编码失败")
             raise RuntimeError(message)
-        return payload, str(response.url)
+        return payload, TENCENT_GEOCODER_URL
 
 
-def _free_api_district(payload: dict[str, Any]) -> str:
-    message_payload = payload.get("msg")
-    if not isinstance(message_payload, dict):
-        return ""
-    result = message_payload.get("result")
+def _tencent_district(payload: dict[str, Any]) -> str:
+    result = payload.get("result")
     if not isinstance(result, dict):
         return ""
     address_component = result.get("address_component")
     if isinstance(address_component, dict):
-        district = str(address_component.get("district") or "").strip()
-        if district:
-            return district
+        for key in ("district", "city", "province"):
+            value = str(address_component.get(key) or "").strip()
+            if value:
+                return value
     ad_info = result.get("ad_info")
-    if not isinstance(ad_info, dict):
-        return ""
-    return str(ad_info.get("district") or "").strip()
+    if isinstance(ad_info, dict):
+        return str(ad_info.get("name") or "").split("，")[-1].strip()
+    return ""
 
 
 def _build_hourly(payload: dict[str, Any], current_time: Any) -> list[WeatherHour]:

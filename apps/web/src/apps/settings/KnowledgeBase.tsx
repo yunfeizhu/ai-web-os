@@ -620,23 +620,17 @@ export function KnowledgeBase() {
       {/* 粘贴文本 Modal */}
       {showPasteModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ background: "rgba(0,0,0,0.3)" }}
+          className="macos-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center px-5"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowPasteModal(false);
           }}
         >
           <div
-            className="w-full max-w-lg rounded-2xl p-5 space-y-4"
-            style={{
-              background: "var(--bg, #fff)",
-              boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
-            }}
+            className="macos-dialog-panel w-full max-w-lg space-y-4 p-5"
           >
             <div className="flex items-center justify-between">
               <h3
-                className="text-[16px] font-semibold"
-                style={{ color: "var(--t1)" }}
+                className="macos-dialog-title"
               >
                 粘贴文本
               </h3>
@@ -667,12 +661,7 @@ export function KnowledgeBase() {
                   value={pasteTitle}
                   onChange={(e) => setPasteTitle(e.target.value)}
                   placeholder="文档标题"
-                  className="w-full px-3 py-2 rounded-xl text-[14px] outline-none"
-                  style={{
-                    background: "rgba(0,0,0,0.04)",
-                    border: "0.5px solid rgba(0,0,0,0.1)",
-                    color: "var(--t1)",
-                  }}
+                  className="macos-dialog-field w-full px-3 py-2 text-[14px] outline-none"
                 />
               </div>
               <div>
@@ -687,12 +676,7 @@ export function KnowledgeBase() {
                   onChange={(e) => setPasteContent(e.target.value)}
                   placeholder="粘贴文本内容…"
                   rows={8}
-                  className="w-full px-3 py-2 rounded-xl text-[14px] outline-none resize-none"
-                  style={{
-                    background: "rgba(0,0,0,0.04)",
-                    border: "0.5px solid rgba(0,0,0,0.1)",
-                    color: "var(--t1)",
-                  }}
+                  className="macos-dialog-field w-full resize-none px-3 py-2 text-[14px] outline-none"
                 />
               </div>
             </div>
@@ -700,25 +684,14 @@ export function KnowledgeBase() {
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setShowPasteModal(false)}
-                className="px-4 py-2 rounded-xl text-[14px]"
-                style={{ background: "rgba(0,0,0,0.06)", color: "var(--t2)" }}
+                className="macos-dialog-button px-4 py-2 text-[14px]"
               >
                 取消
               </button>
               <button
                 onClick={handlePasteSubmit}
                 disabled={!pasteTitle.trim() || !pasteContent.trim() || pasting}
-                className="px-4 py-2 rounded-xl text-[14px] font-medium"
-                style={{
-                  background:
-                    pasteTitle.trim() && pasteContent.trim() && !pasting
-                      ? "var(--accent)"
-                      : "rgba(0,0,0,0.06)",
-                  color:
-                    pasteTitle.trim() && pasteContent.trim() && !pasting
-                      ? "#fff"
-                      : "var(--t3)",
-                }}
+                className="macos-dialog-button-primary px-4 py-2 text-[14px] font-medium"
               >
                 {pasting ? "添加中…" : "添加到知识库"}
               </button>

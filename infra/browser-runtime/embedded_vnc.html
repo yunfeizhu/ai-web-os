@@ -77,6 +77,7 @@
         let pendingWheelX = 0;
         let pendingWheelY = 0;
         let wheelFlushScheduled = false;
+        let lastFocusAt = 0;
 
         const screen = document.getElementById("screen");
         const status = document.getElementById("status");
@@ -181,6 +182,28 @@
             }
         }
 
+        async function focusSession() {
+            if (!apiBase || !sessionId) {
+                return;
+            }
+
+            const now = Date.now();
+            if (now - lastFocusAt < 650) {
+                return;
+            }
+            lastFocusAt = now;
+
+            try {
+                await fetch(`${apiBase}/sessions/${encodeURIComponent(sessionId)}/focus`, {
+                    method: "POST",
+                    mode: "cors",
+                    credentials: "omit",
+                });
+            } catch (error) {
+                // The noVNC connection can still be usable even if the focus hint fails.
+            }
+        }
+
         function handleWheel(event) {
             if (!apiBase || !sessionId) {
                 return;
@@ -220,6 +243,7 @@
 
             rfb.addEventListener("connect", () => {
                 status.className = "";
+                void focusSession();
                 if (preciseMode) {
                     showStatus("精准模式已开启，当前按原始像素显示，可滚动查看完整页面。");
                 }
@@ -241,6 +265,14 @@
                 passive: false,
                 capture: true,
             });
+            screen.addEventListener("mouseenter", focusSession);
+            window.addEventListener("focus", focusSession);
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) {
+                    void focusSession();
+                }
+            });
+            void focusSession();
 
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to initialize noVNC";

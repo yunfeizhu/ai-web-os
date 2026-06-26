@@ -5,7 +5,7 @@
     "dev": "turbo dev",
     "api:dev": "cd apps/api && uv run uvicorn app.main:app --reload",
     "browser-runtime:build": "docker build -f infra/browser-runtime/Dockerfile -t ai-web-os/browser-runtime:dev .",
-    "browser-runtime:dev": "docker run --rm -p 18100:18100 ai-web-os/browser-runtime:dev",
+    "browser-runtime:dev": "docker run --rm -p 18100:18100 -p 16080:6080 --env BROWSER_ALLOWED_ORIGINS --env BROWSER_GLOBAL_STORAGE_ENABLED --env BROWSER_VNC_PASSWORD ai-web-os/browser-runtime:dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "clean": "turbo clean"

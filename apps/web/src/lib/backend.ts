@@ -65,3 +65,86 @@ export async function completeOnce(message: string, systemPrompt: string) {
     }),
   });
 }
+
+export async function completeOnceStream(
+  message: string,
+  systemPrompt: string,
+  onToken: (token: string) => void,
+) {
+  const ctx = getActiveModelContext();
+  if (!ctx) {
+    throw new Error("请先在设置中配置并选择可用模型。");
+  }
+
+  const res = await fetch(buildApiUrl("/agents/complete/stream"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": ctx.apiKey,
+    },
+    body: JSON.stringify({
+      message,
+      model: ctx.modelId,
+      provider_id: ctx.providerId,
+      compat_type: ctx.compatType,
+      api_base: ctx.apiBase,
+      system_prompt: systemPrompt,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  if (!res.body) {
+    throw new Error("当前浏览器不支持流式响应。");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+
+  const handleEvent = (eventText: string) => {
+    const lines = eventText.split(/\r?\n/);
+    for (const line of lines) {
+      if (!line.startsWith("data:")) continue;
+
+      const data = line.slice(5).trim();
+      if (!data) continue;
+      if (data === "[DONE]") return true;
+
+      const payload = JSON.parse(data) as {
+        token?: unknown;
+        x_error?: unknown;
+      };
+      if (typeof payload.x_error === "string" && payload.x_error.trim()) {
+        throw new Error(payload.x_error);
+      }
+      if (typeof payload.token === "string" && payload.token) {
+        content += payload.token;
+        onToken(payload.token);
+      }
+    }
+    return false;
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = events.pop() ?? "";
+
+    for (const eventText of events) {
+      if (handleEvent(eventText)) {
+        return { content };
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    handleEvent(buffer);
+  }
+  return { content };
+}

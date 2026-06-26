@@ -224,9 +224,29 @@ describe("buildAvatarSystemPrompt", () => {
       "sad",
       "angry",
       "relaxed",
+      "closed",
     ]) {
       expect(prompt).toContain(`[emotion:${emotion}]`);
     }
+  });
+
+  it("instructs the avatar to use hidden motion tags for Live2D actions", () => {
+    const prompt = buildAvatarSystemPrompt();
+
+    expect(prompt).toContain("[motion:heart]");
+    expect(prompt).toContain("画爱心");
+  });
+
+  it("uses a companion persona without exposing product placement wording", () => {
+    const prompt = buildAvatarSystemPrompt();
+
+    expect(prompt).toContain("虚拟伙伴");
+    expect(prompt).toContain("温和");
+    expect(prompt).toContain("俏皮");
+    expect(prompt).toContain("不要制造情感依赖");
+    expect(prompt).toContain("切换到可靠助手模式");
+    expect(prompt).not.toContain("AI-Web OS");
+    expect(prompt).not.toContain("桌面上");
   });
 });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { MouseEvent, PointerEvent } from "react";
+import type { CSSProperties, MouseEvent, PointerEvent } from "react";
 import { MessageCircle, X } from "lucide-react";
 import { Rnd } from "react-rnd";
 
@@ -18,11 +18,19 @@ import { useAvatarStore } from "@/stores/avatarStore";
 import { AvatarBubble } from "./AvatarBubble";
 import { Live2DCanvas } from "./Live2DCanvas";
 
-const BUBBLE_WIDTH_ESTIMATE = 320;
-const BUBBLE_HEIGHT_ESTIMATE = 360;
-const BUBBLE_OFFSET = 8;
-const BUBBLE_MIN_HEIGHT = 160;
+const BUBBLE_PANEL_WIDTH = 480;
+const BUBBLE_PANEL_HEIGHT = 460;
+const BUBBLE_SIDE_OFFSET = 18;
+const BUBBLE_VIEWPORT_GAP = 16;
+const BUBBLE_MIN_WIDTH = 280;
+const BUBBLE_MIN_VIEWPORT_HEIGHT = 220;
+const AVATAR_DIALOG_ANCHOR_RATIO = 0.65;
+const AVATAR_PET_Z_INDEX = 10000;
 const CONTROL_CLICK_MOVE_THRESHOLD = 4;
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
 
 function getViewport(): ViewportSize {
   if (typeof window === "undefined") {
@@ -45,6 +53,7 @@ export function AvatarPet() {
   const size = useAvatarStore((state) => state.size);
   const modelUrl = useAvatarStore((state) => state.modelUrl);
   const currentEmotion = useAvatarStore((state) => state.currentEmotion);
+  const motionRequest = useAvatarStore((state) => state.motionRequest);
   const setVisible = useAvatarStore((state) => state.setVisible);
   const setBubbleOpen = useAvatarStore((state) => state.setBubbleOpen);
   const toggleBubble = useAvatarStore((state) => state.toggleBubble);
@@ -149,44 +158,79 @@ export function AvatarPet() {
     setVisible(false);
   };
 
-  const availableAbove =
+  const bubbleWidth =
     viewport === null
-      ? BUBBLE_HEIGHT_ESTIMATE
-      : Math.max(0, position.y - AVATAR_CLAMP_GAP - BUBBLE_OFFSET);
-  const availableBelow =
+      ? BUBBLE_PANEL_WIDTH
+      : Math.min(
+          BUBBLE_PANEL_WIDTH,
+          Math.max(BUBBLE_MIN_WIDTH, viewport.width - BUBBLE_VIEWPORT_GAP * 2),
+        );
+  const bubbleHeight =
+    viewport === null
+      ? BUBBLE_PANEL_HEIGHT
+      : Math.min(
+          BUBBLE_PANEL_HEIGHT,
+          Math.max(
+            BUBBLE_MIN_VIEWPORT_HEIGHT,
+            viewport.height - BUBBLE_VIEWPORT_GAP * 2,
+          ),
+        );
+  const preferredBubbleTop =
+    position.y + size.height * AVATAR_DIALOG_ANCHOR_RATIO - bubbleHeight / 2;
+  const maxBubbleTop =
+    viewport === null
+      ? preferredBubbleTop
+      : Math.max(
+          BUBBLE_VIEWPORT_GAP,
+          viewport.height - BUBBLE_VIEWPORT_GAP - bubbleHeight,
+        );
+  const bubbleTop =
+    viewport === null
+      ? Math.round(size.height * AVATAR_DIALOG_ANCHOR_RATIO - bubbleHeight / 2)
+      : Math.round(
+          clamp(preferredBubbleTop, BUBBLE_VIEWPORT_GAP, maxBubbleTop) -
+            position.y,
+        );
+  const availableRight =
+    viewport === null
+      ? Number.POSITIVE_INFINITY
+      : viewport.width -
+        (position.x + size.width) -
+        BUBBLE_SIDE_OFFSET -
+        BUBBLE_VIEWPORT_GAP;
+  const availableLeft =
     viewport === null
       ? 0
-      : Math.max(
-          0,
-          viewport.height -
-            (position.y + size.height) -
-            AVATAR_CLAMP_GAP -
-            BUBBLE_OFFSET,
-        );
-  const showBubbleBelow =
-    availableBelow >= BUBBLE_MIN_HEIGHT || availableBelow > availableAbove;
-  const selectedBubbleSpace = showBubbleBelow
-    ? availableBelow
-    : availableAbove;
-  const useViewportAnchoredBubble =
-    viewport !== null && selectedBubbleSpace < BUBBLE_MIN_HEIGHT;
-  const bubbleMaxHeight = useViewportAnchoredBubble
-    ? Math.max(96, viewport.height - AVATAR_CLAMP_GAP * 2)
-    : Math.max(
-        96,
-        Math.min(BUBBLE_HEIGHT_ESTIMATE, selectedBubbleSpace),
-      );
-  const bubblePlacementStyle = useViewportAnchoredBubble
-    ? { top: `${AVATAR_CLAMP_GAP - position.y}px` }
-    : {
-        ...(showBubbleBelow
-          ? { top: `calc(100% + ${BUBBLE_OFFSET}px)` }
-          : { bottom: `calc(100% + ${BUBBLE_OFFSET}px)` }),
-      };
-  const alignBubbleRight =
-    viewport !== null &&
-    position.x + BUBBLE_OFFSET + BUBBLE_WIDTH_ESTIMATE >
-      viewport.width - AVATAR_CLAMP_GAP;
+      : position.x - BUBBLE_SIDE_OFFSET - BUBBLE_VIEWPORT_GAP;
+  const canPlaceRight = availableRight >= bubbleWidth;
+  const canPlaceLeft = availableLeft >= bubbleWidth;
+  let bubblePlacement: "right" | "left" | "viewport" = "right";
+  const bubblePlacementStyle: CSSProperties = {
+    top: `${bubbleTop}px`,
+  };
+
+  if (canPlaceRight || viewport === null) {
+    bubblePlacementStyle.left = `calc(100% + ${BUBBLE_SIDE_OFFSET}px)`;
+  } else if (canPlaceLeft) {
+    bubblePlacement = "left";
+    bubblePlacementStyle.right = `calc(100% + ${BUBBLE_SIDE_OFFSET}px)`;
+  } else {
+    bubblePlacement = "viewport";
+    const preferredViewportLeft =
+      availableRight >= availableLeft
+        ? position.x + size.width + BUBBLE_SIDE_OFFSET
+        : position.x - bubbleWidth - BUBBLE_SIDE_OFFSET;
+    const maxViewportLeft = Math.max(
+      BUBBLE_VIEWPORT_GAP,
+      (viewport?.width ?? BUBBLE_PANEL_WIDTH) - BUBBLE_VIEWPORT_GAP - bubbleWidth,
+    );
+    const viewportLeft = clamp(
+      preferredViewportLeft,
+      BUBBLE_VIEWPORT_GAP,
+      maxViewportLeft,
+    );
+    bubblePlacementStyle.left = `${Math.round(viewportLeft - position.x)}px`;
+  }
 
   return (
     <Rnd
@@ -199,7 +243,7 @@ export function AvatarPet() {
       maxHeight={AVATAR_MAX_SIZE.height}
       position={position}
       size={size}
-      style={{ zIndex: 9000 }}
+      style={{ zIndex: AVATAR_PET_Z_INDEX }}
       onDragStart={(_event, data) => {
         dragStartPositionRef.current = { x: data.x, y: data.y };
       }}
@@ -234,12 +278,12 @@ export function AvatarPet() {
       <div className="relative flex h-full w-full select-none flex-col overflow-visible">
         {bubbleOpen && (
           <div
-            className={`absolute z-10 ${
-              alignBubbleRight ? "right-2" : "left-2"
-            }`}
+            data-testid="avatar-pet-bubble-popover"
+            data-avatar-bubble-placement={bubblePlacement}
+            className="absolute z-20"
             style={bubblePlacementStyle}
           >
-            <AvatarBubble maxHeight={bubbleMaxHeight} />
+            <AvatarBubble maxHeight={bubbleHeight} width={bubbleWidth} />
           </div>
         )}
 
@@ -322,7 +366,11 @@ export function AvatarPet() {
                 border: "0 solid transparent",
               }}
             >
-              <Live2DCanvas modelUrl={modelUrl} emotion={currentEmotion} />
+              <Live2DCanvas
+                modelUrl={modelUrl}
+                emotion={currentEmotion}
+                motionRequest={motionRequest}
+              />
             </div>
           </div>
         </div>

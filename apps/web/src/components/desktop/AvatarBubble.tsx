@@ -12,8 +12,10 @@ import {
   resolveAvatarAppLaunchIntent,
   resolveAvatarConversationModel,
   resolveAvatarModel,
+  type ResolvedAvatarModel,
 } from "@/apps/avatar-pet/avatar-chat";
-import { parseAvatarEmotions } from "@/apps/avatar-pet/emotion-parser";
+import { PROVIDERS } from "@/apps/settings/providers";
+import { parseAvatarCues } from "@/apps/avatar-pet/emotion-parser";
 import type { ChatMessage, ToolCall } from "@/apps/ai-chat/types";
 import { isInternalToolEvent } from "@/apps/ai-chat/toolCallVisibility";
 import {
@@ -36,6 +38,7 @@ type PendingConfirmation = {
 
 type AvatarBubbleProps = {
   maxHeight?: number;
+  width?: number;
 };
 
 function toolEventKey(
@@ -73,12 +76,36 @@ function getToolStatusText(tool: ToolCall) {
   return "完成";
 }
 
-export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
+function getAvatarModelSummary(resolvedModel: ResolvedAvatarModel | null) {
+  if (!resolvedModel) {
+    return "未配置可用模型";
+  }
+
+  const configuredName = resolvedModel.provider.name?.trim();
+  const builtinName = PROVIDERS.find(
+    (provider) => provider.id === resolvedModel.providerId,
+  )?.nameCn;
+  const providerName =
+    configuredName ||
+    builtinName ||
+    (resolvedModel.provider.isCustom ||
+    resolvedModel.providerId.startsWith("custom_")
+      ? "自定义模型"
+      : "模型服务");
+
+  return `${providerName} · ${resolvedModel.modelId}`;
+}
+
+export function AvatarBubble({
+  maxHeight = 560,
+  width = 480,
+}: AvatarBubbleProps) {
   const providers = useSettingsStore((state) => state.providers);
   const defaultModel = useSettingsStore((state) => state.defaultModel);
   const avatarModel = useSettingsStore((state) => state.avatarModel);
   const embeddingConfig = useSettingsStore((state) => state.embeddingConfig);
   const setCurrentEmotion = useAvatarStore((state) => state.setCurrentEmotion);
+  const requestMotion = useAvatarStore((state) => state.requestMotion);
   const openWindow = useWindowStore((state) => state.openWindow);
   const updateAppState = useWindowStore((state) => state.updateAppState);
   const [messages, setMessages] = useState<BubbleMessage[]>([]);
@@ -88,6 +115,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
     useState<PendingConfirmation | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const assistantRawRef = useRef("");
+  const assistantMotionCountRef = useRef(0);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
   const streamRunIdRef = useRef<string | null>(null);
@@ -194,7 +222,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
         role: "user",
         content,
       };
-      const parsed = parseAvatarEmotions(appLaunchIntent.reply);
+      const parsed = parseAvatarCues(appLaunchIntent.reply);
       const assistantMessage: BubbleMessage = {
         id: crypto.randomUUID(),
         role: "assistant",
@@ -215,6 +243,9 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
       }
       if (parsed.emotions.length > 0) {
         setCurrentEmotion(parsed.currentEmotion);
+      }
+      for (const motion of parsed.motions) {
+        requestMotion(motion);
       }
 
       setInput("");
@@ -247,6 +278,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
     setPendingConfirm(null);
     setLoading(true);
     assistantRawRef.current = "";
+    assistantMotionCountRef.current = 0;
     streamRunIdRef.current = runId;
     safeSetMessages((prev) => [...prev, userMessage, assistantMessage]);
 
@@ -278,10 +310,17 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
           onToken: (token) => {
             if (!isActiveRun(runId)) return;
             assistantRawRef.current += token;
-            const parsed = parseAvatarEmotions(assistantRawRef.current);
+            const parsed = parseAvatarCues(assistantRawRef.current);
             if (parsed.emotions.length > 0) {
               setCurrentEmotion(parsed.currentEmotion);
             }
+            const newMotions = parsed.motions.slice(
+              assistantMotionCountRef.current,
+            );
+            for (const motion of newMotions) {
+              requestMotion(motion);
+            }
+            assistantMotionCountRef.current = parsed.motions.length;
             updateAssistant(assistantId, (message) => ({
               ...message,
               content: parsed.text,
@@ -410,89 +449,102 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
   return (
     <section
       data-avatar-control="true"
-      className="flex w-[min(320px,calc(100vw-32px))] flex-col overflow-hidden rounded-lg text-[13px] leading-5"
+      className="flex flex-col overflow-hidden rounded-[18px] text-[13px] leading-5"
       style={{
+        height: maxHeight,
         maxHeight,
+        width,
         color: "rgba(24,24,27,0.9)",
-        background: "rgba(255,255,255,0.84)",
-        border: "1px solid rgba(255,255,255,0.64)",
-        backdropFilter: "blur(24px) saturate(170%)",
-        WebkitBackdropFilter: "blur(24px) saturate(170%)",
+        background:
+          "linear-gradient(180deg, rgba(255,255,255,0.88), rgba(246,247,250,0.78))",
+        border: "1px solid rgba(255,255,255,0.72)",
+        backdropFilter: "blur(30px) saturate(180%)",
+        WebkitBackdropFilter: "blur(30px) saturate(180%)",
         boxShadow:
-          "0 14px 34px rgba(15,23,42,0.18), 0 1px 0 rgba(255,255,255,0.75) inset",
+          "0 22px 54px rgba(15,23,42,0.22), 0 1px 0 rgba(255,255,255,0.82) inset",
       }}
     >
-      <div className="flex items-center justify-between border-b border-zinc-900/10 px-3 py-2">
+      <div className="flex items-center justify-between border-b border-white/70 bg-white/[0.35] px-3.5 py-2.5">
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-medium text-zinc-900">
+          <div className="truncate text-[13px] font-semibold text-zinc-900">
             虚拟伙伴
           </div>
-          <div className="truncate text-[11px] text-zinc-500">
-            {resolvedModel
-              ? `${resolvedModel.providerId} · ${resolvedModel.modelId}`
-              : "未配置可用模型"}
+          <div className="mt-0.5 truncate text-[11px] text-zinc-500">
+            {getAvatarModelSummary(resolvedModel)}
           </div>
         </div>
         <button
           type="button"
           onClick={handleOpenChat}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-zinc-600 transition-colors hover:bg-zinc-900/5 active:bg-zinc-900/10"
-          title="打开 AI 助手"
-          aria-label="打开 AI 助手"
+          className="flex h-7 shrink-0 items-center gap-1 rounded-full border border-zinc-950/10 bg-white/[0.58] px-2.5 text-[12px] font-medium text-zinc-600 shadow-[0_1px_0_rgba(255,255,255,0.72)_inset] transition-colors hover:bg-white/80 hover:text-zinc-900 active:bg-zinc-100"
+          title="打开完整 AI 助手"
+          aria-label="打开完整 AI 助手"
         >
-          <ExternalLink size={16} strokeWidth={1.9} />
+          <span>完整对话</span>
+          <ExternalLink size={13} strokeWidth={1.9} />
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-2">
+      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3.5 py-3">
         {messages.length === 0 ? (
-          <div className="rounded-md bg-zinc-900/[0.04] px-2.5 py-2 text-zinc-600">
-            我在这里，需要时可以直接问我。
+          <div className="flex justify-start">
+            <div className="max-w-[84%] rounded-[17px] rounded-bl-md border border-white/70 bg-white/[0.72] px-3 py-2 text-zinc-700 shadow-[0_1px_2px_rgba(15,23,42,0.08)]">
+              我在这里，需要时可以直接问我。
+            </div>
           </div>
         ) : null}
 
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={
-              message.role === "user"
-                ? "ml-8 rounded-md bg-zinc-900 px-2.5 py-2 text-white"
-                : message.role === "error"
-                  ? "rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-red-700"
-                  : "mr-5 rounded-md bg-zinc-900/[0.05] px-2.5 py-2 text-zinc-800"
-            }
-          >
-            <div className="whitespace-pre-wrap break-words">
-              {message.content ||
-                (message.streaming ? "正在思考..." : "我还没有组织好回答。")}
-            </div>
-            {message.toolCalls?.length ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {message.toolCalls.map((tool) => (
-                  <span
-                    key={tool.id}
-                    className={`inline-flex max-w-full items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] ${
-                      tool.status === "error"
-                        ? "border-red-200 bg-red-50 text-red-700"
-                        : tool.status === "done"
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border-amber-200 bg-amber-50 text-amber-700"
-                    }`}
-                    title={getToolLabel(tool)}
-                  >
-                    <span className="truncate">{getToolLabel(tool)}</span>
-                    <span className="shrink-0 opacity-75">
-                      {getToolStatusText(tool)}
-                    </span>
-                  </span>
-                ))}
+        {messages.map((message) => {
+          const isUser = message.role === "user";
+          const isError = message.role === "error";
+
+          return (
+            <div
+              key={message.id}
+              className={isUser ? "flex justify-end" : "flex justify-start"}
+            >
+              <div
+                className={
+                  isUser
+                    ? "max-w-[82%] rounded-[17px] rounded-br-md bg-[#0a84ff] px-3 py-2 text-white shadow-[0_6px_16px_rgba(10,132,255,0.22)]"
+                    : isError
+                      ? "max-w-[88%] rounded-[17px] rounded-bl-md border border-red-200 bg-red-50 px-3 py-2 text-red-700"
+                      : "max-w-[88%] rounded-[17px] rounded-bl-md border border-white/70 bg-white/[0.72] px-3 py-2 text-zinc-800 shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+                }
+              >
+                <div className="whitespace-pre-wrap break-words">
+                  {message.content ||
+                    (message.streaming ? "正在思考..." : "我还没有组织好回答。")}
+                </div>
+                {message.toolCalls?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {message.toolCalls.map((tool) => (
+                      <span
+                        key={tool.id}
+                        className={`inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] ${
+                          tool.status === "error"
+                            ? "border-red-200 bg-red-50 text-red-700"
+                            : tool.status === "done"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-amber-200 bg-amber-50 text-amber-700"
+                        }`}
+                        title={getToolLabel(tool)}
+                      >
+                        <span className="truncate">{getToolLabel(tool)}</span>
+                        <span className="shrink-0 opacity-75">
+                          {getToolStatusText(tool)}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
-        ))}
+            </div>
+          );
+        })}
 
         {pendingConfirm ? (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900">
+          <div className="rounded-[16px] border border-amber-200 bg-amber-50/[0.92] px-3 py-2 text-amber-900">
             <div className="font-medium">需要确认工具操作</div>
             <div className="mt-0.5 break-words text-[12px]">
               {pendingConfirm.toolName}
@@ -502,7 +554,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
                 type="button"
                 onClick={() => void handleConfirm(false)}
                 disabled={pendingConfirm.deciding}
-                className="h-7 flex-1 rounded-md bg-white/80 px-2 text-[12px] text-zinc-700 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-7 flex-1 rounded-full bg-white/80 px-2 text-[12px] text-zinc-700 transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
               >
                 拒绝
               </button>
@@ -510,7 +562,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
                 type="button"
                 onClick={() => void handleConfirm(true)}
                 disabled={pendingConfirm.deciding}
-                className="h-7 flex-1 rounded-md bg-zinc-900 px-2 text-[12px] text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="h-7 flex-1 rounded-full bg-[#0a84ff] px-2 text-[12px] text-white transition-colors hover:bg-[#0875e1] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 允许
               </button>
@@ -522,7 +574,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
 
       <form
         onSubmit={handleSubmit}
-        className="flex items-end gap-2 border-t border-zinc-900/10 p-2"
+        className="flex items-end gap-2 border-t border-white/70 bg-white/[0.38] p-2.5"
       >
         <textarea
           value={input}
@@ -534,7 +586,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
             }
           }}
           rows={1}
-          className="max-h-20 min-h-8 flex-1 resize-none rounded-md border border-zinc-200 bg-white/80 px-2 py-1.5 text-[13px] text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-zinc-400"
+          className="max-h-24 min-h-9 flex-1 resize-none rounded-[14px] border border-zinc-950/10 bg-white/[0.82] px-3 py-2 text-[13px] text-zinc-900 shadow-[0_1px_0_rgba(255,255,255,0.75)_inset] outline-none transition-colors placeholder:text-zinc-400 focus:border-[#66b3ff]"
           placeholder="问问虚拟伙伴..."
           disabled={loading}
         />
@@ -542,7 +594,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
           <button
             type="button"
             onClick={handleAbort}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white transition-colors hover:bg-zinc-700"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition-colors hover:bg-zinc-700"
             title="停止生成"
             aria-label="停止生成"
           >
@@ -551,7 +603,7 @@ export function AvatarBubble({ maxHeight = 360 }: AvatarBubbleProps) {
         ) : (
           <button
             type="submit"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-zinc-900 text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-45"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#0a84ff] text-white shadow-[0_6px_16px_rgba(10,132,255,0.2)] transition-colors hover:bg-[#0875e1] disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none"
             title="发送"
             aria-label="发送"
             disabled={!input.trim()}

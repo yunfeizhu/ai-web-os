@@ -28,6 +28,8 @@ APP_VIRTUAL_ROOTS = {
     "/Documents": APP_DOCUMENTS_ROOT / "Documents",
     "/Whiteboards": APP_DOCUMENTS_ROOT / "Whiteboards",
 }
+LINUX_DESKTOP_VIRTUAL_PATH = "/root/Desktop"
+LINUX_DESKTOP_ROOT = Path(LINUX_DESKTOP_VIRTUAL_PATH)
 
 # 非 Windows 系统的沙箱根目录（可通过环境变量覆盖）
 FS_ROOT = Path(os.getenv("FS_ROOT", str(Path.home()))).resolve()
@@ -59,6 +61,34 @@ def join_path(base: str, name: str) -> str:
     if not clean_name:
         return base_path
     return f"/{clean_name}" if base_path == "/" else f"{base_path}/{clean_name}"
+
+
+def get_desktop_directory(home: Path | None = None) -> Path:
+    if IS_WINDOWS:
+        return (home or Path.home()) / "Desktop"
+    return LINUX_DESKTOP_ROOT
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _resolve_non_windows_desktop_path(normalized: str) -> Path | None:
+    if normalized != LINUX_DESKTOP_VIRTUAL_PATH and not normalized.startswith(
+        f"{LINUX_DESKTOP_VIRTUAL_PATH}/"
+    ):
+        return None
+
+    suffix = normalized[len(LINUX_DESKTOP_VIRTUAL_PATH):].lstrip("/")
+    root = LINUX_DESKTOP_ROOT.resolve()
+    real = (root / suffix).resolve() if suffix else root
+    if real != root and not _is_relative_to(real, root):
+        raise ValueError(f"路径穿越攻击被拦截: {normalized}")
+    return real
 
 
 def _get_windows_drives() -> list[str]:
@@ -108,6 +138,10 @@ def _to_real(virtual_path: str) -> Path:
             return real
         raise ValueError(f"非法 Windows 虚拟路径（首段应为盘符）: {virtual_path}")
 
+    desktop_real = _resolve_non_windows_desktop_path(normalized)
+    if desktop_real is not None:
+        return desktop_real
+
     # 非 Windows：沙箱隔离
     rel = normalized.lstrip("/")
     real = (FS_ROOT / rel).resolve() if rel else FS_ROOT.resolve()
@@ -133,7 +167,14 @@ def _to_virtual(real_path: Path) -> str:
             rest = str(real_path)[len(drive):].replace("\\", "/").strip("/")
             return f"/{letter}/{rest}" if rest else f"/{letter}"
 
-    rel = real_path.relative_to(FS_ROOT)
+    resolved = real_path.resolve()
+    desktop_root = LINUX_DESKTOP_ROOT.resolve()
+    if resolved == desktop_root or _is_relative_to(resolved, desktop_root):
+        rel = resolved.relative_to(desktop_root)
+        rel_text = str(rel).replace("\\", "/").strip("/")
+        return join_path(LINUX_DESKTOP_VIRTUAL_PATH, rel_text)
+
+    rel = resolved.relative_to(FS_ROOT)
     return "/" + str(rel).replace("\\", "/")
 
 
@@ -244,6 +285,19 @@ def _sync_copy(src: Path, dst: Path, is_dir: bool) -> None:
         shutil.copytree(str(src), str(dst))
     else:
         shutil.copy2(str(src), str(dst))
+
+
+def _unique_child_path(parent: Path, name: str) -> Path:
+    candidate = parent / name
+    if not candidate.exists():
+        return candidate
+
+    idx = 1
+    while True:
+        next_candidate = parent / f"{name} ({idx})"
+        if not next_candidate.exists():
+            return next_candidate
+        idx += 1
 
 
 async def _run(func, *args):
@@ -417,6 +471,17 @@ async def create_folder(db, parent: str, name: str) -> FileNode:
         raise ValueError("同名文件或目录已存在。")
     await _run(lambda: real.mkdir(parents=True))
     return _make_node(real, destination)
+
+
+async def create_desktop_folder(db, name: str = "新建文件夹") -> FileNode:
+    clean_name = (name or "").strip() or "新建文件夹"
+    if "/" in clean_name or "\\" in clean_name:
+        raise ValueError("文件夹名称不能包含路径分隔符。")
+
+    desktop = get_desktop_directory()
+    real = _unique_child_path(desktop, clean_name)
+    await _run(lambda: real.mkdir(parents=True))
+    return _make_node(real, _to_virtual(real))
 
 
 async def save_upload(

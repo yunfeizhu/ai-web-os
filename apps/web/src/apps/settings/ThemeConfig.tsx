@@ -1,56 +1,17 @@
 "use client";
 
 import { useDesktopStore } from "@/stores/desktopStore";
+import {
+  LIVE_WALLPAPERS,
+  normalizeWallpaperUrl,
+  STATIC_WALLPAPERS,
+  type WallpaperOption,
+} from "@/lib/wallpapers";
 import { SectionTitle } from "./Settings";
-
-// Unsplash 免费可商用壁纸
-const WALLPAPERS = [
-  {
-    id: "mountain",
-    label: "山脉",
-    url: "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=2560&q=90&auto=format&fit=crop",
-    thumb:
-      "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=320&q=80&auto=format&fit=crop",
-  },
-  {
-    id: "lake",
-    label: "湖泊",
-    url: "https://images.unsplash.com/photo-1439066615861-d1af74d74000?w=2560&q=90&auto=format&fit=crop",
-    thumb:
-      "https://images.unsplash.com/photo-1439066615861-d1af74d74000?w=320&q=80&auto=format&fit=crop",
-  },
-  {
-    id: "forest",
-    label: "森林",
-    url: "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=2560&q=90&auto=format&fit=crop",
-    thumb:
-      "https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?w=320&q=80&auto=format&fit=crop",
-  },
-  {
-    id: "aerial",
-    label: "鸟瞰",
-    url: "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=2560&q=90&auto=format&fit=crop",
-    thumb:
-      "https://images.unsplash.com/photo-1501854140801-50d01698950b?w=320&q=80&auto=format&fit=crop",
-  },
-  {
-    id: "desert",
-    label: "沙漠",
-    url: "https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=2560&q=90&auto=format&fit=crop",
-    thumb:
-      "https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?w=320&q=80&auto=format&fit=crop",
-  },
-  {
-    id: "ocean",
-    label: "海洋",
-    url: "https://images.unsplash.com/photo-1505118380757-91f5f5632de0?w=2560&q=90&auto=format&fit=crop",
-    thumb:
-      "https://images.unsplash.com/photo-1505118380757-91f5f5632de0?w=320&q=80&auto=format&fit=crop",
-  },
-];
 
 export function ThemeConfig() {
   const { wallpaper, setWallpaper, theme, setTheme } = useDesktopStore();
+  const selectedWallpaper = normalizeWallpaperUrl(wallpaper);
 
   return (
     <div>
@@ -136,65 +97,101 @@ export function ThemeConfig() {
         </div>
       </div>
 
-      {/* ── Wallpaper grid ─────────────────────────────────────── */}
-      <div>
-        <p
-          className="text-[13px] font-semibold mb-3"
-          style={{ color: "var(--t2)" }}
-        >
-          桌面壁纸
+      <div className="flex flex-col gap-5">
+        <WallpaperSection
+          title="静态壁纸"
+          wallpapers={STATIC_WALLPAPERS}
+          selectedWallpaper={selectedWallpaper}
+          onSelect={setWallpaper}
+        />
+        <WallpaperSection
+          title="动态壁纸"
+          wallpapers={LIVE_WALLPAPERS}
+          selectedWallpaper={selectedWallpaper}
+          onSelect={setWallpaper}
+        />
+        <p className="text-[11px] mt-2" style={{ color: "var(--t3)" }}>
+          静态图片来源: Unsplash；动态视频来源: Mixkit，均已缓存为本地资源
         </p>
-        <div className="grid grid-cols-3 gap-2.5">
-          {WALLPAPERS.map((wp) => {
-            const isActive = wallpaper === wp.url;
-            return (
-              <button
-                key={wp.id}
-                onClick={() => setWallpaper(wp.url)}
-                className="relative aspect-video rounded-lg overflow-hidden transition-all duration-200 group"
-                style={{
-                  border: isActive
-                    ? "2.5px solid var(--accent)"
-                    : "0.5px solid var(--border)",
-                  boxShadow: isActive
-                    ? "0 0 0 2px var(--accent-bg-h)"
-                    : "none",
-                }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={wp.thumb}
-                  alt={wp.label}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div
-                  className="absolute bottom-0 inset-x-0 py-0.5 px-1.5 text-[11px] font-medium"
+      </div>
+    </div>
+  );
+}
+
+function WallpaperSection({
+  title,
+  wallpapers,
+  selectedWallpaper,
+  onSelect,
+}: {
+  title: string;
+  wallpapers: WallpaperOption[];
+  selectedWallpaper: string;
+  onSelect: (url: string) => void;
+}) {
+  return (
+    <div>
+      <p
+        className="mb-3 text-[13px] font-semibold"
+        style={{ color: "var(--t2)" }}
+      >
+        {title}
+      </p>
+      <div className="grid grid-cols-3 gap-2.5">
+        {wallpapers.map((wp) => {
+          const isActive = selectedWallpaper === wp.url;
+          return (
+            <button
+              key={wp.id}
+              onClick={() => onSelect(wp.url)}
+              className="group relative aspect-video overflow-hidden rounded-lg transition-all duration-200"
+              aria-pressed={isActive}
+              style={{
+                border: isActive
+                  ? "2.5px solid var(--accent)"
+                  : "0.5px solid var(--border)",
+                boxShadow: isActive ? "0 0 0 2px var(--accent-bg-h)" : "none",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={wp.thumb}
+                alt={wp.label}
+                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+              />
+              {wp.meta && (
+                <span
+                  className="absolute left-1.5 top-1.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
                   style={{
-                    background: "linear-gradient(transparent, rgba(0,0,0,0.4))",
+                    background: "rgba(0,0,0,0.42)",
                     color: "#fff",
                   }}
                 >
-                  {wp.label}
+                  {wp.meta}
+                </span>
+              )}
+              <div
+                className="absolute bottom-0 inset-x-0 px-1.5 py-0.5 text-[11px] font-medium"
+                style={{
+                  background: "linear-gradient(transparent, rgba(0,0,0,0.4))",
+                  color: "#fff",
+                }}
+              >
+                {wp.label}
+              </div>
+              {isActive && (
+                <div
+                  className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full"
+                  style={{ background: "var(--accent)" }}
+                >
+                  <span style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}>
+                    ✓
+                  </span>
                 </div>
-                {isActive && (
-                  <div
-                    className="absolute top-1 right-1 w-4 h-4 rounded-full flex items-center justify-center"
-                    style={{ background: "var(--accent)" }}
-                  >
-                    <span
-                      style={{ fontSize: 9, color: "#fff", fontWeight: 700 }}
-                    >
-                      ✓
-                    </span>
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-[11px] mt-2" style={{ color: "var(--t3)" }}>
-          图片来源: Unsplash (免费可商用)
-        </p>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

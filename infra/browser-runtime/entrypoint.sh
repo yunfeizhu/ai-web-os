@@ -6,6 +6,7 @@ XVFB_SCREEN="${XVFB_SCREEN:-1440x920x24}"
 VNC_PORT="${VNC_PORT:-5900}"
 NOVNC_PORT="${NOVNC_PORT:-6080}"
 API_PORT="${API_PORT:-18100}"
+BROWSER_VNC_PASSWORD="${BROWSER_VNC_PASSWORD:-}"
 DISPLAY_NUM="${XVFB_DISPLAY#:}"
 X_LOCK_FILE="/tmp/.X${DISPLAY_NUM}-lock"
 X_SOCKET_FILE="/tmp/.X11-unix/X${DISPLAY_NUM}"
@@ -69,7 +70,11 @@ init_path.write_text("\n".join(kept) + "\n", encoding="utf-8")
 PY
 
 fluxbox >/tmp/fluxbox.log 2>&1 &
-x11vnc -display "${XVFB_DISPLAY}" -forever -shared -rfbport "${VNC_PORT}" -nopw -quiet >/tmp/x11vnc.log 2>&1 &
+VNC_AUTH_ARGS=(-nopw)
+if [ -n "${BROWSER_VNC_PASSWORD}" ]; then
+  VNC_AUTH_ARGS=(-passwd "${BROWSER_VNC_PASSWORD}")
+fi
+x11vnc -display "${XVFB_DISPLAY}" -forever -shared -rfbport "${VNC_PORT}" "${VNC_AUTH_ARGS[@]}" -quiet >/tmp/x11vnc.log 2>&1 &
 websockify --web=/usr/share/novnc "${NOVNC_PORT}" "localhost:${VNC_PORT}" >/tmp/websockify.log 2>&1 &
 
 uvicorn server:app --host 0.0.0.0 --port "${API_PORT}" &

@@ -10,9 +10,17 @@ import {
   type AvatarSize,
   type ViewportSize,
 } from "@/apps/avatar-pet/avatar-layout";
-import type { AvatarEmotion } from "@/apps/avatar-pet/emotion-parser";
+import type {
+  AvatarEmotion,
+  AvatarMotion,
+} from "@/apps/avatar-pet/emotion-parser";
 
 export type AvatarModelSourceType = "url" | "zip";
+
+export type AvatarMotionRequest = {
+  motion: AvatarMotion;
+  sequence: number;
+};
 
 const LEGACY_PUBLIC_LIVE2D_PREFIX = "/avatar/live2d/";
 const LOCAL_AVATAR_ASSET_PREFIX = "/avatar/assets/";
@@ -39,6 +47,7 @@ export interface AvatarState {
   localModelName: string;
   live2dError: string;
   currentEmotion: AvatarEmotion;
+  motionRequest: AvatarMotionRequest | null;
   personalityPreset: "default";
 
   setVisible: (visible: boolean) => void;
@@ -53,6 +62,7 @@ export interface AvatarState {
   setModelSourceType: (modelSourceType: AvatarModelSourceType) => void;
   setLive2DError: (live2dError: string) => void;
   setCurrentEmotion: (currentEmotion: AvatarEmotion) => void;
+  requestMotion: (motion: AvatarMotion) => void;
 }
 
 export const useAvatarStore = create<AvatarState>()(
@@ -67,6 +77,7 @@ export const useAvatarStore = create<AvatarState>()(
       localModelName: "",
       live2dError: "",
       currentEmotion: "neutral",
+      motionRequest: null,
       personalityPreset: "default",
 
       setVisible: (visible) => set({ visible }),
@@ -110,12 +121,22 @@ export const useAvatarStore = create<AvatarState>()(
         set({ modelSourceType, live2dError: "" }),
       setLive2DError: (live2dError) => set({ live2dError }),
       setCurrentEmotion: (currentEmotion) => set({ currentEmotion }),
+      requestMotion: (motion) =>
+        set((state) => ({
+          motionRequest: {
+            motion,
+            sequence: (state.motionRequest?.sequence ?? 0) + 1,
+          },
+        })),
     }),
     {
       name: "ainative-avatar",
-      version: 1,
+      version: 2,
       migrate: (persistedState) => {
-        const state = persistedState as Partial<AvatarState>;
+        const state = { ...(persistedState as Partial<AvatarState>) };
+        delete state.currentEmotion;
+        delete state.motionRequest;
+
         if (typeof state.modelUrl !== "string") {
           return state as AvatarState;
         }
@@ -133,7 +154,6 @@ export const useAvatarStore = create<AvatarState>()(
         modelSourceType: state.modelSourceType,
         modelUrl: state.modelUrl,
         localModelName: state.localModelName,
-        currentEmotion: state.currentEmotion,
         personalityPreset: state.personalityPreset,
       }),
     },

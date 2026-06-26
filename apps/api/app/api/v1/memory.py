@@ -33,8 +33,6 @@ class InitMemoryRequest(BaseModel):
     embedder_api_key: str | None = None
     embedder_base_url: str | None = None
     embedder_dims: int | None = None
-    qdrant_host: str = "127.0.0.1"
-    qdrant_port: int = 16333
 
 
 class MemoryFileUpdateRequest(BaseModel):
@@ -89,8 +87,6 @@ async def init_memory(req: InitMemoryRequest):
         embedder_api_key=req.embedder_api_key,
         embedder_base_url=req.embedder_base_url,
         embedder_dims=req.embedder_dims,
-        qdrant_host=req.qdrant_host,
-        qdrant_port=req.qdrant_port,
     )
     manager.start()
     return {"status": "ok", **_metadata(manager)}

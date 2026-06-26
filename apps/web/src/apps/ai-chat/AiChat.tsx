@@ -2,7 +2,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import { Plus, Trash2, Send, Square, PenSquare, Sparkles } from "lucide-react";
+import { Trash2, Send, Square, PenSquare } from "lucide-react";
 import { streamChat } from "@/hooks/useStream";
 import { API_BASE } from "@/lib/backend";
 import { useSettingsStore } from "@/stores/settingsStore";
@@ -225,14 +225,15 @@ const MessageList = memo(function MessageList({
   onRetryMessage,
 }: MessageListProps) {
   return (
-    <div className="py-4 mx-auto w-full" style={{ maxWidth: 720 }}>
+    <div className="mx-auto w-full py-5" style={{ maxWidth: 760 }}>
       <div className="relative h-7 mb-1">
         {statusText && (
           <div
-            className="absolute left-4 top-0 flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] pointer-events-none"
+            className="pointer-events-none absolute left-4 top-0 flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px]"
             style={{
-              background: "var(--control-bg)",
+              background: "rgba(255,255,255,0.68)",
               color: "var(--t3)",
+              border: "0.5px solid rgba(0,0,0,0.08)",
               whiteSpace: "nowrap",
             }}
           >
@@ -1158,27 +1159,42 @@ export function AiChat() {
 
   return (
     <div
+      data-testid="ai-chat-shell"
       className="flex h-full overflow-hidden"
-      style={{ background: "var(--window-content-bg)", color: "var(--t1)" }}
+      style={{
+        background:
+          "linear-gradient(180deg, rgba(248,249,251,0.92), rgba(239,242,247,0.86))",
+        color: "var(--t1)",
+      }}
     >
       {/* ── 侧边栏 ── */}
       <aside
+        data-testid="ai-chat-sidebar"
         className="flex flex-col shrink-0 h-full"
         style={{
-          width: 220,
+          width: 238,
           borderRight: "0.5px solid var(--border)",
-          background: "var(--panel-bg)",
+          background:
+            "linear-gradient(180deg, rgba(246,247,250,0.78), rgba(232,236,242,0.7))",
+          backdropFilter: "blur(22px) saturate(150%)",
+          WebkitBackdropFilter: "blur(22px) saturate(150%)",
         }}
       >
         {/* 新建对话 */}
-        <div className="p-3">
+        <div className="px-3 pb-2 pt-3">
           <button
             onClick={newConversation}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-[14px] font-medium transition-all"
-            style={{ background: "var(--accent)", color: "#fff" }}
+            className="flex h-9 w-full items-center justify-between rounded-[11px] px-3 text-[13px] font-medium transition-colors"
+            style={{
+              background: "rgba(255,255,255,0.58)",
+              border: "0.5px solid rgba(0,0,0,0.08)",
+              color: "var(--t1)",
+              boxShadow:
+                "0 1px 2px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,0.82)",
+            }}
           >
             <span>新对话</span>
-            <PenSquare size={14} />
+            <PenSquare size={15} strokeWidth={1.8} />
           </button>
         </div>
 
@@ -1186,7 +1202,7 @@ export function AiChat() {
         <div className="flex-1 overflow-y-auto px-2 pb-2">
           {conversations.length === 0 ? (
             <p
-              className="text-[14px] px-2 py-4 text-center"
+              className="px-2 py-4 text-center text-[13px]"
               style={{ color: "var(--t3)" }}
             >
               暂无历史对话
@@ -1199,16 +1215,19 @@ export function AiChat() {
                   <div
                     key={conv.id}
                     onClick={() => selectConversation(conv.id)}
-                    className="group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors relative"
+                    className="group relative flex cursor-pointer items-center gap-2 rounded-[10px] px-2.5 py-2 transition-colors"
                     style={{
                       background: active
-                        ? "rgba(10, 132, 255, 0.16)"
+                        ? "rgba(255,255,255,0.72)"
                         : "transparent",
+                      boxShadow: active
+                        ? "0 1px 2px rgba(0,0,0,0.05), inset 0 0 0 0.5px rgba(0,0,0,0.08)"
+                        : "none",
                     }}
                     onMouseEnter={(e) => {
                       if (!active)
                         (e.currentTarget as HTMLElement).style.background =
-                          "var(--control-bg)";
+                          "rgba(255,255,255,0.5)";
                     }}
                     onMouseLeave={(e) => {
                       if (!active)
@@ -1219,8 +1238,8 @@ export function AiChat() {
                     <span
                       className="flex-1 text-[14px] truncate"
                       style={{
-                        color: active ? "var(--accent)" : "var(--t1)",
-                        fontWeight: active ? 500 : 400,
+                        color: active ? "var(--t1)" : "var(--t2)",
+                        fontWeight: active ? 600 : 400,
                       }}
                     >
                       {conv.title}
@@ -1264,19 +1283,28 @@ export function AiChat() {
       <div className="flex flex-col flex-1 min-w-0 h-full relative">
         {/* 顶栏 */}
         <header
-          className="flex items-center justify-between px-4 shrink-0"
+          data-testid="ai-chat-header"
+          className="flex shrink-0 items-center justify-between px-4"
           style={{
-            height: 48,
+            height: 50,
             borderBottom: "0.5px solid var(--border)",
-            background: "var(--panel-bg-soft)",
+            background:
+              "linear-gradient(180deg, rgba(255,255,255,0.74), rgba(246,247,250,0.54))",
+            backdropFilter: "blur(18px) saturate(150%)",
+            WebkitBackdropFilter: "blur(18px) saturate(150%)",
           }}
         >
-          <span
-            className="text-[14px] font-medium truncate"
-            style={{ color: "var(--t2)" }}
-          >
-            {activeTitle ?? "AI 助手"}
-          </span>
+          <div className="min-w-0">
+            <span
+              className="block truncate text-[14px] font-semibold"
+              style={{ color: "var(--t1)" }}
+            >
+              {activeTitle ?? "AI 助手"}
+            </span>
+            <span className="block text-[11px]" style={{ color: "var(--t3)" }}>
+              对话与系统能力
+            </span>
+          </div>
           <ModelPicker
             value={selectedModel}
             onChange={(v) => {
@@ -1290,27 +1318,26 @@ export function AiChat() {
         <div
           ref={scrollContainerRef}
           className="flex-1 overflow-y-auto"
+          style={{
+            background:
+              "radial-gradient(circle at 50% 0%, rgba(255,255,255,0.82), transparent 34%), linear-gradient(180deg, rgba(250,251,253,0.76), rgba(241,244,248,0.68))",
+          }}
           onScroll={handleScroll}
         >
           {messages.length === 0 ? (
             /* 空状态 */
-            <div className="flex flex-col items-center justify-center h-full px-6 gap-6 select-none">
+            <div
+              data-testid="ai-chat-empty-state"
+              className="flex min-h-full select-none flex-col items-center justify-start gap-5 px-6 pb-20 pt-10"
+            >
               <div className="text-center">
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
-                  style={{
-                    background: "linear-gradient(135deg,#a78bfa,#6366f1)",
-                  }}
-                >
-                  <Sparkles size={28} color="white" strokeWidth={1.6} />
-                </div>
                 <p
-                  className="text-[17px] font-semibold mb-1"
+                  className="mb-1 text-[20px] font-semibold"
                   style={{ color: "var(--t1)" }}
                 >
                   有什么可以帮你的？
                 </p>
-                <p className="text-[14px]" style={{ color: "var(--t3)" }}>
+                <p className="text-[13px]" style={{ color: "var(--t3)" }}>
                   {selectedModel
                     ? "选择一个话题开始对话"
                     : "请先在右上角选择模型"}
@@ -1319,8 +1346,8 @@ export function AiChat() {
 
               {selectedModel && (
                 <div
-                  className="grid grid-cols-2 gap-2 w-full"
-                  style={{ maxWidth: 400 }}
+                  className="grid w-full grid-cols-2 gap-2"
+                  style={{ maxWidth: 430 }}
                 >
                   {QUICK_PROMPTS.map((q) => (
                     <button
@@ -1329,28 +1356,30 @@ export function AiChat() {
                         setInputValue(q.prompt);
                         textareaRef.current?.focus();
                       }}
-                      className="flex flex-col gap-1 px-3 py-3 rounded-xl text-left transition-all"
+                      className="flex flex-col gap-1 rounded-[14px] px-3 py-3 text-left transition-all"
                       style={{
-                        background: "var(--panel-bg)",
-                        border: "0.5px solid var(--border)",
+                        background: "rgba(255,255,255,0.66)",
+                        border: "0.5px solid rgba(0,0,0,0.08)",
+                        boxShadow:
+                          "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.72)",
                       }}
                       onMouseEnter={(e) =>
                         (e.currentTarget.style.background =
-                          "rgba(10, 132, 255, 0.12)")
+                          "rgba(255,255,255,0.88)")
                       }
                       onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "var(--panel-bg)")
+                        (e.currentTarget.style.background = "rgba(255,255,255,0.66)")
                       }
                     >
-                      <span className="text-[17px]">{q.icon}</span>
+                      <span className="text-[16px]">{q.icon}</span>
                       <span
-                        className="text-[14px] font-medium"
+                        className="text-[13px] font-semibold"
                         style={{ color: "var(--t1)" }}
                       >
                         {q.label}
                       </span>
                       <span
-                        className="text-[14px]"
+                        className="text-[12px]"
                         style={{ color: "var(--t3)" }}
                       >
                         {q.prompt}…
@@ -1372,10 +1401,10 @@ export function AiChat() {
 
         {/* 输入区 */}
         <div
-          className="shrink-0 px-4 pb-4 pt-2"
+          className="shrink-0 px-5 pb-5 pt-2"
           style={{
-            background: "var(--panel-bg-soft)",
-            borderTop: "0.5px solid var(--border)",
+            background:
+              "linear-gradient(180deg, rgba(241,244,248,0.22), rgba(241,244,248,0.78))",
           }}
         >
           {pendingConfirmation && (
@@ -1450,13 +1479,17 @@ export function AiChat() {
             </div>
           )}
           <div
+            data-testid="ai-chat-composer"
             className="mx-auto rounded-2xl overflow-hidden transition-shadow"
             style={{
               maxWidth: 720,
-              background: "var(--input-bg)",
-              border: "0.5px solid var(--border)",
+              background: "rgba(255,255,255,0.86)",
+              border: "0.5px solid rgba(0,0,0,0.1)",
+              borderRadius: 24,
               boxShadow:
-                "0 12px 32px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.05)",
+                "0 18px 46px rgba(31,41,55,0.12), inset 0 1px 0 rgba(255,255,255,0.86)",
+              backdropFilter: "blur(20px) saturate(160%)",
+              WebkitBackdropFilter: "blur(20px) saturate(160%)",
             }}
           >
             <textarea
@@ -1471,7 +1504,7 @@ export function AiChat() {
               }
               rows={1}
               disabled={!selectedModel}
-              className="w-full resize-none bg-transparent outline-none text-[14px] leading-relaxed px-4 pt-3 pb-1"
+              className="w-full resize-none bg-transparent px-4 pb-1 pt-3 text-[14px] leading-relaxed outline-none"
               style={{
                 color: "var(--t1)",
                 maxHeight: 200,
@@ -1480,15 +1513,15 @@ export function AiChat() {
               }}
             />
             <div className="flex items-center justify-between px-3 pb-2.5">
-              <span className="text-[14px]" style={{ color: "var(--t3)" }}>
+              <span className="text-[12px]" style={{ color: "var(--t3)" }}>
                 {input.length > 0 ? `${input.length} 字` : ""}
               </span>
               {loading ? (
                 <button
                   onClick={stopGeneration}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[14px] font-medium transition-all"
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-all"
                   style={{
-                    background: "var(--control-bg)",
+                    background: "rgba(0,0,0,0.06)",
                     color: "var(--t2)",
                   }}
                 >
@@ -1498,13 +1531,17 @@ export function AiChat() {
                 <button
                   onClick={() => sendMessage()}
                   disabled={!input.trim() || !selectedModel}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[14px] font-medium transition-all"
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium transition-all"
                   style={{
                     background:
                       input.trim() && selectedModel
-                        ? "var(--accent)"
-                        : "var(--disabled-bg)",
+                        ? "linear-gradient(180deg, #36A3FF, #007AFF)"
+                        : "rgba(0,0,0,0.06)",
                     color: input.trim() && selectedModel ? "#fff" : "var(--t3)",
+                    boxShadow:
+                      input.trim() && selectedModel
+                        ? "0 6px 14px rgba(0,122,255,0.22)"
+                        : "none",
                   }}
                 >
                   <Send size={11} /> 发送

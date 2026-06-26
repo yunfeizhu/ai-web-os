@@ -202,6 +202,61 @@ describe("avatar layout", () => {
     });
   });
 
+  it("does not persist transient avatar emotion across reloads", () => {
+    window.localStorage.removeItem("ainative-avatar");
+
+    useAvatarStore.setState({
+      visible: true,
+      bubbleOpen: false,
+      position: { x: 24, y: 188 },
+      size: AVATAR_DEFAULT_SIZE,
+      modelSourceType: "url",
+      modelUrl: "/avatar/assets/live2d/mao_pro_zh/runtime/mao_pro.model3.json",
+      localModelName: "",
+      currentEmotion: "neutral",
+      personalityPreset: "default",
+    });
+
+    useAvatarStore.getState().setCurrentEmotion("relaxed");
+
+    const persisted = JSON.parse(
+      window.localStorage.getItem("ainative-avatar") ?? "{}",
+    ) as { state?: Record<string, unknown> };
+
+    expect(persisted.state?.currentEmotion).toBeUndefined();
+  });
+
+  it("emits repeatable avatar motion requests without persisting them", () => {
+    window.localStorage.removeItem("ainative-avatar");
+
+    useAvatarStore.setState({
+      visible: true,
+      bubbleOpen: false,
+      position: { x: 24, y: 188 },
+      size: AVATAR_DEFAULT_SIZE,
+      modelSourceType: "url",
+      modelUrl: "/avatar/assets/live2d/mao_pro_zh/runtime/mao_pro.model3.json",
+      localModelName: "",
+      currentEmotion: "neutral",
+      motionRequest: null,
+      personalityPreset: "default",
+    });
+
+    useAvatarStore.getState().requestMotion("heart");
+    const firstRequest = useAvatarStore.getState().motionRequest;
+    useAvatarStore.getState().requestMotion("heart");
+    const secondRequest = useAvatarStore.getState().motionRequest;
+
+    expect(firstRequest).toMatchObject({ motion: "heart", sequence: 1 });
+    expect(secondRequest).toMatchObject({ motion: "heart", sequence: 2 });
+
+    const persisted = JSON.parse(
+      window.localStorage.getItem("ainative-avatar") ?? "{}",
+    ) as { state?: Record<string, unknown> };
+
+    expect(persisted.state?.motionRequest).toBeUndefined();
+  });
+
   it("resets placement to the default size and bottom-left dock position", () => {
     useAvatarStore.setState({
       visible: true,

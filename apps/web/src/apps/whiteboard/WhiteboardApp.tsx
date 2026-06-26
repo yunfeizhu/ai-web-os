@@ -656,17 +656,24 @@ export function WhiteboardApp({ appState }: WhiteboardAppProps) {
 
   return (
     <div
+      data-testid="whiteboard-macos-shell"
       data-desktop-blocker="true"
-      className="flex h-full min-w-0 overflow-hidden rounded-[28px]"
+      className="flex h-full min-w-0 overflow-hidden"
       style={{
         color: "var(--t1)",
         background:
-          "radial-gradient(circle at top left, rgba(167,139,250,0.14), transparent 24%), linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.98))",
+          "linear-gradient(180deg, rgba(247,247,249,0.96), rgba(239,240,244,0.98))",
       }}
     >
       <aside
-        className="flex w-[280px] shrink-0 flex-col border-r px-4 py-4"
-        style={{ borderColor: "rgba(15,23,42,0.08)", background: "rgba(255,255,255,0.82)" }}
+        data-testid="whiteboard-sidebar"
+        className="flex w-[270px] shrink-0 flex-col border-r px-3 py-3"
+        style={{
+          borderColor: "rgba(0,0,0,0.08)",
+          background: "rgba(237,238,242,0.74)",
+          backdropFilter: "blur(28px) saturate(170%)",
+          WebkitBackdropFilter: "blur(28px) saturate(170%)",
+        }}
       >
         <div className="text-[12px] font-medium" style={{ color: "#7c3aed" }}>
           创意画布
@@ -685,8 +692,14 @@ export function WhiteboardApp({ appState }: WhiteboardAppProps) {
           />
           <button
             onClick={() => void createBoard()}
-            className="inline-flex h-10 w-10 items-center justify-center rounded-2xl text-white"
-            style={{ background: "linear-gradient(135deg, #a78bfa, #7c3aed)" }}
+            aria-label="新建白板"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-[9px]"
+            style={{
+              border: "0.5px solid rgba(0,0,0,0.08)",
+              background: "rgba(255,255,255,0.66)",
+              color: "var(--t2)",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.58)",
+            }}
             title="新建白板"
           >
             <FilePlus2 size={16} />
@@ -860,9 +873,9 @@ export function WhiteboardApp({ appState }: WhiteboardAppProps) {
             </div>
             <div
               ref={viewportRef}
-              className="relative h-full overflow-auto rounded-[32px] border"
+              className="relative h-full overflow-auto rounded-[14px] border"
               style={{
-                borderColor: "rgba(15,23,42,0.08)",
+                borderColor: "rgba(0,0,0,0.08)",
                 background:
                   "linear-gradient(0deg, rgba(248,250,252,0.98), rgba(255,255,255,0.98)), radial-gradient(rgba(148,163,184,0.22) 1px, transparent 1px)",
                 backgroundSize: "100% 100%, 24px 24px",
